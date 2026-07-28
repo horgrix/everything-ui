@@ -2,7 +2,7 @@ import axios from 'axios';
 
 /** 量化 API 客户端 */
 const quantClient = axios.create({
-  baseURL: import.meta.env.VITE_QUANT_API_BASE_URL || '/api/v1',
+  baseURL: 'https://api.horgrix.com/api/v1',
   timeout: 30000,
 });
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const finClient = axios.create({
-  baseURL: '/api/v2/financial',
+  baseURL: 'https://api.horgrix.com/api/v2/financial',
   timeout: 30000,
 });
 

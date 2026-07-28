@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://horgrix.com/api/data',
+  baseURL: 'https://horgrix.com/api/data',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
