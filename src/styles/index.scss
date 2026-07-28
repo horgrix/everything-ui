@@ -1,0 +1,76 @@
+// Bootstrap 5
+@import "bootstrap/scss/bootstrap";
+
+// Bootstrap Icons (CDN 在 index.html 中引入)
+// 如需本地引入: @import "bootstrap-icons/font/bootstrap-icons.css";
+
+// ========== 自定义样式 ==========
+
+// 页面过渡
+.card {
+  transition: box-shadow 0.2s ease;
+  &:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+  }
+}
+
+// 图表容器
+.card-body .apexcharts-canvas {
+  margin: 0 auto;
+}
+
+// KPI 卡片微调
+.card .rounded-3 {
+  transition: transform 0.2s ease;
+  .card:hover & {
+    transform: scale(1.05);
+  }
+}
+
+// 数据表格样式
+.table th {
+  white-space: nowrap;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table td {
+  vertical-align: middle;
+}
+
+// 筛选按钮组
+.btn-group .btn-sm {
+  padding: 0.3rem 0.8rem;
+}
+
+// 页脚
+footer {
+  margin-top: auto;
+}
+
+// 自定义 loading 动画
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card {
+  animation: fadeInDown 0.3s ease;
+}
+
+// 响应式调整
+@media (max-width: 768px) {
+  .card-header {
+    font-size: 0.95rem;
+  }
+  h2 {
+    font-size: 1.3rem;
+  }
+}
