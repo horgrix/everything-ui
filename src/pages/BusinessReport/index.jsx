@@ -235,14 +235,22 @@ export default function BusinessReport() {
     { fields: 'ss,ss_day,peak_players', where: seasonWhere, order_by: 'ss ASC, ss_day ASC', limit: 9999 },
     {
       transform: (rows) => {
-        if (!rows || !rows.length) return { series: [] };
+        if (!rows || !rows.length) return { series: [], avgAnnotations: [] };
         const groups = {};
         for (const r of rows) {
           const key = `S${r.ss}`;
           if (!groups[key]) groups[key] = [];
           groups[key].push({ x: Number(r.ss_day), y: Number(r.peak_players) });
         }
-        return { series: Object.entries(groups).map(([name, data]) => ({ name, data })) };
+        // 计算每个赛季的平均值作为 Y 轴标注
+        const avgAnnotations = Object.entries(groups).map(([name, data], idx) => {
+          const avg = data.reduce((s, d) => s + d.y, 0) / data.length;
+          return { y: avg, label: `${name} 均值`, color: '#94a3b8', dash: 2 };
+        });
+        return {
+          series: Object.entries(groups).map(([name, data]) => ({ name, data })),
+          avgAnnotations,
+        };
       },
     }
   );
@@ -384,7 +392,8 @@ export default function BusinessReport() {
               colors={['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6']}
               xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
               yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
-              strokeWidth={2} markers={3} />
+              strokeWidth={2} markers={3}
+              yaxisAnnotations={seasonQuery.data?.avgAnnotations || []} />
           </div>
         </div>
       )}
