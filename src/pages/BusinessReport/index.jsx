@@ -10,6 +10,7 @@ const WEEKLY_TABLE_NAME = 'steam_best_seller_list_weekly';
 const PEAK_TABLE_NAME = 'steam_game_peak_players_hourly';
 const REVIEW_RECENT_TABLE = 'steam_player_review_recent';
 const REVIEW_ROLLUP_TABLE = 'steam_player_review_rollup';
+const SEASON_TABLE_NAME = 'torchlight_season_steam_peak_players';
 
 const STEAM_GAMES = {
   '1974050': '火炬之光国际服',
@@ -63,6 +64,13 @@ export default function BusinessReport() {
 
   // 评论 where
   const reviewWhere = useMemo(() => {
+    const c = [];
+    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
+    return c;
+  }, [selectedId]);
+
+  // 赛季对比 where
+  const seasonWhere = useMemo(() => {
     const c = [];
     if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
     return c;
@@ -220,6 +228,29 @@ export default function BusinessReport() {
     { transform: reviewTransform }
   );
 
+  // ====== 赛季对比 ======
+  const seasonQuery = useChartData(
+    'torchlight-season-peak',
+    (p) => query(SEASON_TABLE_NAME, p),
+    { fields: 'ss,ss_day,peak_players', where: seasonWhere, order_by: 'ss ASC, ss_day ASC', limit: 9999 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [] };
+        const groups = {};
+        for (const r of rows) {
+          const key = `S${r.ss}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push({ x: Number(r.ss_day), y: Number(r.peak_players) });
+        }
+        return { series: Object.entries(groups).map(([name, data]) => ({ name, data })) };
+      },
+    }
+  );
+
+  // 赛季支持的游戏 ID
+  const SEASON_GAME_IDS = ['1974050', '2315040'];
+  const showSeason = SEASON_GAME_IDS.includes(selectedId);
+
   return (
     <div className="container-fluid p-4">
       <h2 className="fw-bold mb-4">
@@ -341,74 +372,50 @@ export default function BusinessReport() {
       </div>
 
       {/* 第四部分: 评论分析（左右并排） */}
-      <div className="row g-3">
+      <div className="row g-3 mb-4">
         <div className="col-12 col-md-6">
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">
-              <span>最近评论</span>
-            </div>
+            <div className="card-header bg-white border-0 fw-semibold">最近评论</div>
             <div className="card-body">
-              <MixedChart
-                series={recentReviewQuery.data?.series || []}
-                loading={recentReviewQuery.isLoading}
-                error={recentReviewQuery.error?.message}
-                height={400}
-                colors={['#2ec4b6', '#e71d36', '#4361ee']}
-                strokeWidths={[0, 0, 2]}
-                xaxisOverrides={{
-                  type: 'datetime',
-                  labels: { format: 'MM/dd', datetimeUTC: false },
-                }}
-                yaxisLeft={{
-                  title: { text: '评论数' },
-                  labels: {
-                    formatter: (val) => (val >= 0 ? String(Math.round(val)) : String(Math.round(Math.abs(val)))),
-                  },
-                }}
-                yaxisRight={{
-                  title: { text: '推荐率 (%)' },
-                  min: 0,
-                  max: 100,
-                  labels: { formatter: (val) => val.toFixed(1) + '%' },
-                }}
-              />
+              <MixedChart series={recentReviewQuery.data?.series || []} loading={recentReviewQuery.isLoading} error={recentReviewQuery.error?.message} height={400}
+                colors={['#2ec4b6', '#e71d36', '#4361ee']} strokeWidths={[0, 0, 2]}
+                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
+                yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
+                yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
             </div>
           </div>
         </div>
         <div className="col-12 col-md-6">
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">
-              <span>历史评论</span>
-            </div>
+            <div className="card-header bg-white border-0 fw-semibold">历史评论</div>
             <div className="card-body">
-              <MixedChart
-                series={rollupReviewQuery.data?.series || []}
-                loading={rollupReviewQuery.isLoading}
-                error={rollupReviewQuery.error?.message}
-                height={400}
-                colors={['#2ec4b6', '#e71d36', '#4361ee']}
-                strokeWidths={[0, 0, 2]}
-                xaxisOverrides={{
-                  type: 'datetime',
-                  labels: { format: 'MM/dd', datetimeUTC: false },
-                }}
-                yaxisLeft={{
-                  title: { text: '评论数' },
-                  labels: {
-                    formatter: (val) => (val >= 0 ? String(Math.round(val)) : String(Math.round(Math.abs(val)))),
-                  },
-                }}
-                yaxisRight={{
-                  title: { text: '推荐率 (%)' },
-                  min: 0,
-                  max: 100,
-                  labels: { formatter: (val) => val.toFixed(1) + '%' },
-                }}
-              />
+              <MixedChart series={rollupReviewQuery.data?.series || []} loading={rollupReviewQuery.isLoading} error={rollupReviewQuery.error?.message} height={400}
+                colors={['#2ec4b6', '#e71d36', '#4361ee']} strokeWidths={[0, 0, 2]}
+                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
+                yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
+                yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
             </div>
           </div>
         </div>
       </div>
+
+      {/* 第五部分: 赛季对比（仅火炬之光） */}
+      {showSeason && (
+        <div className="card border-0 shadow-sm">
+          <div className="card-header bg-white border-0 fw-semibold">赛季峰值在线对比</div>
+          <div className="card-body">
+            <LineChart
+              series={seasonQuery.data?.series || []}
+              loading={seasonQuery.isLoading}
+              error={seasonQuery.error?.message}
+              height={400}
+              colors={['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6']}
+              xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
+              yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
+              strokeWidth={2} markers={3} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
