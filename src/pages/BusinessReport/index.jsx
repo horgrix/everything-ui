@@ -242,10 +242,11 @@ export default function BusinessReport() {
           if (!groups[key]) groups[key] = [];
           groups[key].push({ x: Number(r.ss_day), y: Number(r.peak_players) });
         }
-        // 计算每个赛季的平均值作为 Y 轴标注
+        const seasonColors = ['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6'];
+        // 计算每个赛季的平均值作为 Y 轴标注，颜色与折线对应
         const avgAnnotations = Object.entries(groups).map(([name, data], idx) => {
           const avg = data.reduce((s, d) => s + d.y, 0) / data.length;
-          return { y: avg, label: `${name} 均值`, color: '#94a3b8', dash: 2 };
+          return { y: avg, label: `${name} 均值`, color: seasonColors[idx % seasonColors.length], dash: 2 };
         });
         return {
           series: Object.entries(groups).map(([name, data]) => ({ name, data })),
