@@ -57,7 +57,7 @@ export default function BusinessReport() {
 
   // 峰值人数 where（3天）
   const peakWhere = useMemo(() => {
-    const c = recentDaysWhere(3);
+    const c = recentDaysWhere(30);
     if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
     return c;
   }, [selectedId]);
@@ -371,8 +371,26 @@ export default function BusinessReport() {
         </div>
       </div>
 
+      {/* 第五部分: 赛季对比（仅火炬之光） */}
+      {showSeason && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-header bg-white border-0 fw-semibold">赛季峰值在线对比</div>
+          <div className="card-body">
+            <LineChart
+              series={seasonQuery.data?.series || []}
+              loading={seasonQuery.isLoading}
+              error={seasonQuery.error?.message}
+              height={400}
+              colors={['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6']}
+              xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
+              yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
+              strokeWidth={2} markers={3} />
+          </div>
+        </div>
+      )}
+
       {/* 第四部分: 评论分析（左右并排） */}
-      <div className="row g-3 mb-4">
+      <div className="row g-3">
         <div className="col-12 col-md-6">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0 fw-semibold">最近评论</div>
@@ -399,23 +417,6 @@ export default function BusinessReport() {
         </div>
       </div>
 
-      {/* 第五部分: 赛季对比（仅火炬之光） */}
-      {showSeason && (
-        <div className="card border-0 shadow-sm">
-          <div className="card-header bg-white border-0 fw-semibold">赛季峰值在线对比</div>
-          <div className="card-body">
-            <LineChart
-              series={seasonQuery.data?.series || []}
-              loading={seasonQuery.isLoading}
-              error={seasonQuery.error?.message}
-              height={400}
-              colors={['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6']}
-              xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
-              yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
-              strokeWidth={2} markers={3} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
