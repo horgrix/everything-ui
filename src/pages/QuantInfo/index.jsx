@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import useChartData from '../../hooks/useChartData';
 import { fetchIndicators, runStrategy, fetchStrategyList } from '../../api/quant';
+import query from '../../api/query';
 import DashboardCard from '../../components/layout/DashboardCard';
 import CandlestickChart from '../../components/charts/CandlestickChart';
 import LineChart from '../../components/charts/LineChart';
+import MixedChart from '../../components/charts/MixedChart';
 import { formatNumber, formatCurrency } from '../../utils/formatters';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -106,6 +108,106 @@ export default function QuantInfo() {
     }
   );
 
+  // ====== 回购趋势 ======
+  const buybackWhere = useMemo(() => [
+    { col: 'code', op: '=', value: code },
+    { col: 'stat_date', op: '>=', value: startDate },
+    { col: 'stat_date', op: '<=', value: endDate },
+  ], [code, startDate, endDate]);
+
+  const buybackQuery = useChartData(
+    'hk-stock-buyback-daily',
+    (p) => query('hk_stock_buyback_daily', p),
+    { fields: 'stat_date,volume,avg_price', where: buybackWhere, order_by: 'stat_date ASC', limit: 9999 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [], summary: null };
+        const sorted = [...rows].sort((a, b) => a.stat_date < b.stat_date ? -1 : 1);
+        let totalVolume = 0, totalAmt = 0;
+        for (const r of sorted) {
+          const vol = Number(r.volume || 0);
+          const price = Number(r.avg_price || 0);
+          totalVolume += vol;
+          totalAmt += vol * price;
+        }
+        return {
+          series: [
+            { name: '回购数量', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: r.stat_date, y: Number(r.volume || 0) })) },
+            { name: '回购均价', type: 'line', yAxisIndex: 1, data: sorted.map((r) => ({ x: r.stat_date, y: Number(r.avg_price || 0) })) },
+          ],
+          summary: { totalVolume, totalAmt, avgPrice: totalVolume > 0 ? totalAmt / totalVolume : 0 },
+        };
+      },
+    }
+  );
+
+  // ====== 做空趋势 ======
+  const shortSellingQuery = useChartData(
+    'hk-stock-short-selling-daily',
+    (p) => query('hk_stock_short_selling_daily', p),
+    { fields: 'stat_date,volume,avg_price,amt_hkd,trade_amt_hkd', where: buybackWhere, order_by: 'stat_date ASC', limit: 9999 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [], summary: null };
+        const sorted = [...rows].sort((a, b) => a.stat_date < b.stat_date ? -1 : 1);
+        let totalVolume = 0, totalAmt = 0;
+        for (const r of sorted) {
+          const vol = Number(r.volume || 0);
+          totalVolume += vol;
+          totalAmt += vol * Number(r.avg_price || 0);
+        }
+        return {
+          series: [
+            { name: '做空数量', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: r.stat_date, y: Number(r.volume || 0) })) },
+            { name: '做空率', type: 'line', yAxisIndex: 1, data: sorted.map((r) => {
+              const trade = Number(r.trade_amt_hkd || 0);
+              return { x: r.stat_date, y: trade > 0 ? parseFloat((Number(r.amt_hkd || 0) / trade * 100).toFixed(2)) : null };
+            }) },
+          ],
+          summary: { totalVolume, totalAmt, avgPrice: totalVolume > 0 ? totalAmt / totalVolume : 0 },
+        };
+      },
+    }
+  );
+
+  // ====== 香港银行间流动性 ======
+  const liquidityWhere = useMemo(() => [
+    { col: 'end_of_date', op: '>=', value: startDate },
+    { col: 'end_of_date', op: '<=', value: endDate },
+  ], [startDate, endDate]);
+
+  const liquidityQuery = useChartData(
+    'hk-market-liquidity-daily',
+    (p) => query('hk_market_liquidity_daily', p),
+    { fields: 'end_of_date,disc_win_base_rate,hibor_overnight,hibor_fixing_1m', where: liquidityWhere, order_by: 'end_of_date ASC', limit: 9999 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [] };
+        const sorted = [...rows].sort((a, b) => a.end_of_date < b.end_of_date ? -1 : 1);
+        return {
+          series: [
+            { name: '贴现率', data: sorted.map((r) => ({ x: r.end_of_date, y: Number(r.disc_win_base_rate || 0) })) },
+            { name: '隔夜HIBOR', data: sorted.map((r) => ({ x: r.end_of_date, y: Number(r.hibor_overnight || 0) })) },
+            { name: '1月HIBOR', data: sorted.map((r) => ({ x: r.end_of_date, y: Number(r.hibor_fixing_1m || 0) })) },
+          ],
+        };
+      },
+    }
+  );
+
+  // ====== 香港市场大盘做空率 ======
+  const exchangeShortQuery = useChartData(
+    'hk-exchange-short-selling-daily',
+    (p) => query('hk_exchange_short_selling_daily', p),
+    { fields: 'total_turnover_hkd,all_ss_percentage,ex_exchange_traded_products_ss_percentage,exchange_traded_products_only_ss_percentage,crawled_at', order_by: 'crawled_at DESC', limit: 1 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return null;
+        return rows[0];
+      },
+    }
+  );
+
   // ====== 策略回测 ======
   const strategyParams = useMemo(() => ({
     code, startDate, endDate, strategy,
@@ -178,6 +280,121 @@ export default function QuantInfo() {
               <input type="date" className="form-control form-control-sm" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
             <div className="col-auto ms-auto"><small className="text-muted">指标: ADX · CHOP · PSAR · SMA_200</small></div>
+          </div>
+        </div>
+      </div>
+
+      {/* 回购 + 做空趋势 */}
+      <div className="row g-3 mb-4">
+        {/* 回购趋势 */}
+        <div className="col-12 col-md-6">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold d-flex justify-content-between align-items-center">
+              <span>回购趋势</span>
+              {buybackQuery.data?.summary && (
+                <div className="d-flex gap-3 small">
+                  <span className="fw-semibold">总回购数量: {buybackQuery.data.summary.totalVolume.toLocaleString('zh-CN')}</span>
+                  <span className="fw-semibold">总回购金额: {(buybackQuery.data.summary.totalAmt / 1e8).toFixed(2)}亿</span>
+                  <span className="fw-semibold">均价: {buybackQuery.data.summary.avgPrice.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+            <div className="card-body">
+              <MixedChart
+                series={buybackQuery.data?.series || []}
+                loading={buybackQuery.isLoading}
+                error={buybackQuery.error?.message}
+                height={350}
+                toolbar={false}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                tooltipY={(v, yi) => yi === 1 ? v.toFixed(2) : v.toLocaleString('zh-CN')}
+                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
+                yaxisLeft={{ title: { text: '回购数量' }, labels: { formatter: (v) => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v } }}
+                yaxisRight={{ title: { text: '回购均价' }, labels: { formatter: (v) => v.toFixed(1) } }} />
+            </div>
+          </div>
+        </div>
+        {/* 做空趋势 */}
+        <div className="col-12 col-md-6">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold d-flex justify-content-between align-items-center">
+              <span>做空趋势</span>
+              {shortSellingQuery.data?.summary && (
+                <div className="d-flex gap-3 small">
+                  <span className="fw-semibold">总做空数量: {shortSellingQuery.data.summary.totalVolume.toLocaleString('zh-CN')}</span>
+                  <span className="fw-semibold">总做空金额: {(shortSellingQuery.data.summary.totalAmt / 1e8).toFixed(2)}亿</span>
+                  <span className="fw-semibold">均价: {shortSellingQuery.data.summary.avgPrice.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+            <div className="card-body">
+              <MixedChart
+                series={shortSellingQuery.data?.series || []}
+                loading={shortSellingQuery.isLoading}
+                error={shortSellingQuery.error?.message}
+                height={350}
+                toolbar={false}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
+                yaxisLeft={{ title: { text: '做空数量' }, labels: { formatter: (v) => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v } }}
+                yaxisRight={{ title: { text: '做空率 (%)' }, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 香港银行间流动性 + 大盘做空率 */}
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-md-9">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">香港银行间流动性</div>
+            <div className="card-body">
+              <LineChart
+                series={liquidityQuery.data?.series || []}
+                loading={liquidityQuery.isLoading}
+                error={liquidityQuery.error?.message}
+                height={350}
+                strokeWidth={2}
+                markers={3}
+                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
+                yaxisOverrides={{ title: { text: '利率 (%)' }, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+            </div>
+          </div>
+        </div>
+        <div className="col-12 col-md-3">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">大盘做空率</div>
+            <div className="card-body d-flex flex-column justify-content-center text-center">
+              {exchangeShortQuery.data ? (() => {
+                const d = exchangeShortQuery.data;
+                const ssPct = parseFloat(d.all_ss_percentage) || 0;
+                const isHigh = ssPct > 20;
+                return (
+                  <div>
+                    <p className="text-muted small mb-3">
+                      <i className="bi bi-clock me-1"></i>截至 {d.crawled_at}
+                    </p>
+                    <p className="text-muted mb-2">香港市场大盘做空率</p>
+                    <div className={`display-5 fw-bold mb-3 ${isHigh ? 'text-danger' : 'text-success'}`}>
+                      {d.all_ss_percentage}
+                    </div>
+                    <div className="d-flex justify-content-center gap-3 small text-muted mb-2">
+                      <span>非交易所: <strong>{d.ex_exchange_traded_products_ss_percentage}</strong></span>
+                      <span>交易所: <strong>{d.exchange_traded_products_only_ss_percentage}</strong></span>
+                    </div>
+                    <div className="badge bg-light text-dark">
+                      <i className="bi bi-cash me-1"></i>总成交额 {d.total_turnover_hkd}
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div className="text-center text-muted">
+                  {exchangeShortQuery.isLoading ? '加载中...' : exchangeShortQuery.error?.message || '暂无数据'}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

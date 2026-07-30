@@ -21,11 +21,14 @@ export default function MixedChart({
   strokeWidths = null,
   /** tooltip Y 值格式化函数，根据 yAxisIndex 返回字符串 */
   tooltipY = null,
+  /** 是否显示工具栏，默认 true */
+  toolbar = true,
 }) {
   const options = {
     chart: {
       type: 'line',
       stacked: false,
+      toolbar: { show: toolbar },
     },
     ...(colors ? { colors } : {}),
     stroke: {
