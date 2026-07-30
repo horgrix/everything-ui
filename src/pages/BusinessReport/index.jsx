@@ -8,6 +8,7 @@ import MixedChart from '../../components/charts/MixedChart';
 const TABLE_NAME = 'steam_best_seller_list_hourly';
 const WEEKLY_TABLE_NAME = 'steam_best_seller_list_weekly';
 const PEAK_TABLE_NAME = 'steam_game_peak_players_hourly';
+const MONTHLY_PEAK_TABLE = 'steam_game_peak_players_monthly';
 const REVIEW_RECENT_TABLE = 'steam_player_review_recent';
 const REVIEW_ROLLUP_TABLE = 'steam_player_review_rollup';
 const SEASON_TABLE_NAME = 'torchlight_season_steam_peak_players';
@@ -27,7 +28,15 @@ function recentDaysWhere(days = 3) {
   const y = start.getFullYear();
   const m = String(start.getMonth() + 1).padStart(2, '0');
   const d = String(start.getDate()).padStart(2, '0');
-  return [{ col: 'crawled_at', op: '>=', value: `${y}-${m}-${d}` }];
+  return [{ col: 'crawled_at', op: '>=', value: `${y}-${m}-${d} 00:00:00` }];
+}
+
+/** 金额格式化 */
+function formatAmount(v) {
+  const abs = Math.abs(v);
+  if (abs >= 1e8) return (v / 1e8).toFixed(1) + '亿';
+  if (abs >= 1e4) return (v / 1e4).toFixed(1) + '万';
+  return String(v);
 }
 
 /** 最近 N 个月 */
@@ -55,9 +64,10 @@ export default function BusinessReport() {
     return c;
   }, [selectedId]);
 
-  // 峰值人数 where（3天）
+  // 峰值人数 where（30天，用 stat_ts 时间戳过滤）
   const peakWhere = useMemo(() => {
-    const c = recentDaysWhere(30);
+    const cutoff = Date.now() - 30 * 86400000;
+    const c = [{ col: 'stat_ts', op: '>=', value: cutoff }];
     if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
     return c;
   }, [selectedId]);
@@ -163,13 +173,14 @@ export default function BusinessReport() {
     },
     {
       transform: (rows) => {
-        if (!rows || rows.length === 0) return { series: [], xaxisMin: null };
-        // ApexCharts datetime area 格式: [[timestamp, value], ...]
+        if (!rows || rows.length === 0) return { series: [], xaxisMin: null, avgAnnotation: null };
         const data = rows.map((r) => [Number(r.stat_ts), Number(r.peak_players)]);
-        const xaxisMin = rows[0].stat_ts; // 最小值 = 第一条（已按 stat_ts ASC 排序）
+        const xaxisMin = rows[0].stat_ts;
+        const avg = rows.reduce((s, r) => s + Number(r.peak_players), 0) / rows.length;
         return {
           series: [{ name: STEAM_GAMES[selectedId] || '峰值在线', data }],
           xaxisMin,
+          avgAnnotation: { y: Math.round(avg), label: '近30天平均玩家', color: '#ff9f1c', dash: 2 },
         };
       },
     }
@@ -226,6 +237,34 @@ export default function BusinessReport() {
     (p) => query(REVIEW_ROLLUP_TABLE, p),
     { fields: 'stat_ts,up,down', where: reviewWhere, order_by: 'stat_ts ASC', limit: 9999 },
     { transform: reviewTransform }
+  );
+
+  // ====== 峰值在线人数月趋势 ======
+  const monthlyPeakWhere = useMemo(() => {
+    const start = new Date();
+    start.setMonth(start.getMonth() - 13);
+    const val = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
+    const c = [{ col: 'stat_month', op: '>=', value: val }];
+    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
+    return c;
+  }, [selectedId]);
+
+  const monthlyPeakQuery = useChartData(
+    'steam-monthly-peak',
+    (p) => query(MONTHLY_PEAK_TABLE, p),
+    { fields: 'stat_month,avg_players,peak_players', where: monthlyPeakWhere, order_by: 'stat_month ASC', limit: 200 },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [] };
+        const sorted = [...rows].sort((a, b) => a.stat_month < b.stat_month ? -1 : 1);
+        return {
+          series: [
+            { name: '平均在线', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: String(r.stat_month).slice(0, 7), y: Number(r.avg_players) })) },
+            { name: '峰值在线', type: 'line', yAxisIndex: 1, data: sorted.map((r) => ({ x: String(r.stat_month).slice(0, 7), y: Number(r.peak_players) })) },
+          ],
+        };
+      },
+    }
   );
 
   // ====== 赛季对比 ======
@@ -345,38 +384,48 @@ export default function BusinessReport() {
         </div>
       </div>
 
-      {/* 第三部分: 峰值在线人数（最近3天） */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">
-          <span>峰值在线人数 — 最近3天</span>
+      {/* 第三部分: 峰值在线人数月趋势 + 峰值在线人数 */}
+      <div className="row g-3 mb-4">
+        <div className="col-12 col-md-8">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">峰值在线人数月趋势</div>
+            <div className="card-body">
+              <MixedChart
+                series={monthlyPeakQuery.data?.series || []}
+                loading={monthlyPeakQuery.isLoading}
+                error={monthlyPeakQuery.error?.message}
+                height={400}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                tooltipY={(v, yi) => yi === 1 ? formatAmount(v) : formatAmount(v)}
+                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+                yaxisLeft={{ title: { text: '平均在线' }, labels: { formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v } }}
+                yaxisRight={{ title: { text: '峰值在线' }, labels: { formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v } }} />
+            </div>
+          </div>
         </div>
-        <div className="card-body">
-          <LineChart
-            series={peakQuery.data?.series || []}
-            loading={peakQuery.isLoading}
-            error={peakQuery.error?.message}
-            area
-            height={400}
-            xaxisOverrides={{
-              type: 'datetime',
-              min: peakQuery.data?.xaxisMin,
-              labels: {
-                format: 'MM/dd HH:mm',
-                datetimeUTC: false,
-                rotate: -45,
-              },
-            }}
-            yaxisOverrides={{
-              labels: {
-                formatter: (val) => {
-                  if (val >= 10000) return (val / 10000).toFixed(1) + '万';
-                  if (val >= 1000) return (val / 1000).toFixed(1) + 'k';
-                  return val;
-                },
-              },
-              title: { text: '在线人数' },
-            }}
-          />
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">峰值在线人数（最近30天）</div>
+            <div className="card-body">
+              <LineChart
+                series={peakQuery.data?.series || []}
+                loading={peakQuery.isLoading}
+                error={peakQuery.error?.message}
+                area
+                height={400}
+                xaxisOverrides={{
+                  type: 'datetime',
+                  min: peakQuery.data?.xaxisMin,
+                  labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 },
+                }}
+                yaxisOverrides={{
+                  labels: { formatter: (v) => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v },
+                  title: { text: '在线' },
+                }}
+                yaxisAnnotations={peakQuery.data?.avgAnnotation ? [peakQuery.data.avgAnnotation] : []} />
+            </div>
+          </div>
         </div>
       </div>
 
