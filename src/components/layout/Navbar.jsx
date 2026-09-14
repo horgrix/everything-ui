@@ -36,6 +36,17 @@ export default function Navbar() {
             </li>
             <li className="nav-item">
               <NavLink
+                to="/taptap"
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <i className="bi bi-controller me-1"></i>
+                TapTap报表
+              </NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink
                 to="/finance"
                 className={({ isActive }) =>
                   `nav-link ${isActive ? 'active' : ''}`

@@ -25,3 +25,12 @@ export default function query(tableName, params = {}) {
 
   return apiClient.get(`/${tableName}/query`, { params: queryParams });
 }
+
+/**
+ * 原生 SQL 查询 — 对应 https://horgrix.com/api/data/sql (POST)
+ * @param {string} sql - 完整 SQL 语句
+ * @returns {Promise<{data: Array<Object>, total: number}>}
+ */
+export function querySql(sql) {
+  return apiClient.post('/sql', { sql });
+}

@@ -23,6 +23,8 @@ export default function MixedChart({
   tooltipY = null,
   /** 是否显示工具栏，默认 true */
   toolbar = true,
+  /** 自定义 fill 覆盖 */
+  fill = null,
 }) {
   const options = {
     chart: {
@@ -39,9 +41,7 @@ export default function MixedChart({
         columnWidth: '50%',
       },
     },
-    fill: {
-      opacity: [1, 0.25, 1],
-    },
+    fill: fill || { opacity: [1, 0.25, 1] },
     xaxis: {
       ...datetimeAxis,
       ...xaxisOverrides,

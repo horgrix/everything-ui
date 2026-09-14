@@ -4,6 +4,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import BusinessReport from './pages/BusinessReport';
 import FinanceInfo from './pages/FinanceInfo';
 import QuantInfo from './pages/QuantInfo';
+import TapTapReport from './pages/TapTapReport';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/business" replace />} />
               <Route path="/business" element={<BusinessReport />} />
+              <Route path="/taptap" element={<TapTapReport />} />
               <Route path="/finance" element={<FinanceInfo />} />
               <Route path="/quant" element={<QuantInfo />} />
             </Routes>
