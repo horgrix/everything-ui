@@ -3,6 +3,7 @@ import useChartData from '../../hooks/useChartData';
 import { querySql } from '../../api/query';
 import BarChart from '../../components/charts/BarChart';
 import MixedChart from '../../components/charts/MixedChart';
+import LineChart from '../../components/charts/LineChart';
 import DashboardCard from '../../components/layout/DashboardCard';
 import { formatNumber } from '../../utils/formatters';
 
@@ -24,13 +25,15 @@ function generateColors(n) {
 
 /** 时间范围快捷选项 */
 const TIME_RANGES = [
+  { label: '最近1天', days: 1 },
+  { label: '最近3天', days: 3 },
   { label: '最近7天', days: 7 },
   { label: '最近15天', days: 15 },
   { label: '最近1个月', days: 30 },
   { label: '最近3个月', days: 90 },
 ];
 
-/** 构建聚合增量 SQL（Top100 趋势，按 app_id 分区，含日期过滤） */
+/** 构建聚合增量 SQL（TopN 趋势，按 app_id 分区，含日期过滤） */
 function buildAggregateSql(days) {
   const dateStr = recentDaysWhere(days);
   return `
@@ -81,19 +84,85 @@ function buildSummarySql(appId, days) {
   `;
 }
 
+/** 构建最新快照 SQL（单游戏，最新一条累计值） */
+function buildLatestSql(appId) {
+  return `
+    SELECT
+      app_id,
+      app_name,
+      pc_download_count,
+      hits_total,
+      hits_total_val,
+      fans_count,
+      review_count,
+      wish_count
+    FROM taptap_hot_list_game_hourly
+    WHERE app_id = ${appId}
+    ORDER BY crawled_at DESC
+    LIMIT 1
+  `;
+}
+
+/** 最近 N 个月的第一天 */
+function recentMonthsWhere(months) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - months, 1);
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** 构建 TopN 下载趋势 SQL（按天/月聚合，各游戏 MAX-MIN 增量再汇总） */
+function buildTrendSql(substrLen, dateStr) {
+  return `
+    SELECT
+      crawled_at,
+      SUM(pc_download_count) as pc_download_count,
+      SUM(hits_total) as hits_total,
+      SUM(hits_total_val) as hits_total_val,
+      SUM(fans_count) as fans_count,
+      SUM(review_count) as review_count,
+      SUM(wish_count) as wish_count
+    FROM
+    (
+      SELECT
+        app_id,
+        substr(crawled_at, 1, ${substrLen}) as crawled_at,
+        MAX(pc_download_count) - MIN(pc_download_count) as pc_download_count,
+        MAX(hits_total) - MIN(hits_total) as hits_total,
+        MAX(hits_total_val) - MIN(hits_total_val) as hits_total_val,
+        MAX(fans_count) - MIN(fans_count) as fans_count,
+        MAX(review_count) - MIN(review_count) as review_count,
+        MAX(wish_count) - MIN(wish_count) as wish_count
+      FROM taptap_hot_list_game_hourly
+      WHERE crawled_at >= '${dateStr}'
+      GROUP BY app_id, substr(crawled_at, 1, ${substrLen})
+    )
+    GROUP BY crawled_at
+    ORDER BY crawled_at
+  `;
+}
+
+/** 构建日趋势 SQL（最近15天） */
+function buildDailyTrendSql() {
+  return buildTrendSql(10, recentDaysWhere(15));
+}
+
+/** 构建月趋势 SQL（最近13个月） */
+function buildMonthlyTrendSql() {
+  return buildTrendSql(7, recentMonthsWhere(13));
+}
+
 export default function TapTapReport() {
   const [appId, setAppId] = useState('');
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(1);
   const validAppId = /^\d+$/.test(appId);
-  const currentRangeLabel = TIME_RANGES.find((r) => r.days === days)?.label || `最近${days}天`;
 
-  // 聚合图表 SQL（不按 appId 过滤，按时间范围）
-  const aggregateSql = useMemo(() => buildAggregateSql(days), [days]);
+  // 聚合图表 SQL（固定最近1日，不受查询条件影响）
+  const aggregateSql = useMemo(() => buildAggregateSql(1), []);
 
   // 详情图表 SQL（按 appId 过滤）
   const detailSql = useMemo(() => buildDetailSql(appId), [appId]);
 
-  // ====== 热门游戏Top100下载趋势（聚合） ======
+  // ====== 热门游戏TopN下载趋势（聚合） ======
   const hotListQuery = useChartData(
     'taptap-hot-list-trend',
     (p) => querySql(p.sql),
@@ -205,6 +274,79 @@ export default function TapTapReport() {
     }
   );
 
+  // ====== 游戏最新快照指标（受 AppID 查询条件控制） ======
+  const latestSql = useMemo(() => buildLatestSql(appId), [appId]);
+
+  const latestQuery = useChartData(
+    'taptap-game-latest',
+    (p) => querySql(p.sql),
+    { sql: latestSql },
+    {
+      enabled: validAppId,
+      transform: (rows) => {
+        if (!rows || !rows.length) return null;
+        const r = rows[0];
+        const pc = Number(r.pc_download_count || 0);
+        const mobile = Number(r.hits_total || 0);
+        const total = pc + mobile;
+        return {
+          pcDownload: pc,
+          mobileDownload: mobile,
+          pcRatio: total > 0 ? parseFloat(((pc / total) * 100).toFixed(2)) : null,
+          fansCount: Number(r.fans_count || 0),
+          reviewCount: Number(r.review_count || 0),
+          wishCount: Number(r.wish_count || 0),
+        };
+      },
+    }
+  );
+
+  // ====== 热门游戏TopN下载日趋势（固定最近15天） ======
+  const dailyTrendSql = useMemo(() => buildDailyTrendSql(), []);
+
+  const dailyTrendQuery = useChartData(
+    'taptap-daily-trend',
+    (p) => querySql(p.sql),
+    { sql: dailyTrendSql },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [] };
+        const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
+        return {
+          series: [
+            { name: '总下载数', data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.pc_download_count || 0) + Number(r.hits_total || 0) })) },
+          ],
+        };
+      },
+    }
+  );
+
+  // ====== 热门游戏TopN下载月趋势（固定最近13个月） ======
+  const monthlyTrendSql = useMemo(() => buildMonthlyTrendSql(), []);
+
+  const monthlyTrendQuery = useChartData(
+    'taptap-monthly-trend',
+    (p) => querySql(p.sql),
+    { sql: monthlyTrendSql },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [] };
+        const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
+        return {
+          series: [
+            { name: '总下载数', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.pc_download_count || 0) + Number(r.hits_total || 0) })) },
+            { name: 'PC下载占比', type: 'line', yAxisIndex: 1, data: sorted.map((r) => {
+              const pc = Number(r.pc_download_count || 0);
+              const mobile = Number(r.hits_total || 0);
+              const total = pc + mobile;
+              return { x: r.crawled_at, y: total > 0 ? parseFloat(((pc / total) * 100).toFixed(2)) : null };
+            }) },
+          ],
+        };
+      },
+    }
+  );
+
   const detailEmpty = !validAppId || (detailQuery.isSuccess && !detailQuery.data?.series?.length);
 
   return (
@@ -214,15 +356,15 @@ export default function TapTapReport() {
         TapTap 报表
       </h2>
 
-      {/* 热门游戏Top100下载趋势（聚合） */}
+      {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">热门游戏Top100下载趋势 — {currentRangeLabel}（增量）</div>
+        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 最近1日（增量）</div>
         <div className="card-body">
           <BarChart
             series={hotListQuery.data?.series || []}
             loading={hotListQuery.isLoading}
             error={hotListQuery.error?.message}
-            height={450}
+            height={675}
             stacked
             totalLabels
             legendOverrides={{ fontSize: '11px', itemMargin: { horizontal: 4, vertical: 1 } }}
@@ -237,6 +379,47 @@ export default function TapTapReport() {
                 },
               },
             }} />
+        </div>
+      </div>
+
+      {/* 热门游戏TopN下载月趋势 + 日趋势 */}
+      <div className="row g-3 mb-4">
+        {/* 月趋势（左） */}
+        <div className="col-12 col-md-6">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载月趋势 — 最近13个月</div>
+            <div className="card-body">
+              <MixedChart
+                series={monthlyTrendQuery.data?.series || []}
+                loading={monthlyTrendQuery.isLoading}
+                error={monthlyTrendQuery.error?.message}
+                height={350}
+                toolbar={false}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
+                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+                yaxisLeft={{ title: { text: '总下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }}
+                yaxisRight={{ title: { text: 'PC下载占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+            </div>
+          </div>
+        </div>
+        {/* 日趋势（右） */}
+        <div className="col-12 col-md-6">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载日趋势 — 最近15天</div>
+            <div className="card-body">
+              <LineChart
+                series={dailyTrendQuery.data?.series || []}
+                loading={dailyTrendQuery.isLoading}
+                error={dailyTrendQuery.error?.message}
+                height={350}
+                strokeWidth={2}
+                markers={3}
+                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+                yaxisOverrides={{ title: { text: '总下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -277,6 +460,16 @@ export default function TapTapReport() {
         <div className="col-6 col-md-2"><DashboardCard title="关注数" value={summaryQuery.data?.fansCount != null ? formatNumber(summaryQuery.data.fansCount) : '-'} icon="bi-heart" color="danger" /></div>
         <div className="col-6 col-md-2"><DashboardCard title="评价数" value={summaryQuery.data?.reviewCount != null ? formatNumber(summaryQuery.data.reviewCount) : '-'} icon="bi-chat" color="warning" /></div>
         <div className="col-6 col-md-2"><DashboardCard title="收藏数" value={summaryQuery.data?.wishCount != null ? formatNumber(summaryQuery.data.wishCount) : '-'} icon="bi-star" color="secondary" /></div>
+      </div>
+
+      {/* 游戏最新快照指标（历史累计值） */}
+      <div className="row g-3 mb-4">
+        <div className="col-6 col-md-2"><DashboardCard title="PC下载数(历史)" value={latestQuery.data?.pcDownload != null ? formatNumber(latestQuery.data.pcDownload) : '-'} icon="bi-pc-display" color="primary" /></div>
+        <div className="col-6 col-md-2"><DashboardCard title="移动下载数(历史)" value={latestQuery.data?.mobileDownload != null ? formatNumber(latestQuery.data.mobileDownload) : '-'} icon="bi-phone" color="info" /></div>
+        <div className="col-6 col-md-2"><DashboardCard title="PC占比(历史)" value={latestQuery.data?.pcRatio != null ? `${latestQuery.data.pcRatio}%` : '-'} icon="bi-percent" color="success" /></div>
+        <div className="col-6 col-md-2"><DashboardCard title="关注数(历史)" value={latestQuery.data?.fansCount != null ? formatNumber(latestQuery.data.fansCount) : '-'} icon="bi-heart" color="danger" /></div>
+        <div className="col-6 col-md-2"><DashboardCard title="评价数(历史)" value={latestQuery.data?.reviewCount != null ? formatNumber(latestQuery.data.reviewCount) : '-'} icon="bi-chat" color="warning" /></div>
+        <div className="col-6 col-md-2"><DashboardCard title="收藏数(历史)" value={latestQuery.data?.wishCount != null ? formatNumber(latestQuery.data.wishCount) : '-'} icon="bi-star" color="secondary" /></div>
       </div>
 
       {/* 游戏详情趋势（受查询条件控制） */}
