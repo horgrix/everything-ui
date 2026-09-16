@@ -16,6 +16,16 @@ function recentDaysWhere(days = 3) {
   return `${y}-${m}-${d}`;
 }
 
+/** 最近 N 小时 */
+function recentHoursWhere(hours) {
+  const start = new Date(Date.now() - hours * 3600000);
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  const d = String(start.getDate()).padStart(2, '0');
+  const h = String(start.getHours()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}`;
+}
+
 const TOP_N = 50;
 const TOP25_PAGE_SIZE = 5;
 
@@ -34,42 +44,35 @@ const TIME_RANGES = [
   { label: '最近3个月', days: 90 },
 ];
 
-/** 构建聚合增量 SQL（TopN 趋势，按 crawled_at 取 TopN 游戏，含日期过滤） */
-function buildAggregateSql(days) {
-  const dateStr = recentDaysWhere(days);
+/** 构建聚合增量 SQL（近48小时，按 crawled_at 汇总所有游戏增量） */
+function buildAggregateSql() {
+  const dateStr = recentHoursWhere(48);
   return `
     SELECT
       crawled_at,
-      app_id,
-      app_name,
-      download_count,
-      rn
+      SUM(pc_download_count) as pc_download_count,
+      SUM(hits_total) as hits_total,
+      SUM(hits_total_val) as hits_total_val,
+      SUM(pc_download_count) + SUM(hits_total) as download_count
     FROM (
       SELECT
-        crawled_at,
         app_id,
-        app_name,
-        pc_download_count + hits_total as download_count,
-        ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY pc_download_count + hits_total DESC) AS rn
-      FROM (
-        SELECT
-          app_id,
-          app_name,
-          crawled_at AS crawled_at,
-          pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count,
-          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total,
-          hits_total_val - LAG(hits_total_val) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total_val
-        FROM taptap_hot_list_game_hourly
-        WHERE crawled_at >= '${dateStr}'
-      )
-    )
-    WHERE rn <= ${TOP_N}
-    ORDER BY crawled_at, rn
+        crawled_at AS crawled_at,
+        pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count,
+        hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total,
+        hits_total_val - LAG(hits_total_val) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total_val
+      FROM taptap_hot_list_game_hourly
+      WHERE crawled_at >= '${dateStr}'
+    ) t1
+    GROUP BY crawled_at
+    HAVING SUM(pc_download_count) + SUM(hits_total) > 0
+    ORDER BY crawled_at
   `;
 }
 
-/** 构建详情增量 SQL（单游戏，无日期过滤，无需分区） */
-function buildDetailSql(appId) {
+/** 构建详情增量 SQL（单游戏，按时间范围过滤，无需分区） */
+function buildDetailSql(appId, days) {
+  const dateStr = recentDaysWhere(days);
   return `
     SELECT
       app_id,
@@ -79,7 +82,7 @@ function buildDetailSql(appId) {
       hits_total - LAG(hits_total) OVER (ORDER BY crawled_at) AS hits_total,
       hits_total_val - LAG(hits_total_val) OVER (ORDER BY crawled_at) AS hits_total_val
     FROM taptap_hot_list_game_hourly
-    WHERE app_id = ${appId}
+    WHERE app_id = ${appId} AND crawled_at >= '${dateStr}'
     ORDER BY crawled_at
   `;
 }
@@ -169,38 +172,50 @@ function buildMonthlyTrendSql() {
   return buildTrendSql(7, recentMonthsWhere(13));
 }
 
-/** 构建下载Top25明细 SQL（最近1天，最新时间点的Top25） */
+/** 构建下载Top25明细 SQL（最近8小时，最新时间点的Top25，含增长指标） */
 function buildTop25Sql() {
-  const dateStr = recentDaysWhere(1);
+  const dateStr = recentHoursWhere(8);
   return `
     SELECT
       crawled_at,
       app_id,
       app_name,
+      pc_download_count,
       download_count,
-      pc_download_count
+      download_growth,
+      ROUND(download_growth * 100.0 / NULLIF(prev_download_count, 0), 2) AS growth_rate
     FROM (
       SELECT
         crawled_at,
         app_id,
         app_name,
-        pc_download_count + hits_total as download_count,
         pc_download_count,
-        ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY pc_download_count + hits_total DESC) AS rn
+        download_count,
+        prev_download_count,
+        download_count - prev_download_count AS download_growth,
+        ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY download_count DESC) AS rn
       FROM (
         SELECT
           app_id,
           app_name,
-          crawled_at AS crawled_at,
-          pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count,
-          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total,
-          hits_total_val - LAG(hits_total_val) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total_val
-        FROM taptap_hot_list_game_hourly
-        WHERE crawled_at >= '${dateStr}'
-      )
-    )
+          crawled_at,
+          pc_download_count,
+          pc_download_count + hits_total AS download_count,
+          LAG(pc_download_count + hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS prev_download_count
+        FROM (
+          SELECT
+            app_id,
+            app_name,
+            crawled_at,
+            pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count,
+            hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total
+          FROM taptap_hot_list_game_hourly
+          WHERE crawled_at >= '${dateStr}'
+        ) t1
+      ) t2
+    ) t3
     WHERE rn <= 25
-    ORDER BY crawled_at DESC, download_count DESC
+    ORDER BY crawled_at DESC, rn
     LIMIT 25
   `;
 }
@@ -211,13 +226,13 @@ export default function TapTapReport() {
   const [top25Page, setTop25Page] = useState(1);
   const validAppId = /^\d+$/.test(appId);
 
-  // 聚合图表 SQL（固定最近1日，不受查询条件影响）
-  const aggregateSql = useMemo(() => buildAggregateSql(1), []);
+  // 聚合图表 SQL（固定近24小时，不受查询条件影响）
+  const aggregateSql = useMemo(() => buildAggregateSql(), []);
 
   // 详情图表 SQL（按 appId 过滤）
-  const detailSql = useMemo(() => buildDetailSql(appId), [appId]);
+  const detailSql = useMemo(() => buildDetailSql(appId, days), [appId, days]);
 
-  // ====== 热门游戏Top50下载趋势（聚合） ======
+  // ====== 热门游戏TopN下载趋势（聚合） ======
   const hotListQuery = useChartData(
     'taptap-hot-list-trend',
     (p) => querySql(p.sql),
@@ -225,46 +240,15 @@ export default function TapTapReport() {
     {
       transform: (rows) => {
         if (!rows || !rows.length) return { series: [], categories: [] };
-        const timeSet = new Set();
-        const nameSet = new Set();
-        const map = {}; // `${name}||${time}` -> 下载数
-        const otherMap = {}; // `${time}` -> Top25 之外的下载数合计
-        for (const r of rows) {
-          const time = String(r.crawled_at);
-          timeSet.add(time);
-          // 排名 Top25 内单独显示，其余（26~TopN）归入「其他」
-          if (Number(r.rn) <= 25) {
-            const name = String(r.app_name);
-            nameSet.add(name);
-            map[`${name}||${time}`] = Number(r.download_count || 0);
-          } else {
-            otherMap[time] = (otherMap[time] || 0) + Number(r.download_count || 0);
-          }
-        }
-        const categories = Array.from(timeSet).sort();
-
-        // 按总下载数降序排序，保证堆叠顺序稳定（大值在下、小值在上）
-        const names = Array.from(nameSet)
-          .map((name) => ({
-            name,
-            total: categories.reduce((s, time) => s + (map[`${name}||${time}`] || 0), 0),
-          }))
-          .sort((a, b) => b.total - a.total)
-          .map((x) => x.name);
-
-        const palette = generateColors(names.length);
-        const series = names.map((name, i) => ({
-          name,
-          color: palette[i],
-          data: categories.map((time) => map[`${name}||${time}`] ?? 0),
-        }));
-        series.push({
-          name: '其他',
-          color: '#6c757d',
-          data: categories.map((time) => otherMap[time] || 0),
-        });
-
-        return { categories, series };
+        const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
+        const categories = sorted.map((r) => r.crawled_at);
+        return {
+          categories,
+          series: [
+            { name: '移动端下载', color: '#2ec4b6', data: sorted.map((r) => Number(r.hits_total || 0)) },
+            { name: 'PC端下载', color: '#4361ee', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
+          ],
+        };
       },
     }
   );
@@ -399,7 +383,7 @@ export default function TapTapReport() {
     }
   );
 
-  // ====== 下载Top25明细列表（固定最近1天） ======
+  // ====== 下载Top25明细列表（固定最近8小时） ======
   const top25Sql = useMemo(() => buildTop25Sql(), []);
 
   const top25Query = useChartData(
@@ -410,13 +394,20 @@ export default function TapTapReport() {
       transform: (rows) => {
         if (!rows || !rows.length) return { rows: [] };
         return {
-          rows: rows.map((r) => ({
-            appId: r.app_id,
-            appName: r.app_name,
-            downloadCount: Number(r.download_count || 0),
-            pcDownloadCount: Number(r.pc_download_count || 0),
-            crawledAt: r.crawled_at,
-          })),
+          rows: rows.map((r) => {
+            const pc = Number(r.pc_download_count || 0);
+            const total = Number(r.download_count || 0);
+            return {
+              appId: r.app_id,
+              appName: r.app_name,
+              downloadCount: total,
+              pcDownloadCount: pc,
+              pcRatio: total > 0 ? parseFloat(((pc / total) * 100).toFixed(2)) : null,
+              downloadGrowth: r.download_growth != null ? Number(r.download_growth) : null,
+              growthRate: r.growth_rate != null ? Number(r.growth_rate) : null,
+              crawledAt: r.crawled_at,
+            };
+          }),
         };
       },
     }
@@ -435,9 +426,9 @@ export default function TapTapReport() {
         TapTap 报表
       </h2>
 
-      {/* 热门游戏Top50下载趋势（聚合） */}
+      {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">热门游戏Top50下载趋势 — 最近1日（增量）</div>
+        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 近48小时（增量）</div>
         <div className="card-body">
           <BarChart
             series={hotListQuery.data?.series || []}
@@ -446,7 +437,6 @@ export default function TapTapReport() {
             height={675}
             stacked
             totalLabels
-            legendOverrides={{ show: false }}
             xaxisOverrides={hotListQuery.data?.categories ? { categories: hotListQuery.data.categories, labels: { rotate: -45 } } : {}}
             yaxisOverrides={{
               title: { text: '增量下载数' },
@@ -504,7 +494,7 @@ export default function TapTapReport() {
 
       {/* 下载Top25明细列表 */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">下载Top25明细 — 最近1天</div>
+        <div className="card-header bg-white border-0 fw-semibold">下载Top25明细 — 最近8小时</div>
         <div className="card-body p-0">
           <div className="table-responsive">
             <table className="table table-hover align-middle mb-0">
@@ -515,6 +505,9 @@ export default function TapTapReport() {
                   <th>游戏名称</th>
                   <th className="text-end">下载数</th>
                   <th className="text-end">PC下载数</th>
+                  <th className="text-end">PC占比</th>
+                  <th className="text-end">增长</th>
+                  <th className="text-end">增长率</th>
                   <th>时间</th>
                 </tr>
               </thead>
@@ -523,25 +516,40 @@ export default function TapTapReport() {
                   pagedTop25Rows.map((row, idx) => {
                     const rank = (top25Page - 1) * TOP25_PAGE_SIZE + idx + 1;
                     return (
-                      <tr key={idx}>
-                        <td className="text-center">
-                          {rank <= 3 ? (
-                            <span className={`badge ${rank === 1 ? 'bg-warning text-dark' : rank === 2 ? 'bg-secondary' : 'bg-danger'}`}>{rank}</span>
-                          ) : (
-                            <span className="text-muted">{rank}</span>
-                          )}
-                        </td>
-                        <td className="text-muted small">{row.appId}</td>
-                        <td className="fw-semibold">{row.appName}</td>
-                        <td className="text-end fw-semibold">{formatNumber(row.downloadCount)}</td>
-                        <td className="text-end">{formatNumber(row.pcDownloadCount)}</td>
-                        <td className="text-muted small">{row.crawledAt}</td>
-                      </tr>
+                    <tr key={idx}>
+                      <td className="text-center" style={{ width: 60 }}>
+                        {rank <= 3 ? (
+                          <span className={`badge ${rank === 1 ? 'bg-warning text-dark' : rank === 2 ? 'bg-secondary' : 'bg-danger'}`}>{rank}</span>
+                        ) : (
+                          <span className="text-muted">{rank}</span>
+                        )}
+                      </td>
+                      <td className="text-muted small">{row.appId}</td>
+                      <td className="fw-semibold">{row.appName}</td>
+                      <td className="text-end fw-semibold">{formatNumber(row.downloadCount)}</td>
+                      <td className="text-end">{formatNumber(row.pcDownloadCount)}</td>
+                      <td className="text-end">{row.pcRatio != null ? `${row.pcRatio}%` : '-'}</td>
+                      <td className="text-end">
+                        {row.downloadGrowth == null ? '-' : (
+                          <span className={row.downloadGrowth > 0 ? 'text-success' : row.downloadGrowth < 0 ? 'text-danger' : ''}>
+                            {row.downloadGrowth > 0 ? '+' : ''}{formatNumber(row.downloadGrowth)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-end">
+                        {row.growthRate == null ? '-' : (
+                          <span className={row.growthRate > 0 ? 'text-success' : row.growthRate < 0 ? 'text-danger' : ''}>
+                            {row.growthRate > 0 ? '+' : ''}{row.growthRate}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-muted small">{row.crawledAt}</td>
+                    </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="text-center text-muted py-4">暂无数据</td>
+                    <td colSpan={9} className="text-center text-muted py-4">暂无数据</td>
                   </tr>
                 )}
               </tbody>
