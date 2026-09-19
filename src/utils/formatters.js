@@ -31,6 +31,14 @@ export function formatLarge(num, decimals = 2) {
   return formatNumber(num, decimals);
 }
 
+/** 图表轴紧凑格式：1234567 -> "123.5万"、123456789 -> "1.2亿"，小值原样返回 */
+export function formatCompactNumber(num, decimals = 1) {
+  if (num == null || isNaN(num)) return '';
+  if (Math.abs(num) >= 1e8) return (num / 1e8).toFixed(decimals) + '亿';
+  if (Math.abs(num) >= 1e4) return (num / 1e4).toFixed(decimals) + '万';
+  return String(num);
+}
+
 /** 日期格式化 */
 export function formatDate(dateStr, withTime = false) {
   if (!dateStr) return '-';
