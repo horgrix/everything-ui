@@ -14,6 +14,8 @@ export default function PieChart({
   donut = false,
   /** 是否显示图例 */
   showLegend = true,
+  /** 环形图中心总数的文字标签 */
+  totalLabel = '',
 }) {
   const type = donut ? 'donut' : 'pie';
 
@@ -36,6 +38,7 @@ export default function PieChart({
                 total: {
                   show: true,
                   showAlways: true,
+                  ...(totalLabel ? { label: totalLabel } : {}),
                   fontSize: '16px',
                   fontWeight: 600,
                 },

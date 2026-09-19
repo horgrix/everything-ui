@@ -4,6 +4,7 @@ import { querySql } from '../../api/query';
 import BarChart from '../../components/charts/BarChart';
 import MixedChart from '../../components/charts/MixedChart';
 import LineChart from '../../components/charts/LineChart';
+import PieChart from '../../components/charts/PieChart';
 import DashboardCard from '../../components/layout/DashboardCard';
 import { formatNumber } from '../../utils/formatters';
 
@@ -162,14 +163,55 @@ function buildTrendSql(substrLen, dateStr) {
   `;
 }
 
-/** 构建日趋势 SQL（最近15天） */
+/** 构建日趋势 SQL（最近15天，含创意工坊AI游戏计数） */
 function buildDailyTrendSql() {
-  return buildTrendSql(10, recentDaysWhere(15));
+  const dateStr = recentDaysWhere(15);
+  return `
+    SELECT
+      crawled_at,
+      SUM(pc_download_count) as pc_download_count,
+      SUM(hits_total) as hits_total,
+      SUM(CASE WHEN hits_total_val IS NULL AND hits_total IS NOT NULL AND hits_total > 0 THEN hits_total ELSE 0 END) as ai_game_count
+    FROM (
+      SELECT
+        app_id,
+        substr(crawled_at, 1, 10) as crawled_at,
+        MAX(pc_download_count) - MIN(pc_download_count) as pc_download_count,
+        MAX(hits_total) - MIN(hits_total) as hits_total,
+        MAX(hits_total_val) - MIN(hits_total_val) as hits_total_val
+      FROM taptap_hot_list_game_hourly
+      WHERE crawled_at >= '${dateStr}'
+      GROUP BY app_id, substr(crawled_at, 1, 10)
+    )
+    GROUP BY crawled_at
+    ORDER BY crawled_at
+  `;
 }
 
-/** 构建月趋势 SQL（最近13个月） */
+/** 构建月趋势 SQL（最近3个月，含创意工坊AI游戏计数） */
 function buildMonthlyTrendSql() {
-  return buildTrendSql(7, recentMonthsWhere(13));
+  const dateStr = recentMonthsWhere(3);
+  return `
+    SELECT
+      crawled_at,
+      SUM(pc_download_count) as pc_download_count,
+      SUM(hits_total) as hits_total,
+      SUM(hits_total_val) as hits_total_val,
+      SUM(CASE WHEN hits_total_val IS NULL AND hits_total IS NOT NULL AND hits_total > 0 THEN hits_total ELSE 0 END) as ai_game_count
+    FROM (
+      SELECT
+        app_id,
+        substr(crawled_at, 1, 7) as crawled_at,
+        MAX(pc_download_count) - MIN(pc_download_count) as pc_download_count,
+        MAX(hits_total) - MIN(hits_total) as hits_total,
+        MAX(hits_total_val) - MIN(hits_total_val) as hits_total_val
+      FROM taptap_hot_list_game_hourly
+      WHERE crawled_at >= '${dateStr}'
+      GROUP BY app_id, substr(crawled_at, 1, 7)
+    )
+    GROUP BY crawled_at
+    ORDER BY crawled_at
+  `;
 }
 
 /** 构建下载Top25明细 SQL（最近8小时，最新时间点的Top25，含增长指标） */
@@ -316,6 +358,24 @@ function buildCreativeTop25Sql() {
     WHERE rn <= 25
     ORDER BY crawled_at DESC, rn
     LIMIT 25
+  `;
+}
+
+/** 构建追踪的游戏分布 SQL（最近8小时，最新快照） */
+function buildDistributionSql() {
+  const dateStr = recentHoursWhere(8);
+  return `
+    SELECT
+      crawled_at,
+      COUNT(*) as total,
+      SUM(CASE WHEN pc_download_count > 0 THEN 1 ELSE 0 END) as pc_game_count,
+      SUM(CASE WHEN hits_total_val IS NOT NULL AND hits_total_val > 0 THEN 1 ELSE 0 END) as app_game_count,
+      SUM(CASE WHEN hits_total_val IS NULL AND hits_total IS NOT NULL AND hits_total > 0 THEN 1 ELSE 0 END) as ai_game_count
+    FROM taptap_hot_list_game_hourly
+    WHERE crawled_at >= '${dateStr}'
+    GROUP BY crawled_at
+    ORDER BY crawled_at DESC
+    LIMIT 1
   `;
 }
 
@@ -536,13 +596,15 @@ export default function TapTapReport() {
         return {
           series: [
             { name: '总下载数', data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.pc_download_count || 0) + Number(r.hits_total || 0) })) },
+            { name: 'PC下载数', data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.pc_download_count || 0) })) },
+            { name: '创意工坊下载数', data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.ai_game_count || 0) })) },
           ],
         };
       },
     }
   );
 
-  // ====== 热门游戏TopN下载月趋势（固定最近13个月） ======
+  // ====== 热门游戏TopN下载月趋势（固定最近3个月） ======
   const monthlyTrendSql = useMemo(() => buildMonthlyTrendSql(), []);
 
   const monthlyTrendQuery = useChartData(
@@ -554,14 +616,11 @@ export default function TapTapReport() {
         if (!rows || !rows.length) return { series: [] };
         const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
         return {
+          categories: sorted.map((r) => r.crawled_at),
           series: [
-            { name: '总下载数', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: r.crawled_at, y: Number(r.pc_download_count || 0) + Number(r.hits_total || 0) })) },
-            { name: 'PC下载占比', type: 'line', yAxisIndex: 1, data: sorted.map((r) => {
-              const pc = Number(r.pc_download_count || 0);
-              const mobile = Number(r.hits_total || 0);
-              const total = pc + mobile;
-              return { x: r.crawled_at, y: total > 0 ? parseFloat(((pc / total) * 100).toFixed(2)) : null };
-            }) },
+            { name: 'App下载数', color: '#2ec4b6', data: sorted.map((r) => Number(r.hits_total_val || 0)) },
+            { name: '创意工坊下载数', color: '#f77f00', data: sorted.map((r) => Number(r.ai_game_count || 0)) },
+            { name: 'PC下载数', color: '#4361ee', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
           ],
         };
       },
@@ -646,6 +705,29 @@ export default function TapTapReport() {
     }
   );
 
+  // ====== 追踪的游戏分布（固定最近8小时） ======
+  const distributionSql = useMemo(() => buildDistributionSql(), []);
+
+  const distributionQuery = useChartData(
+    'taptap-game-distribution',
+    (p) => querySql(p.sql),
+    { sql: distributionSql },
+    {
+      transform: (rows) => {
+        if (!rows || !rows.length) return { series: [], labels: [], total: null };
+        const r = rows[0];
+        const pc = Number(r.pc_game_count || 0);
+        const app = Number(r.app_game_count || 0);
+        const ai = Number(r.ai_game_count || 0);
+        return {
+          series: [pc, app, ai],
+          labels: ['PC游戏', 'APP游戏', '创意工坊游戏'],
+          total: pc + app + ai,
+        };
+      },
+    }
+  );
+
   const detailEmpty = !validAppId || (detailQuery.isSuccess && !detailQuery.data?.series?.length);
 
   const top25Rows = top25Query.data?.rows || [];
@@ -692,20 +774,17 @@ export default function TapTapReport() {
         {/* 月趋势（左） */}
         <div className="col-12 col-md-6">
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载月趋势 — 最近13个月</div>
+            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载月趋势 — 最近3个月</div>
             <div className="card-body">
-              <MixedChart
+              <BarChart
                 series={monthlyTrendQuery.data?.series || []}
                 loading={monthlyTrendQuery.isLoading}
                 error={monthlyTrendQuery.error?.message}
                 height={350}
-                toolbar={false}
-                colors={['#4361ee', '#e71d36']}
-                strokeWidths={[0, 2]}
-                tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
-                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
-                yaxisLeft={{ title: { text: '总下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }}
-                yaxisRight={{ title: { text: 'PC下载占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+                stacked
+                totalLabels
+                xaxisOverrides={monthlyTrendQuery.data?.categories ? { categories: monthlyTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }} />
             </div>
           </div>
         </div>
@@ -720,18 +799,40 @@ export default function TapTapReport() {
                 error={dailyTrendQuery.error?.message}
                 height={350}
                 strokeWidth={2}
-                markers={3}
+                strokeDashArray={[0, 5, 5]}
+                markers={0}
                 xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
-                yaxisOverrides={{ title: { text: '总下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }} />
+                yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) } }} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 下载Top25明细列表 */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">下载Top25明细 — 最近8小时</div>
-        <div className="card-body p-0">
+      {/* 追踪的游戏分布 + 下载Top25明细（并排） */}
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        {/* 追踪的游戏分布（20%） */}
+        <div style={{ flex: '0 0 20%', minWidth: 240 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">追踪的游戏分布 — 最近8小时</div>
+            <div className="card-body d-flex flex-column align-items-center justify-content-center">
+              <PieChart
+                series={distributionQuery.data?.series || []}
+                labels={distributionQuery.data?.labels || []}
+                loading={distributionQuery.isLoading}
+                error={distributionQuery.error?.message}
+                height={320}
+                donut
+                totalLabel="总游戏数"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 下载Top25明细（80%） */}
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">下载Top25明细 — 最近8小时</div>
+            <div className="card-body p-0">
           <div className="table-responsive">
             <table className="table table-hover align-middle mb-0">
               <thead className="table-light">
@@ -805,6 +906,8 @@ export default function TapTapReport() {
             </div>
           )}
         </div>
+      </div>
+      </div>
       </div>
 
       {/* PC下载Top25明细 + 创意工坊下载Top25明细（并排） */}
