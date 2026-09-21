@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import BarChart from '../../components/charts/BarChart';
-import MixedChart from '../../components/charts/MixedChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
@@ -8,27 +7,24 @@ import {
   buildAggregateSql,
   buildDetailSql,
   buildSummarySql,
-  buildLatestSql,
   buildDailyTrendSql,
-  buildMonthlyTrendSql,
-  buildTop25Sql,
-  buildPcTop25Sql,
-  buildCreativeTop25Sql,
-  buildDistributionSql,
+  buildMonthlyBreakdownSql,
+  buildDistributionByWindowSql,
+  buildTop25DetailSql,
+  buildGameNameSql,
 } from './sql';
 import {
   transformAggregate,
   transformDetail,
   transformKpiSnapshot,
   transformDailyTrend,
-  transformMonthlyTrend,
-  transformTop25,
-  transformPcTop25,
-  transformCreativeTop25,
-  transformDistribution,
+  transformMonthlyBreakdown,
+  transformDistributionByWindow,
+  transformTop25Detail,
+  transformGameNameMap,
 } from './transforms';
 import { useSqlQuery } from './queries';
-import DataTable, { GrowthCell } from './components/DataTable';
+import DataTable from './components/DataTable';
 import KpiRow from './components/KpiRow';
 
 /** 时间范围快捷选项 */
@@ -39,46 +35,92 @@ const TIME_RANGES = [
   { label: '最近15天', days: 15 },
   { label: '最近1个月', days: 30 },
   { label: '最近3个月', days: 90 },
+  { label: '最近6个月', days: 180 },
+  { label: '最近1年', days: 365 },
 ];
 
-// ---- 表格列配置（三张表共用基础列） ----
-const idCol = { header: 'AppID', render: (r) => <span className="text-muted small">{r.appId}</span> };
-const nameCol = { header: '游戏名称', render: (r) => <span className="fw-semibold">{r.appName}</span> };
-const countCol = (header) => ({ header, align: 'end', render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> });
-const growthCol = { header: '增长', align: 'end', render: (r) => <GrowthCell value={r.downloadGrowth} /> };
-const growthRateCol = { header: '增长率', align: 'end', render: (r) => <GrowthCell value={r.growthRate} percent /> };
-const timeCol = { header: '时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> };
-
-/** 下载Top25明细（主表，含 PC下载数 / PC占比） */
-const TOP25_COLUMNS = [
-  idCol,
-  nameCol,
-  countCol('下载数'),
-  { header: 'PC下载数', align: 'end', render: (r) => formatNumber(r.pcDownloadCount) },
-  { header: 'PC占比', align: 'end', render: (r) => (r.pcRatio != null ? `${r.pcRatio}%` : '-') },
-  growthCol,
-  growthRateCol,
-  timeCol,
+/** 下载Top25明细窗口类型 */
+const WINDOW_TYPES = [
+  { label: '小时', table: 'dws_taptap_download_hourly', granularity: 'hour' },
+  { label: '日', table: 'dws_taptap_download_daily', granularity: 'day' },
+  { label: '月', table: 'dws_taptap_download_monthly', granularity: 'month' },
 ];
 
-const PC_TOP25_COLUMNS = [idCol, nameCol, countCol('PC下载数'), growthCol, growthRateCol, timeCol];
-const CREATIVE_TOP25_COLUMNS = [idCol, nameCol, countCol('下载数'), growthCol, growthRateCol, timeCol];
+/** 当前时间按窗口粒度格式化（hour: %Y-%m-%d %H，day: %Y-%m-%d，month: %Y-%m） */
+function formatNowWindow(granularity) {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = now.getFullYear();
+  const m = pad(now.getMonth() + 1);
+  const d = pad(now.getDate());
+  if (granularity === 'hour') return `${y}-${m}-${d} ${pad(now.getHours())}`;
+  if (granularity === 'month') return `${y}-${m}`;
+  return `${y}-${m}-${d}`;
+}
+
+/** 月趋势拆分图（平台/AI/TapMaker）配置 */
+const MONTHLY_BREAKDOWN_CHARTS = [
+  { key: 'platform', title: '热门游戏TopN下载月趋势(平台) — 最近12个月' },
+  { key: 'ai', title: '热门游戏TopN下载月趋势(AI) — 最近12个月' },
+  { key: 'tapmaker', title: '热门游戏TopN下载月趋势(TapMaker) — 最近12个月' },
+];
+
+/** 追踪的游戏分布拆分图（平台/AI/TapMaker）配置 */
+const DISTRIBUTION_CHARTS = [
+  { key: 'platform', title: '追踪的游戏分布(平台)' },
+  { key: 'ai', title: '追踪的游戏分布(AI)' },
+  { key: 'tapmaker', title: '追踪的游戏分布(TapMaker)' },
+];
+
+/** 下载Top25明细拆分表配置 */
+const TOP25_DETAIL_TABLES = {
+  app: { title: '下载Top25明细(APP)', hourFilter: "refer = 'app'", dayFilter: 'app_download_count > 0', orderBy: 'app_download_count' },
+  pc: { title: '下载Top25明细(PC)', hourFilter: "refer = 'pc'", dayFilter: 'pc_download_count > 0', orderBy: 'pc_download_count' },
+  ai: { title: '下载Top25明细(AI)', hourFilter: 'distribution_type > 0', dayFilter: 'ai_download_count > 0', orderBy: 'ai_download_count' },
+  noneMaker: { title: '下载Top25明细(非TapMaker)', hourFilter: 'distribution_type = 1', dayFilter: 'ai_none_maker_download_count > 0', orderBy: 'ai_none_maker_download_count' },
+  maker: { title: '下载Top25明细(TapMaker)', hourFilter: 'distribution_type = 2', dayFilter: 'ai_maker_download_count > 0', orderBy: 'ai_maker_download_count' },
+};
+
+/** 下载Top25明细表格列（游戏名称从全局映射获取） */
+const TOP25_DETAIL_COLUMNS = (gameNameMap) => [
+  { header: 'AppID', render: (r) => <span className="text-muted small">{r.appId}</span> },
+  { header: '游戏名称', render: (r) => <span className="fw-semibold">{gameNameMap?.[String(r.appId)] || '-'}</span> },
+  { header: '下载数', align: 'end', render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> },
+  { header: '时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
+];
+
+/** 下载Top25明细查询 hook（按窗口 + 过滤条件） */
+function useTop25DetailQuery(key, table, selectedTable, selectedWindow) {
+  return useSqlQuery(
+    `taptap-top25-${key}`,
+    () => buildTop25DetailSql(selectedTable, selectedWindow, table.hourFilter, table.dayFilter, table.orderBy),
+    [selectedTable, selectedWindow],
+    transformTop25Detail
+  );
+}
 
 export default function TapTapReport() {
   const [appId, setAppId] = useState('');
   const [days, setDays] = useState(1);
+  const [selectedTable, setSelectedTable] = useState('dws_taptap_download_hourly');
+  const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
   const validAppId = /^\d+$/.test(appId);
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate);
   const detailQuery = useSqlQuery('taptap-game-detail', () => buildDetailSql(appId, days), [appId, days], transformDetail, { enabled: validAppId });
   const summaryQuery = useSqlQuery('taptap-game-summary', () => buildSummarySql(appId, days), [appId, days], transformKpiSnapshot, { enabled: validAppId });
-  const latestQuery = useSqlQuery('taptap-game-latest', () => buildLatestSql(appId), [appId], transformKpiSnapshot, { enabled: validAppId });
   const dailyTrendQuery = useSqlQuery('taptap-daily-trend', buildDailyTrendSql, [], transformDailyTrend);
-  const monthlyTrendQuery = useSqlQuery('taptap-monthly-trend', buildMonthlyTrendSql, [], transformMonthlyTrend);
-  const top25Query = useSqlQuery('taptap-top25-list', buildTop25Sql, [], transformTop25);
-  const pcTop25Query = useSqlQuery('taptap-pc-top25-list', buildPcTop25Sql, [], transformPcTop25);
-  const creativeTop25Query = useSqlQuery('taptap-creative-top25-list', buildCreativeTop25Sql, [], transformCreativeTop25);
-  const distributionQuery = useSqlQuery('taptap-game-distribution', buildDistributionSql, [], transformDistribution);
+  const monthlyBreakdownQuery = useSqlQuery('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown);
+  const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow);
+  const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap);
+
+  const top25DetailQueries = {
+    app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
+    pc: useTop25DetailQuery('pc', TOP25_DETAIL_TABLES.pc, selectedTable, selectedWindow),
+    ai: useTop25DetailQuery('ai', TOP25_DETAIL_TABLES.ai, selectedTable, selectedWindow),
+    noneMaker: useTop25DetailQuery('noneMaker', TOP25_DETAIL_TABLES.noneMaker, selectedTable, selectedWindow),
+    maker: useTop25DetailQuery('maker', TOP25_DETAIL_TABLES.maker, selectedTable, selectedWindow),
+  };
 
   const detailEmpty = !validAppId || (detailQuery.isSuccess && !detailQuery.data?.series?.length);
 
@@ -91,7 +133,7 @@ export default function TapTapReport() {
 
       {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 近48小时（增量）</div>
+        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 近24小时（增量）</div>
         <div className="card-body">
           <BarChart
             series={hotListQuery.data?.series || []}
@@ -110,93 +152,128 @@ export default function TapTapReport() {
         </div>
       </div>
 
-      {/* 热门游戏TopN下载月趋势 + 日趋势 */}
+      {/* 热门游戏TopN下载月趋势（平台/AI/TapMaker 并排） */}
       <div className="row g-3 mb-4">
-        {/* 月趋势（左） */}
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载月趋势 — 最近3个月</div>
-            <div className="card-body">
-              <BarChart
-                series={monthlyTrendQuery.data?.series || []}
-                loading={monthlyTrendQuery.isLoading}
-                error={monthlyTrendQuery.error?.message}
-                height={350}
-                stacked
-                totalLabels
-                xaxisOverrides={monthlyTrendQuery.data?.categories ? { categories: monthlyTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+        {MONTHLY_BREAKDOWN_CHARTS.map((c) => (
+          <div className="col-12 col-md-4" key={c.key}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-header bg-white border-0 fw-semibold">{c.title}</div>
+              <div className="card-body">
+                <BarChart
+                  series={monthlyBreakdownQuery.data?.[c.key] || []}
+                  loading={monthlyBreakdownQuery.isLoading}
+                  error={monthlyBreakdownQuery.error?.message}
+                  height={350}
+                  stacked
+                  totalLabels
+                  shared
+                  xaxisOverrides={monthlyBreakdownQuery.data?.categories ? { categories: monthlyBreakdownQuery.data.categories, labels: { rotate: -45 } } : {}}
+                  yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+              </div>
             </div>
           </div>
-        </div>
-        {/* 日趋势（右） */}
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载日趋势 — 最近15天</div>
-            <div className="card-body">
-              <LineChart
-                series={dailyTrendQuery.data?.series || []}
-                loading={dailyTrendQuery.isLoading}
-                error={dailyTrendQuery.error?.message}
-                height={350}
-                strokeWidth={2}
-                strokeDashArray={[0, 5, 5]}
-                markers={0}
-                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
-                yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* 追踪的游戏分布 + 下载Top25明细（并排） */}
-      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-        {/* 追踪的游戏分布（20%） */}
-        <div style={{ flex: '0 0 20%', minWidth: 240 }}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">追踪的游戏分布 — 最近8小时</div>
-            <div className="card-body d-flex flex-column align-items-center justify-content-center">
-              <PieChart
-                series={distributionQuery.data?.series || []}
-                labels={distributionQuery.data?.labels || []}
-                loading={distributionQuery.isLoading}
-                error={distributionQuery.error?.message}
-                height={320}
-                donut
-                totalLabel="总游戏数"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* 下载Top25明细（80%） */}
-        <div style={{ flex: '1 1 0', minWidth: 0 }}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">下载Top25明细 — 最近8小时</div>
-            <DataTable rows={top25Query.data?.rows || []} columns={TOP25_COLUMNS} />
-          </div>
-        </div>
-      </div>
-
-      {/* PC下载Top25明细 + 创意工坊下载Top25明细（并排） */}
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">PC下载Top25明细 — 最近8小时</div>
-            <DataTable rows={pcTop25Query.data?.rows || []} columns={PC_TOP25_COLUMNS} />
-          </div>
-        </div>
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">创意工坊下载Top25明细 — 最近8小时</div>
-            <DataTable rows={creativeTop25Query.data?.rows || []} columns={CREATIVE_TOP25_COLUMNS} />
-          </div>
-        </div>
-      </div>
-
-      {/* 查询条件（独立模块） */}
+      {/* 热门游戏TopN下载日趋势 */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">查询条件</div>
+        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载日趋势 — 最近30天</div>
+        <div className="card-body">
+          <LineChart
+            series={dailyTrendQuery.data?.series || []}
+            loading={dailyTrendQuery.isLoading}
+            error={dailyTrendQuery.error?.message}
+            height={350}
+            strokeWidth={2}
+            strokeDashArray={[0, 5, 5, 5, 5, 5, 5]}
+            markers={3}
+            shared
+            xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+            yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+        </div>
+      </div>
+
+      {/* 下载Top25明细查询条件 */}
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-header bg-white border-0 fw-semibold">下载Top25明细查询条件</div>
+        <div className="card-body">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="text-muted small">窗口类型</span>
+            {WINDOW_TYPES.map((w) => (
+              <button
+                key={w.table}
+                type="button"
+                className={`btn btn-sm ${selectedTable === w.table ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => {
+                  setSelectedTable(w.table);
+                  setSelectedWindow(formatNowWindow(w.granularity));
+                }}
+              >
+                {w.label}
+              </button>
+            ))}
+            <span className="ms-3 text-muted small">统计窗口</span>
+            <input
+              type="text"
+              className="form-control form-control-sm"
+              style={{ width: 180 }}
+              value={selectedWindow}
+              onChange={(e) => setSelectedWindow(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 追踪的游戏分布（平台/AI/TapMaker 并排） */}
+      <div className="row g-3 mb-4">
+        {DISTRIBUTION_CHARTS.map((c) => (
+          <div className="col-12 col-md-4" key={c.key}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-header bg-white border-0 fw-semibold">{c.title}</div>
+              <div className="card-body d-flex flex-column align-items-center justify-content-center">
+                <PieChart
+                  series={distributionByWindowQuery.data?.[c.key]?.series || []}
+                  labels={distributionByWindowQuery.data?.[c.key]?.labels || []}
+                  loading={distributionByWindowQuery.isLoading}
+                  error={distributionByWindowQuery.error?.message}
+                  height={300}
+                  donut
+                  totalLabel={distributionByWindowQuery.data?.[c.key]?.totalLabel}
+                  totalValue={distributionByWindowQuery.data?.[c.key]?.totalValue}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 下载Top25明细（APP/PC） */}
+      <div className="row g-3 mb-4">
+        {['app', 'pc'].map((key) => (
+          <div className="col-12 col-md-6" key={key}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-header bg-white border-0 fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 下载Top25明细（AI/非TapMaker/TapMaker） */}
+      <div className="row g-3 mb-4">
+        {['ai', 'noneMaker', 'maker'].map((key) => (
+          <div className="col-12 col-md-4" key={key}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-header bg-white border-0 fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 游戏统计详细信息查询条件 */}
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-header bg-white border-0 fw-semibold">游戏统计详细信息查询条件</div>
         <div className="card-body">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <label className="form-label small text-muted mb-0">AppID</label>
@@ -226,9 +303,6 @@ export default function TapTapReport() {
       {/* 游戏汇总指标（受查询条件控制） */}
       <KpiRow data={summaryQuery.data} />
 
-      {/* 游戏最新快照指标（历史累计值） */}
-      <KpiRow data={latestQuery.data} suffix="(历史)" />
-
       {/* 游戏详情趋势（受查询条件控制） */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0 fw-semibold">
@@ -241,18 +315,16 @@ export default function TapTapReport() {
               暂无数据
             </div>
           ) : (
-            <MixedChart
+            <LineChart
               series={detailQuery.data?.series || []}
               loading={detailQuery.isLoading}
               error={detailQuery.error?.message}
               height={400}
-              toolbar={false}
-              colors={['#4361ee', '#e71d36']}
-              strokeWidths={[0, 2]}
-              tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
+              strokeWidth={2}
+              strokeDashArray={[5, 5, 0]}
+              shared
               xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
-              yaxisLeft={{ title: { text: '总下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-              yaxisRight={{ title: { text: 'PC下载数占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+              yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
           )}
         </div>
       </div>

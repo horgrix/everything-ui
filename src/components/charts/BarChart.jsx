@@ -15,6 +15,8 @@ export default function BarChart({
   stacked = false,
   /** 是否在堆叠柱顶部显示总数 */
   totalLabels = false,
+  /** 悬浮提示是否一起显示所有 series */
+  shared = false,
   /** 自定义 xaxis 覆盖 */
   xaxisOverrides = {},
   /** 自定义 yaxis 覆盖 */
@@ -64,6 +66,7 @@ export default function BarChart({
     legend: {
       ...legendOverrides,
     },
+    tooltip: { shared, intersect: !shared },
     dataLabels: {
       enabled: false,
     },

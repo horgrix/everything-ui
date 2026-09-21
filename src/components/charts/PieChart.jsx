@@ -1,4 +1,5 @@
 import ChartWrapper from './ChartWrapper';
+import { formatNumber } from '../../utils/formatters';
 
 /**
  * 饼图 / 环形图组件
@@ -16,6 +17,8 @@ export default function PieChart({
   showLegend = true,
   /** 环形图中心总数的文字标签 */
   totalLabel = '',
+  /** 显式总数（覆盖自动求和），如总游戏数 */
+  totalValue = null,
 }) {
   const type = donut ? 'donut' : 'pie';
 
@@ -39,6 +42,7 @@ export default function PieChart({
                   show: true,
                   showAlways: true,
                   ...(totalLabel ? { label: totalLabel } : {}),
+                  ...(totalValue != null ? { formatter: () => formatNumber(totalValue) } : {}),
                   fontSize: '16px',
                   fontWeight: 600,
                 },

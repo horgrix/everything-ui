@@ -15,6 +15,7 @@ export default function LineChart({
   yaxisOverrides = {},
   strokeWidth = 2,
   strokeDashArray = null,
+  shared = false,
   markers = 0,
   colors = null,
   yaxisAnnotations = null,
@@ -41,7 +42,7 @@ export default function LineChart({
     markers: { size: markers, hover: { size: markers + 2 || 5 } },
     fill: area ? { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05 } } : {},
     dataLabels: { enabled: showLabels },
-    tooltip: { shared: false, intersect: false },
+    tooltip: { shared, intersect: false },
     xaxis: { ...datetimeAxis, ...xaxisOverrides },
     yaxis: { ...(currency ? { labels: { formatter: currencyFormatter } } : {}), ...yaxisOverrides },
     ...(yaxisAnnotations ? {
