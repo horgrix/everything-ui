@@ -188,7 +188,7 @@ export default function TapTapReport() {
             strokeDashArray={[0, 5, 5, 5, 5, 5, 5]}
             markers={3}
             shared
-            xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+            xaxisOverrides={dailyTrendQuery.data?.categories ? { type: 'category', categories: dailyTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
             yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
         </div>
       </div>
@@ -323,7 +323,7 @@ export default function TapTapReport() {
               strokeWidth={2}
               strokeDashArray={[5, 5, 0]}
               shared
-              xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
+              xaxisOverrides={detailQuery.data?.categories ? { type: 'category', categories: detailQuery.data.categories, labels: { rotate: -45 } } : {}}
               yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
           )}
         </div>

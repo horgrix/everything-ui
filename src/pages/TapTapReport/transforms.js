@@ -14,11 +14,13 @@ export function transformAggregate(rows) {
 
 /** 游戏详情趋势（三条折线：总下载数实线 + PC/移动虚线） */
 export function transformDetail(rows) {
-  if (!rows || !rows.length) return { series: [], appName: null };
+  if (!rows || !rows.length) return { series: [], categories: [], appName: null };
   const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
-  const toData = (field) => sorted.map((r) => ({ x: r.crawled_at, y: Number(r[field] || 0) }));
+  const categories = sorted.map((r) => r.crawled_at);
+  const toData = (field) => sorted.map((r) => Number(r[field] || 0));
   return {
     appName: null,
+    categories,
     series: [
       { name: 'PC下载数', data: toData('pc_download_count') },
       { name: '移动下载数', data: toData('app_download_count') },
@@ -44,10 +46,12 @@ export function transformKpiSnapshot(rows) {
 
 /** 热门游戏TopN下载日趋势（总下载数实线 + 6 条拆分虚线） */
 export function transformDailyTrend(rows) {
-  if (!rows || !rows.length) return { series: [] };
+  if (!rows || !rows.length) return { series: [], categories: [] };
   const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
-  const toData = (field) => sorted.map((r) => ({ x: r.crawled_at, y: Number(r[field] || 0) }));
+  const categories = sorted.map((r) => r.crawled_at);
+  const toData = (field) => sorted.map((r) => Number(r[field] || 0));
   return {
+    categories,
     series: [
       { name: '总下载数', data: toData('download_count') },
       { name: 'PC端下载数', data: toData('pc_download_count') },
