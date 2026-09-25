@@ -12,6 +12,8 @@ import {
   buildDistributionByWindowSql,
   buildTop25DetailSql,
   buildGameNameSql,
+  buildOnlinePlayersTrendSql,
+  buildOnlinePlayersTop25Sql,
 } from './sql';
 import {
   transformAggregate,
@@ -22,6 +24,8 @@ import {
   transformDistributionByWindow,
   transformTop25Detail,
   transformGameNameMap,
+  transformOnlinePlayersTrend,
+  transformOnlinePlayersTop25,
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
@@ -89,6 +93,14 @@ const TOP25_DETAIL_COLUMNS = (gameNameMap) => [
   { header: '时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
 ];
 
+/** TapPC在线人数Top25表格列 */
+const ONLINE_PLAYERS_COLUMNS = (gameNameMap) => [
+  { header: '游戏ID', render: (r) => <span className="text-muted small">{r.appId}</span> },
+  { header: '游戏名称', render: (r) => <span className="fw-semibold">{gameNameMap?.[String(r.appId)] || '-'}</span> },
+  { header: '目前在线人数', align: 'end', render: (r) => <span className="fw-semibold">{formatNumber(r.onlinePlayers)}</span> },
+  { header: '最近统计时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
+];
+
 /** 下载Top25明细查询 hook（按窗口 + 过滤条件） */
 function useTop25DetailQuery(key, table, selectedTable, selectedWindow) {
   return useSqlQuery(
@@ -113,6 +125,8 @@ export default function TapTapReport() {
   const monthlyBreakdownQuery = useSqlQuery('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown);
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow);
   const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap);
+  const onlinePlayersTrendQuery = useSqlQuery('taptap-online-players-trend', buildOnlinePlayersTrendSql, [], transformOnlinePlayersTrend);
+  const onlinePlayersTop25Query = useSqlQuery('taptap-online-players-top25', buildOnlinePlayersTop25Sql, [], transformOnlinePlayersTop25);
 
   const top25DetailQueries = {
     app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
@@ -149,6 +163,35 @@ export default function TapTapReport() {
                 formatter: (v) => formatCompactNumber(v),
               },
             }} />
+        </div>
+      </div>
+
+      {/* TapPC热门游戏在线人数趋势 + Top25（并排） */}
+      <div className="row g-3 mb-4">
+        {/* 趋势（左，67%） */}
+        <div className="col-12 col-md-8">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">TapPC热门游戏在线人数趋势 — 最近24小时</div>
+            <div className="card-body">
+              <LineChart
+                series={onlinePlayersTrendQuery.data?.series || []}
+                loading={onlinePlayersTrendQuery.isLoading}
+                error={onlinePlayersTrendQuery.error?.message}
+                height={350}
+                strokeWidth={[4, 2, 2, 2, 2, 2]}
+                strokeDashArray={[0, 5, 5, 5, 5, 5]}
+                shared
+                xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { type: 'category', categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+            </div>
+          </div>
+        </div>
+        {/* Top25（右，33%） */}
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">TapPC热门游戏在线人数Top25</div>
+            <DataTable rows={onlinePlayersTop25Query.data?.rows || []} columns={ONLINE_PLAYERS_COLUMNS(gameNameQuery.data)} />
+          </div>
         </div>
       </div>
 

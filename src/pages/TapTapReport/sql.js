@@ -211,3 +211,36 @@ export function buildGameNameSql() {
     WHERE crawled_at = '${monthStr}'
   `;
 }
+
+/** 构建TapPC在线人数趋势 SQL（最近24小时） */
+export function buildOnlinePlayersTrendSql() {
+  const dateStr = recentHoursWhere(24);
+  return `
+    SELECT
+      crawled_at,
+      today_total_online_players,
+      yesterday_total_online_players,
+      ago_7_total_online_players,
+      ago_30_total_online_players,
+      ago_90_total_online_players,
+      ago_365_total_online_players
+    FROM dws_taptap_peak_players_hourly
+    WHERE crawled_at >= '${dateStr}'
+    ORDER BY crawled_at
+  `;
+}
+
+/** 构建TapPC在线人数Top25 SQL（当前小时） */
+export function buildOnlinePlayersTop25Sql() {
+  const dateStr = recentHoursWhere(0);
+  return `
+    SELECT
+      crawled_at,
+      app_id,
+      online_players
+    FROM taptap_pc_online_players
+    WHERE crawled_at = '${dateStr}'
+    ORDER BY online_players DESC
+    LIMIT 25
+  `;
+}

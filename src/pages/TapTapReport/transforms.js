@@ -125,3 +125,34 @@ export function transformGameNameMap(rows) {
   });
   return map;
 }
+
+/** TapPC热门游戏在线人数趋势（今日实线加粗 + 其余虚线） */
+export function transformOnlinePlayersTrend(rows) {
+  if (!rows || !rows.length) return { series: [], categories: [] };
+  const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
+  const categories = sorted.map((r) => r.crawled_at);
+  const toData = (field) => sorted.map((r) => Number(r[field] || 0));
+  return {
+    categories,
+    series: [
+      { name: '今日', data: toData('today_total_online_players') },
+      { name: '昨日', data: toData('yesterday_total_online_players') },
+      { name: '7日前', data: toData('ago_7_total_online_players') },
+      { name: '30日前', data: toData('ago_30_total_online_players') },
+      { name: '90日前', data: toData('ago_90_total_online_players') },
+      { name: '365日前', data: toData('ago_365_total_online_players') },
+    ],
+  };
+}
+
+/** TapPC热门游戏在线人数Top25 */
+export function transformOnlinePlayersTop25(rows) {
+  if (!rows || !rows.length) return { rows: [] };
+  return {
+    rows: rows.map((r) => ({
+      appId: r.app_id,
+      onlinePlayers: r.online_players != null ? Number(r.online_players) : null,
+      crawledAt: r.crawled_at,
+    })),
+  };
+}
