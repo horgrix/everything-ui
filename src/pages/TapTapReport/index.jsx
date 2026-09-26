@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
@@ -14,6 +14,7 @@ import {
   buildGameNameSql,
   buildOnlinePlayersTrendSql,
   buildOnlinePlayersTop25Sql,
+  buildNewestDateSql,
 } from './sql';
 import {
   transformAggregate,
@@ -26,6 +27,7 @@ import {
   transformGameNameMap,
   transformOnlinePlayersTrend,
   transformOnlinePlayersTop25,
+  transformNewestDate,
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
@@ -126,7 +128,8 @@ export default function TapTapReport() {
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow);
   const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap);
   const onlinePlayersTrendQuery = useSqlQuery('taptap-online-players-trend', buildOnlinePlayersTrendSql, [], transformOnlinePlayersTrend);
-  const onlinePlayersTop25Query = useSqlQuery('taptap-online-players-top25', buildOnlinePlayersTop25Sql, [], transformOnlinePlayersTop25);
+  const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
+  const onlinePlayersTop25Query = useSqlQuery('taptap-online-players-top25', () => buildOnlinePlayersTop25Sql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersTop25, { enabled: !!newestDateQuery.data });
 
   const top25DetailQueries = {
     app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
@@ -135,6 +138,13 @@ export default function TapTapReport() {
     noneMaker: useTop25DetailQuery('noneMaker', TOP25_DETAIL_TABLES.noneMaker, selectedTable, selectedWindow),
     maker: useTop25DetailQuery('maker', TOP25_DETAIL_TABLES.maker, selectedTable, selectedWindow),
   };
+
+  // 数据最新时间加载后，小时选项的统计窗口默认值同步为最新数据时间，避免数据更新期间空白
+  useEffect(() => {
+    if (selectedTable === 'dws_taptap_download_hourly' && newestDateQuery.data) {
+      setSelectedWindow(newestDateQuery.data);
+    }
+  }, [newestDateQuery.data, selectedTable]);
 
   const detailEmpty = !validAppId || (detailQuery.isSuccess && !detailQuery.data?.series?.length);
 
@@ -249,7 +259,7 @@ export default function TapTapReport() {
                 className={`btn btn-sm ${selectedTable === w.table ? 'btn-primary' : 'btn-outline-secondary'}`}
                 onClick={() => {
                   setSelectedTable(w.table);
-                  setSelectedWindow(formatNowWindow(w.granularity));
+                  setSelectedWindow(w.granularity === 'hour' && newestDateQuery.data ? newestDateQuery.data : formatNowWindow(w.granularity));
                 }}
               >
                 {w.label}

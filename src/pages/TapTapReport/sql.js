@@ -230,9 +230,8 @@ export function buildOnlinePlayersTrendSql() {
   `;
 }
 
-/** 构建TapPC在线人数Top25 SQL（当前小时） */
-export function buildOnlinePlayersTop25Sql() {
-  const dateStr = recentHoursWhere(0);
+/** 构建TapPC在线人数Top25 SQL（指定时间点） */
+export function buildOnlinePlayersTop25Sql(dateStr) {
   return `
     SELECT
       crawled_at,
@@ -242,5 +241,15 @@ export function buildOnlinePlayersTop25Sql() {
     WHERE crawled_at = '${dateStr}'
     ORDER BY online_players DESC
     LIMIT 25
+  `;
+}
+
+/** 构建最新数据时间 SQL（用于避免数据更新期间空白） */
+export function buildNewestDateSql() {
+  const dateStr = recentDaysWhere(7);
+  return `
+    SELECT MAX(crawled_at) AS newest_datestr
+    FROM dws_taptap_download_hourly
+    WHERE crawled_at >= '${dateStr}'
   `;
 }

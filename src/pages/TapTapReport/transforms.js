@@ -156,3 +156,9 @@ export function transformOnlinePlayersTop25(rows) {
     })),
   };
 }
+
+/** 最新数据时间（字符串，无数据时为 null） */
+export function transformNewestDate(rows) {
+  if (!rows || !rows.length) return null;
+  return rows[0].newest_datestr;
+}
