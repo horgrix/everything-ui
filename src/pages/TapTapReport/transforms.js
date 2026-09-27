@@ -147,8 +147,17 @@ export function transformOnlinePlayersTrend(rows) {
 
 /** TapPC在线人数分布（按人数区间） */
 export function transformOnlinePlayersDistribution(rows) {
-  if (!rows || !rows.length) return { series: [], labels: [] };
-  const BUCKET_ORDER = ['100及以下', '100-500', '500-1000', '1000-5000', '5000-10000', '10000以上'];
+  if (!rows || !rows.length) return { series: [], labels: [], colors: [] };
+  const BUCKET_ORDER = ['1-99', '=100', '100-500', '500-1000', '1000-5000', '5000-10000', '10000+'];
+  const BUCKET_COLORS = {
+    '1-99': '#C0ADDB',
+    '=100': '#7F94B0',
+    '100-500': '#421243',
+    '500-1000': '#1E5D8C',
+    '1000-5000': '#F7B844',
+    '5000-10000': '#3B93A5',
+    '10000+': '#D43F97',
+  };
   const map = {};
   rows.forEach((r) => {
     map[r.player_bucket] = Number(r.cnt || 0);
@@ -157,6 +166,7 @@ export function transformOnlinePlayersDistribution(rows) {
   return {
     series: labels.map((b) => map[b]),
     labels,
+    colors: labels.map((b) => BUCKET_COLORS[b]),
   };
 }
 
@@ -200,4 +210,22 @@ export function transformOnlinePlayersTreemap(rows) {
     y: Number(r.online_players || 0),
   }));
   return { series: [{ name: '在线人数', data }] };
+}
+
+/** TopN游戏占比（按排名分桶，柱状+占比折线混合图，排除 Top100+） */
+export function transformTopNProportion(rows) {
+  if (!rows || !rows.length) return { categories: [], series: [] };
+  const map = {};
+  rows.forEach((r) => {
+    map[r.bucket] = Number(r.online_players || 0);
+  });
+  const total = map['Top100+'] || 0;
+  const buckets = ['Top5', 'Top10', 'Top20', 'Top50', 'Top100'];
+  return {
+    categories: buckets,
+    series: [
+      { name: '在线人数', type: 'column', yAxisIndex: 0, data: buckets.map((b) => map[b] || 0) },
+      { name: '占比', type: 'line', yAxisIndex: 1, data: buckets.map((b) => (total > 0 ? parseFloat(((map[b] / total) * 100).toFixed(2)) : null)) },
+    ],
+  };
 }

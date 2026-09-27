@@ -27,15 +27,23 @@ export default function PieChart({
   toolbar = true,
   /** 显示标签的最小扇区角度（0 表示全显示） */
   minAngleToShowLabel = 10,
+  /** 使用外部标签（external data labels） */
+  externalLabels = false,
+  /** 仅显示百分比（不显示标签名） */
+  percentOnly = false,
+  /** 自定义切片颜色（按 series 顺序） */
+  colors = null,
 }) {
   const type = donut ? 'donut' : 'pie';
 
   const options = {
     chart: {
       type,
+      width: '100%',
       toolbar: { show: toolbar },
     },
     labels,
+    ...(colors ? { colors } : {}),
     legend: {
       show: showLegend,
       position: legendPosition,
@@ -58,6 +66,7 @@ export default function PieChart({
               },
             }
           : {},
+        ...(externalLabels ? { dataLabels: { external: { show: true } } } : {}),
       },
     },
     dataLabels: {
@@ -65,6 +74,7 @@ export default function PieChart({
       offset: dataLabelsOffset,
       minAngleToShowLabel,
       formatter: (val, opts) => {
+        if (percentOnly) return val.toFixed(1) + '%';
         return opts.w.config.labels[opts.seriesIndex] + ': ' + val.toFixed(1) + '%';
       },
       style: {
@@ -75,7 +85,6 @@ export default function PieChart({
       {
         breakpoint: 480,
         options: {
-          chart: { width: 300 },
           legend: { position: 'bottom' },
         },
       },

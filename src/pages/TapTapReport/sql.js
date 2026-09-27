@@ -235,12 +235,13 @@ export function buildOnlinePlayersDistributionSql(dateStr) {
   return `
     SELECT
       CASE
-        WHEN online_players <= 100 THEN '100及以下'
+        WHEN online_players < 100 THEN '1-99'
+        WHEN online_players = 100 THEN '=100'
         WHEN online_players > 100 AND online_players <= 500 THEN '100-500'
         WHEN online_players > 500 AND online_players <= 1000 THEN '500-1000'
         WHEN online_players > 1000 AND online_players <= 5000 THEN '1000-5000'
         WHEN online_players > 5000 AND online_players <= 10000 THEN '5000-10000'
-        ELSE '10000以上'
+        ELSE '10000+'
       END AS player_bucket,
       COUNT(*) AS cnt
     FROM taptap_pc_online_players
@@ -315,5 +316,47 @@ export function buildOnlinePlayersTreemapSql(dateStr) {
       WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
     ) b ON a.app_id = b.app_id
     ORDER BY (a.app_id = 0), a.online_players DESC
+  `;
+}
+
+/** 构建TopN游戏占比 SQL（最新窗口，按排名分桶的累计在线人数） */
+export function buildTopNProportionSql(dateStr) {
+  return `
+    SELECT
+      bucket,
+      cum_total_players AS online_players
+    FROM (
+      SELECT
+        bucket,
+        app_cnt,
+        min_rk,
+        SUM(app_cnt) OVER (ORDER BY min_rk) AS cum_app_cnt,
+        SUM(total_players) OVER (ORDER BY min_rk) AS cum_total_players
+      FROM (
+        SELECT
+          CASE
+            WHEN rk <= 5 THEN 'Top5'
+            WHEN rk <= 10 THEN 'Top10'
+            WHEN rk <= 20 THEN 'Top20'
+            WHEN rk <= 50 THEN 'Top50'
+            WHEN rk <= 100 THEN 'Top100'
+            ELSE 'Top100+'
+          END AS bucket,
+          MIN(rk) AS min_rk,
+          COUNT(*) AS app_cnt,
+          SUM(online_players) AS total_players
+        FROM (
+          SELECT
+            app_id,
+            online_players,
+            RANK() OVER (ORDER BY online_players DESC) AS rk
+          FROM taptap_pc_online_players
+          WHERE crawled_at = '${dateStr}'
+            AND online_players IS NOT NULL
+        ) t
+        GROUP BY bucket
+      ) g
+    ) x
+    ORDER BY min_rk
   `;
 }

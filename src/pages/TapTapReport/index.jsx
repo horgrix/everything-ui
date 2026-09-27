@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
+import MixedChart from '../../components/charts/MixedChart';
 import PieChart from '../../components/charts/PieChart';
 import TreemapChart from '../../components/charts/TreemapChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
@@ -17,6 +18,7 @@ import {
   buildOnlinePlayersDistributionSql,
   buildOnlinePlayersTopNTrendSql,
   buildOnlinePlayersTreemapSql,
+  buildTopNProportionSql,
   buildNewestDateSql,
 } from './sql';
 import {
@@ -32,6 +34,7 @@ import {
   transformOnlinePlayersDistribution,
   transformOnlinePlayersTopNTrend,
   transformOnlinePlayersTreemap,
+  transformTopNProportion,
   transformNewestDate,
 } from './transforms';
 import { useSqlQuery } from './queries';
@@ -147,6 +150,7 @@ export default function TapTapReport() {
   const onlinePlayersDistributionQuery = useSqlQuery('taptap-online-players-distribution', () => buildOnlinePlayersDistributionSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersDistribution, { enabled: !!newestDateQuery.data });
   const onlinePlayersTopNTrendQuery = useSqlQuery('taptap-online-players-topn-trend', buildOnlinePlayersTopNTrendSql, [], transformOnlinePlayersTopNTrend);
   const onlinePlayersTreemapQuery = useSqlQuery('taptap-online-players-treemap', () => buildOnlinePlayersTreemapSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersTreemap, { enabled: !!newestDateQuery.data });
+  const topNProportionQuery = useSqlQuery('taptap-topn-proportion', () => buildTopNProportionSql(newestDateQuery.data), [newestDateQuery.data], transformTopNProportion, { enabled: !!newestDateQuery.data });
 
   const top25DetailQueries = {
     app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
@@ -397,10 +401,9 @@ export default function TapTapReport() {
       {/* TapPC在线人数统计 */}
       {chartGroup === 'online' && (
         <>
-      {/* TapPC热门游戏在线人数趋势 + Top25（并排） */}
+      {/* TapPC热玩游戏榜在线人数趋势（全宽） */}
       <div className="row g-3 mb-4">
-        {/* 趋势（左，67%） */}
-        <div className="col-12 col-md-8">
+        <div className="col-12">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0 fw-semibold">TapPC热玩游戏榜在线人数趋势 — 最近24小时</div>
             <div className="card-body">
@@ -417,24 +420,54 @@ export default function TapTapReport() {
             </div>
           </div>
         </div>
-        {/* 分布图（右，33%） */}
-        <div className="col-12 col-md-4">
+      </div>
+
+      {/* 游戏数占比 + TopN游戏占比（并排，30% / 70%） */}
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        {/* 游戏数占比（左，30%） */}
+        <div style={{ flex: '0 0 30%', minWidth: 240 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">最新统计窗口在线人数占比图 — {newestDateQuery.data || ''}</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">游戏数占比</div>
+              <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+            </div>
             <div className="card-body d-flex flex-column align-items-center justify-content-center">
               <PieChart
                 series={onlinePlayersDistributionQuery.data?.series || []}
                 labels={onlinePlayersDistributionQuery.data?.labels || []}
+                colors={onlinePlayersDistributionQuery.data?.colors || []}
                 loading={onlinePlayersDistributionQuery.isLoading}
                 error={onlinePlayersDistributionQuery.error?.message}
-                height={350}
+                height={450}
                 donut
                 totalLabel="总游戏数"
-                showLegend={false}
                 toolbar={false}
                 dataLabelsOffset={45}
                 minAngleToShowLabel={0}
               />
+            </div>
+          </div>
+        </div>
+        {/* TopN游戏占比（右，70%） */}
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">TopN游戏占比</div>
+              <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+            </div>
+            <div className="card-body">
+              <MixedChart
+                series={topNProportionQuery.data?.series || []}
+                loading={topNProportionQuery.isLoading}
+                error={topNProportionQuery.error?.message}
+                height={450}
+                toolbar={false}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
+                xaxisOverrides={topNProportionQuery.data?.categories ? { type: 'category', categories: topNProportionQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisLeft={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                yaxisRight={{ title: { text: '占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
             </div>
           </div>
         </div>
