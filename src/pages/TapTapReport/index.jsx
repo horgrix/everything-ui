@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
+import TreemapChart from '../../components/charts/TreemapChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 import {
   buildAggregateSql,
@@ -13,7 +14,9 @@ import {
   buildTop25DetailSql,
   buildGameNameSql,
   buildOnlinePlayersTrendSql,
-  buildOnlinePlayersTop25Sql,
+  buildOnlinePlayersDistributionSql,
+  buildOnlinePlayersTopNTrendSql,
+  buildOnlinePlayersTreemapSql,
   buildNewestDateSql,
 } from './sql';
 import {
@@ -26,7 +29,9 @@ import {
   transformTop25Detail,
   transformGameNameMap,
   transformOnlinePlayersTrend,
-  transformOnlinePlayersTop25,
+  transformOnlinePlayersDistribution,
+  transformOnlinePlayersTopNTrend,
+  transformOnlinePlayersTreemap,
   transformNewestDate,
 } from './transforms';
 import { useSqlQuery } from './queries';
@@ -64,6 +69,13 @@ function formatNowWindow(granularity) {
   return `${y}-${m}-${d}`;
 }
 
+/** 数据图表选择 */
+const CHART_GROUPS = [
+  { key: 'download', label: 'TapTap下载统计' },
+  { key: 'online', label: 'TapPC在线人数统计' },
+  { key: 'ad', label: 'TapPC广告统计' },
+];
+
 /** 月趋势拆分图（平台/AI/TapMaker）配置 */
 const MONTHLY_BREAKDOWN_CHARTS = [
   { key: 'platform', title: '热门游戏TopN下载月趋势(平台) — 最近12个月' },
@@ -76,6 +88,16 @@ const DISTRIBUTION_CHARTS = [
   { key: 'platform', title: '追踪的游戏分布(平台)' },
   { key: 'ai', title: '追踪的游戏分布(AI)' },
   { key: 'tapmaker', title: '追踪的游戏分布(TapMaker)' },
+];
+
+/** TapPC在线人数 Treemap 颜色区间 */
+const ONLINE_PLAYERS_COLOR_RANGES = [
+  { from: 0, to: 100, color: '#7F94B0' },
+  { from: 100.001, to: 500, color: '#421243' },
+  { from: 500.001, to: 1000, color: '#1E5D8C' },
+  { from: 1000.001, to: 5000, color: '#F7B844' },
+  { from: 5000.001, to: 10000, color: '#3B93A5' },
+  { from: 10000.001, to: 999999999, color: '#D43F97' },
 ];
 
 /** 下载Top25明细拆分表配置 */
@@ -95,14 +117,6 @@ const TOP25_DETAIL_COLUMNS = (gameNameMap) => [
   { header: '时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
 ];
 
-/** TapPC在线人数Top25表格列 */
-const ONLINE_PLAYERS_COLUMNS = (gameNameMap) => [
-  { header: '游戏ID', render: (r) => <span className="text-muted small">{r.appId}</span> },
-  { header: '游戏名称', render: (r) => <span className="fw-semibold">{gameNameMap?.[String(r.appId)] || '-'}</span> },
-  { header: '目前在线人数', align: 'end', render: (r) => <span className="fw-semibold">{formatNumber(r.onlinePlayers)}</span> },
-  { header: '最近统计时间', render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
-];
-
 /** 下载Top25明细查询 hook（按窗口 + 过滤条件） */
 function useTop25DetailQuery(key, table, selectedTable, selectedWindow) {
   return useSqlQuery(
@@ -118,6 +132,7 @@ export default function TapTapReport() {
   const [days, setDays] = useState(1);
   const [selectedTable, setSelectedTable] = useState('dws_taptap_download_hourly');
   const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
+  const [chartGroup, setChartGroup] = useState('download');
   const validAppId = /^\d+$/.test(appId);
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate);
@@ -129,7 +144,9 @@ export default function TapTapReport() {
   const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap);
   const onlinePlayersTrendQuery = useSqlQuery('taptap-online-players-trend', buildOnlinePlayersTrendSql, [], transformOnlinePlayersTrend);
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
-  const onlinePlayersTop25Query = useSqlQuery('taptap-online-players-top25', () => buildOnlinePlayersTop25Sql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersTop25, { enabled: !!newestDateQuery.data });
+  const onlinePlayersDistributionQuery = useSqlQuery('taptap-online-players-distribution', () => buildOnlinePlayersDistributionSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersDistribution, { enabled: !!newestDateQuery.data });
+  const onlinePlayersTopNTrendQuery = useSqlQuery('taptap-online-players-topn-trend', buildOnlinePlayersTopNTrendSql, [], transformOnlinePlayersTopNTrend);
+  const onlinePlayersTreemapQuery = useSqlQuery('taptap-online-players-treemap', () => buildOnlinePlayersTreemapSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersTreemap, { enabled: !!newestDateQuery.data });
 
   const top25DetailQueries = {
     app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
@@ -155,6 +172,28 @@ export default function TapTapReport() {
         TapTap 报表
       </h2>
 
+      {/* 数据图表选择 */}
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-header bg-white border-0 fw-semibold">数据图表选择</div>
+        <div className="card-body">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {CHART_GROUPS.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                className={`btn btn-sm ${chartGroup === g.key ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => setChartGroup(g.key)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* TapTap下载统计 */}
+      {chartGroup === 'download' && (
+        <>
       {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 近24小时（增量）</div>
@@ -173,35 +212,6 @@ export default function TapTapReport() {
                 formatter: (v) => formatCompactNumber(v),
               },
             }} />
-        </div>
-      </div>
-
-      {/* TapPC热门游戏在线人数趋势 + Top25（并排） */}
-      <div className="row g-3 mb-4">
-        {/* 趋势（左，67%） */}
-        <div className="col-12 col-md-8">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">TapPC热门游戏在线人数趋势 — 最近24小时</div>
-            <div className="card-body">
-              <LineChart
-                series={onlinePlayersTrendQuery.data?.series || []}
-                loading={onlinePlayersTrendQuery.isLoading}
-                error={onlinePlayersTrendQuery.error?.message}
-                height={350}
-                strokeWidth={[4, 2, 2, 2, 2, 2]}
-                strokeDashArray={[0, 5, 5, 5, 5, 5]}
-                shared
-                xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { type: 'category', categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
-            </div>
-          </div>
-        </div>
-        {/* Top25（右，33%） */}
-        <div className="col-12 col-md-4">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">TapPC热门游戏在线人数Top25</div>
-            <DataTable rows={onlinePlayersTop25Query.data?.rows || []} columns={ONLINE_PLAYERS_COLUMNS(gameNameQuery.data)} />
-          </div>
         </div>
       </div>
 
@@ -381,6 +391,98 @@ export default function TapTapReport() {
           )}
         </div>
       </div>
+        </>
+      )}
+
+      {/* TapPC在线人数统计 */}
+      {chartGroup === 'online' && (
+        <>
+      {/* TapPC热门游戏在线人数趋势 + Top25（并排） */}
+      <div className="row g-3 mb-4">
+        {/* 趋势（左，67%） */}
+        <div className="col-12 col-md-8">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">TapPC热玩游戏榜在线人数趋势 — 最近24小时</div>
+            <div className="card-body">
+              <LineChart
+                series={onlinePlayersTrendQuery.data?.series || []}
+                loading={onlinePlayersTrendQuery.isLoading}
+                error={onlinePlayersTrendQuery.error?.message}
+                height={350}
+                strokeWidth={[4, 2, 2, 2, 2, 2]}
+                strokeDashArray={[0, 5, 5, 5, 5, 5]}
+                shared
+                xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { type: 'category', categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+            </div>
+          </div>
+        </div>
+        {/* 分布图（右，33%） */}
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">最新统计窗口在线人数占比图 — {newestDateQuery.data || ''}</div>
+            <div className="card-body d-flex flex-column align-items-center justify-content-center">
+              <PieChart
+                series={onlinePlayersDistributionQuery.data?.series || []}
+                labels={onlinePlayersDistributionQuery.data?.labels || []}
+                loading={onlinePlayersDistributionQuery.isLoading}
+                error={onlinePlayersDistributionQuery.error?.message}
+                height={350}
+                donut
+                totalLabel="总游戏数"
+                showLegend={false}
+                toolbar={false}
+                dataLabelsOffset={45}
+                minAngleToShowLabel={0}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TapPC游戏在线人数分布图 */}
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-header bg-white border-0 fw-semibold">TapPC游戏在线人数分布图 — {newestDateQuery.data || ''}</div>
+        <div className="card-body">
+          <TreemapChart
+            series={onlinePlayersTreemapQuery.data?.series || []}
+            loading={onlinePlayersTreemapQuery.isLoading}
+            error={onlinePlayersTreemapQuery.error?.message}
+            height={750}
+            colorRanges={ONLINE_PLAYERS_COLOR_RANGES}
+          />
+        </div>
+      </div>
+
+      {/* TapPC在线人数TopN趋势图 */}
+      <div className="row g-3 mb-4">
+        {onlinePlayersTopNTrendQuery.data?.map((card) => (
+          <div className="col-12 col-md-3" key={card.appId}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-header bg-white border-0 fw-semibold text-truncate">
+                {card.appName || '未知'}({card.appId})
+              </div>
+              <div className="card-body">
+                <LineChart
+                  series={card.series || []}
+                  height={220}
+                  xaxisOverrides={{ type: 'category', categories: card.categories, labels: { rotate: -90, rotateAlways: true, offsetY: 10, style: { fontSize: '8px' }, formatter: (value) => String(value).slice(-8) } }}
+                  yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+        </>
+      )}
+
+      {/* TapPC广告统计 */}
+      {chartGroup === 'ad' && (
+        <div className="text-center text-muted py-5">
+          <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+          暂无数据
+        </div>
+      )}
     </div>
   );
 }

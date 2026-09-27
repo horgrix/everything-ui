@@ -19,17 +19,26 @@ export default function PieChart({
   totalLabel = '',
   /** 显式总数（覆盖自动求和），如总游戏数 */
   totalValue = null,
+  /** 图例位置 */
+  legendPosition = 'bottom',
+  /** 数据标签偏移（正值向外，标签显示在圈外） */
+  dataLabelsOffset = 0,
+  /** 是否显示工具栏 */
+  toolbar = true,
+  /** 显示标签的最小扇区角度（0 表示全显示） */
+  minAngleToShowLabel = 10,
 }) {
   const type = donut ? 'donut' : 'pie';
 
   const options = {
     chart: {
       type,
+      toolbar: { show: toolbar },
     },
     labels,
     legend: {
       show: showLegend,
-      position: 'bottom',
+      position: legendPosition,
     },
     plotOptions: {
       pie: {
@@ -53,6 +62,8 @@ export default function PieChart({
     },
     dataLabels: {
       enabled: true,
+      offset: dataLabelsOffset,
+      minAngleToShowLabel,
       formatter: (val, opts) => {
         return opts.w.config.labels[opts.seriesIndex] + ': ' + val.toFixed(1) + '%';
       },

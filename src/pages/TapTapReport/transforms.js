@@ -145,15 +145,18 @@ export function transformOnlinePlayersTrend(rows) {
   };
 }
 
-/** TapPC热门游戏在线人数Top25 */
-export function transformOnlinePlayersTop25(rows) {
-  if (!rows || !rows.length) return { rows: [] };
+/** TapPC在线人数分布（按人数区间） */
+export function transformOnlinePlayersDistribution(rows) {
+  if (!rows || !rows.length) return { series: [], labels: [] };
+  const BUCKET_ORDER = ['100及以下', '100-500', '500-1000', '1000-5000', '5000-10000', '10000以上'];
+  const map = {};
+  rows.forEach((r) => {
+    map[r.player_bucket] = Number(r.cnt || 0);
+  });
+  const labels = BUCKET_ORDER.filter((b) => map[b] != null);
   return {
-    rows: rows.map((r) => ({
-      appId: r.app_id,
-      onlinePlayers: r.online_players != null ? Number(r.online_players) : null,
-      crawledAt: r.crawled_at,
-    })),
+    series: labels.map((b) => map[b]),
+    labels,
   };
 }
 
@@ -161,4 +164,40 @@ export function transformOnlinePlayersTop25(rows) {
 export function transformNewestDate(rows) {
   if (!rows || !rows.length) return null;
   return rows[0].newest_datestr;
+}
+
+/** TapPC在线人数TopN趋势（按 app_id 分组，按最高在线人数降序） */
+export function transformOnlinePlayersTopNTrend(rows) {
+  if (!rows || !rows.length) return [];
+  const groups = {};
+  rows.forEach((r) => {
+    const id = String(r.app_id);
+    if (!groups[id]) {
+      groups[id] = { appId: r.app_id, appName: r.app_name || null, rows: [] };
+    }
+    groups[id].rows.push(r);
+  });
+  const cards = Object.values(groups).map((g) => {
+    const sorted = [...g.rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+    const data = sorted.map((r) => Number(r.online_players || 0));
+    return {
+      appId: g.appId,
+      appName: g.appName,
+      maxPlayers: data.length ? Math.max(...data) : 0,
+      categories: sorted.map((r) => r.crawled_at),
+      series: [{ name: '在线人数', data }],
+    };
+  });
+  cards.sort((a, b) => b.maxPlayers - a.maxPlayers);
+  return cards;
+}
+
+/** TapPC游戏在线人数分布（Treemap，x=游戏名 y=在线人数） */
+export function transformOnlinePlayersTreemap(rows) {
+  if (!rows || !rows.length) return { series: [] };
+  const data = rows.map((r) => ({
+    x: r.app_name != null ? String(r.app_name) : '未知',
+    y: Number(r.online_players || 0),
+  }));
+  return { series: [{ name: '在线人数', data }] };
 }

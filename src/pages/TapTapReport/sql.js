@@ -230,17 +230,22 @@ export function buildOnlinePlayersTrendSql() {
   `;
 }
 
-/** 构建TapPC在线人数Top25 SQL（指定时间点） */
-export function buildOnlinePlayersTop25Sql(dateStr) {
+/** 构建TapPC在线人数分布 SQL（指定时间点，按人数区间分桶） */
+export function buildOnlinePlayersDistributionSql(dateStr) {
   return `
     SELECT
-      crawled_at,
-      app_id,
-      online_players
+      CASE
+        WHEN online_players <= 100 THEN '100及以下'
+        WHEN online_players > 100 AND online_players <= 500 THEN '100-500'
+        WHEN online_players > 500 AND online_players <= 1000 THEN '500-1000'
+        WHEN online_players > 1000 AND online_players <= 5000 THEN '1000-5000'
+        WHEN online_players > 5000 AND online_players <= 10000 THEN '5000-10000'
+        ELSE '10000以上'
+      END AS player_bucket,
+      COUNT(*) AS cnt
     FROM taptap_pc_online_players
     WHERE crawled_at = '${dateStr}'
-    ORDER BY online_players DESC
-    LIMIT 25
+    GROUP BY player_bucket
   `;
 }
 
@@ -251,5 +256,64 @@ export function buildNewestDateSql() {
     SELECT MAX(crawled_at) AS newest_datestr
     FROM dws_taptap_download_hourly
     WHERE crawled_at >= '${dateStr}'
+  `;
+}
+
+/** 构建TapPC在线人数TopN趋势 SQL（最近24小时，Top20 app 的在线人数时序） */
+export function buildOnlinePlayersTopNTrendSql() {
+  const dateStr = recentHoursWhere(24);
+  return `
+    SELECT
+      a.app_id,
+      b.app_name,
+      a.crawled_at,
+      a.online_players
+    FROM (
+      SELECT *
+      FROM taptap_pc_online_players
+      WHERE crawled_at >= '${dateStr}'
+        AND app_id IN (
+          SELECT app_id
+          FROM taptap_pc_online_players
+          WHERE crawled_at >= '${dateStr}'
+          GROUP BY app_id
+          ORDER BY MAX(online_players) DESC
+          LIMIT 20
+        )
+    ) a
+    LEFT JOIN (
+      SELECT *
+      FROM taptap_pc_played_ids_daily
+      WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+    ) b
+      ON a.app_id = b.app_id
+    ORDER BY a.app_id, a.crawled_at
+  `;
+}
+
+/** 构建TapPC游戏在线人数分布 SQL（最新窗口，Treemap，<100 合并为「在线人数<100」） */
+export function buildOnlinePlayersTreemapSql(dateStr) {
+  return `
+    SELECT
+      CASE WHEN a.app_id = 0 THEN '在线人数<100' ELSE b.app_name END AS app_name,
+      a.online_players AS online_players
+    FROM (
+      SELECT
+        app_id,
+        SUM(online_players) AS online_players
+      FROM (
+        SELECT
+          CASE WHEN online_players >= 100 THEN app_id ELSE 0 END AS app_id,
+          online_players
+        FROM taptap_pc_online_players
+        WHERE crawled_at = '${dateStr}'
+      ) t
+      GROUP BY app_id
+    ) a
+    LEFT JOIN (
+      SELECT * FROM taptap_pc_played_ids_daily
+      WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+    ) b ON a.app_id = b.app_id
+    ORDER BY (a.app_id = 0), a.online_players DESC
   `;
 }
