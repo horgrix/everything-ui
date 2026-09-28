@@ -15,6 +15,7 @@ import {
   buildTop25DetailSql,
   buildGameNameSql,
   buildOnlinePlayersTrendSql,
+  buildOnlinePlayersStatsSql,
   buildOnlinePlayersDistributionSql,
   buildOnlinePlayersTopNTrendSql,
   buildOnlinePlayersTreemapSql,
@@ -31,6 +32,7 @@ import {
   transformTop25Detail,
   transformGameNameMap,
   transformOnlinePlayersTrend,
+  transformOnlinePlayersStats,
   transformOnlinePlayersDistribution,
   transformOnlinePlayersTopNTrend,
   transformOnlinePlayersTreemap,
@@ -146,6 +148,7 @@ export default function TapTapReport() {
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow);
   const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap);
   const onlinePlayersTrendQuery = useSqlQuery('taptap-online-players-trend', buildOnlinePlayersTrendSql, [], transformOnlinePlayersTrend);
+  const onlinePlayersStatsQuery = useSqlQuery('taptap-online-players-stats', buildOnlinePlayersStatsSql, [], transformOnlinePlayersStats);
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
   const onlinePlayersDistributionQuery = useSqlQuery('taptap-online-players-distribution', () => buildOnlinePlayersDistributionSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersDistribution, { enabled: !!newestDateQuery.data });
   const onlinePlayersTopNTrendQuery = useSqlQuery('taptap-online-players-topn-trend', buildOnlinePlayersTopNTrendSql, [], transformOnlinePlayersTopNTrend);
@@ -405,7 +408,10 @@ export default function TapTapReport() {
       <div className="row g-3 mb-4">
         <div className="col-12">
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">TapPC热玩游戏榜在线人数趋势 — 最近24小时</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">TapPC热玩游戏榜在线人数趋势</div>
+              <div className="text-muted small">历史统计区间为 [{onlinePlayersStatsQuery.data?.startCrawledAt ?? ''} - {onlinePlayersStatsQuery.data?.endCrawledAt ?? ''}]</div>
+            </div>
             <div className="card-body">
               <LineChart
                 series={onlinePlayersTrendQuery.data?.series || []}
@@ -416,7 +422,12 @@ export default function TapTapReport() {
                 strokeDashArray={[0, 5, 5, 5, 5, 5]}
                 shared
                 xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { type: 'category', categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
+                yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                yaxisAnnotations={onlinePlayersStatsQuery.data ? [
+                  { y: onlinePlayersStatsQuery.data.maxOnlinePlayers, color: '#421243', label: `历史峰值最高值 (${formatNumber(onlinePlayersStatsQuery.data.maxOnlinePlayers)})` },
+                  { y: onlinePlayersStatsQuery.data.minOnlinePlayers, color: '#C0ADDB', label: `历史峰值最低值 (${formatNumber(onlinePlayersStatsQuery.data.minOnlinePlayers)})` },
+                  { y: onlinePlayersStatsQuery.data.avgOnlinePlayers, color: '#7F94B0', label: `历史峰值均值 (${formatNumber(onlinePlayersStatsQuery.data.avgOnlinePlayers)})` },
+                ] : []} />
             </div>
           </div>
         </div>
@@ -475,7 +486,10 @@ export default function TapTapReport() {
 
       {/* TapPC游戏在线人数分布图 */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">TapPC游戏在线人数分布图 — {newestDateQuery.data || ''}</div>
+        <div className="card-header bg-white border-0">
+          <div className="fw-semibold">TapPC游戏在线人数分布图</div>
+          <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+        </div>
         <div className="card-body">
           <TreemapChart
             series={onlinePlayersTreemapQuery.data?.series || []}

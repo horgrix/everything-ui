@@ -145,6 +145,19 @@ export function transformOnlinePlayersTrend(rows) {
   };
 }
 
+/** TapPC热玩游戏榜在线人数历史统计（峰值最高/最低/均值及统计区间） */
+export function transformOnlinePlayersStats(rows) {
+  if (!rows || !rows.length) return null;
+  const r = rows[0];
+  return {
+    startCrawledAt: r.start_crawled_at,
+    endCrawledAt: r.end_crawled_at,
+    maxOnlinePlayers: Number(r.max_online_players || 0),
+    avgOnlinePlayers: Number(r.avg_online_players || 0),
+    minOnlinePlayers: Number(r.min_online_players || 0),
+  };
+}
+
 /** TapPC在线人数分布（按人数区间） */
 export function transformOnlinePlayersDistribution(rows) {
   if (!rows || !rows.length) return { series: [], labels: [], colors: [] };

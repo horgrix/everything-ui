@@ -230,6 +230,20 @@ export function buildOnlinePlayersTrendSql() {
   `;
 }
 
+/** 构建TapPC热玩游戏榜在线人数历史统计 SQL（峰值最高/最低/均值及统计区间） */
+export function buildOnlinePlayersStatsSql() {
+  return `
+    SELECT
+      MIN(crawled_at) AS start_crawled_at,
+      MAX(crawled_at) AS end_crawled_at,
+      MAX(online_players) AS max_online_players,
+      AVG(online_players) AS avg_online_players,
+      MIN(online_players) AS min_online_players
+    FROM dws_tmp_taptap_peak_players_hourly
+    WHERE crawled_at < substr(datetime('now', 'localtime', '-1 day'), 1, 13)
+  `;
+}
+
 /** 构建TapPC在线人数分布 SQL（指定时间点，按人数区间分桶） */
 export function buildOnlinePlayersDistributionSql(dateStr) {
   return `
