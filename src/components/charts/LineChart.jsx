@@ -49,7 +49,7 @@ export default function LineChart({
       annotations: {
         yaxis: yaxisAnnotations.map((a) => ({
           y: a.y, borderColor: a.color || '#e71d36', strokeDashArray: a.dash || 3,
-          label: { text: a.label || '', style: { color: '#333', fontSize: '12px' } },
+          label: { text: a.label || '', position: a.position || 'right', style: { color: '#333', fontSize: '12px' } },
         })),
       },
     } : {}),
