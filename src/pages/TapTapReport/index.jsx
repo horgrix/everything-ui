@@ -400,9 +400,10 @@ export default function TapTapReport() {
       {/* TapPC在线人数统计 */}
       {chartGroup === 'online' && (
         <>
-      {/* TapPC热玩游戏榜在线人数趋势（全宽） */}
-      <div className="row g-3 mb-4">
-        <div className="col-12">
+      {/* TapPC热玩游戏榜在线人数趋势（75%） + TopN游戏占比（25%） */}
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        {/* 趋势（左，75%） */}
+        <div style={{ flex: '0 0 70%', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC热玩游戏榜在线人数趋势</div>
@@ -413,7 +414,7 @@ export default function TapTapReport() {
                 series={onlinePlayersTrendQuery.data?.series || []}
                 loading={onlinePlayersTrendQuery.isLoading}
                 error={onlinePlayersTrendQuery.error?.message}
-                height={350}
+                height={500}
                 strokeWidth={[4, 2, 2, 2, 2, 2]}
                 strokeDashArray={[0, 5, 5, 5, 5, 5]}
                 shared
@@ -427,9 +428,32 @@ export default function TapTapReport() {
             </div>
           </div>
         </div>
+        {/* TopN游戏占比（右，25%） */}
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">TopN游戏占比</div>
+              <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+            </div>
+            <div className="card-body">
+              <MixedChart
+                series={topNProportionQuery.data?.series || []}
+                loading={topNProportionQuery.isLoading}
+                error={topNProportionQuery.error?.message}
+                height={500}
+                toolbar={false}
+                colors={['#4361ee', '#e71d36']}
+                strokeWidths={[0, 2]}
+                tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
+                xaxisOverrides={topNProportionQuery.data?.categories ? { type: 'category', categories: topNProportionQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisLeft={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                yaxisRight={{ title: { text: '占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 游戏数占比 + TopN游戏占比（并排，30% / 70%） */}
+      {/* 游戏数占比（30%） + TapPC游戏在线人数分布图（70%） */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
         {/* 游戏数占比（左，30%） */}
         <div style={{ flex: '0 0 30%', minWidth: 240 }}>
@@ -445,7 +469,7 @@ export default function TapTapReport() {
                 colors={onlinePlayersDistributionQuery.data?.colors || []}
                 loading={onlinePlayersDistributionQuery.isLoading}
                 error={onlinePlayersDistributionQuery.error?.message}
-                height={450}
+                height={500}
                 donut
                 totalLabel="总游戏数"
                 toolbar={false}
@@ -455,58 +479,36 @@ export default function TapTapReport() {
             </div>
           </div>
         </div>
-        {/* TopN游戏占比（右，70%） */}
+        {/* TapPC游戏在线人数分布图（右，70%） */}
         <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
-              <div className="fw-semibold">TopN游戏占比</div>
-              <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+              <div className="fw-semibold">TapPC游戏在线人数分布图</div>
+              <div className="text-muted small">最新统计窗口为 - {onlinePlayersSourceNewestQuery.data || ''}</div>
             </div>
             <div className="card-body">
-              <MixedChart
-                series={topNProportionQuery.data?.series || []}
-                loading={topNProportionQuery.isLoading}
-                error={topNProportionQuery.error?.message}
-                height={450}
-                toolbar={false}
-                colors={['#4361ee', '#e71d36']}
-                strokeWidths={[0, 2]}
-                tooltipY={(v, yi) => (yi === 1 ? v.toFixed(2) + '%' : v.toLocaleString('zh-CN'))}
-                xaxisOverrides={topNProportionQuery.data?.categories ? { type: 'category', categories: topNProportionQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisLeft={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                yaxisRight={{ title: { text: '占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+              <TreemapChart
+                key={onlinePlayersSourceNewestQuery.data}
+                series={[{ name: '在线人数', data: onlinePlayersSourceQuery.data?.data || [] }]}
+                loading={onlinePlayersSourceQuery.isLoading}
+                error={onlinePlayersSourceQuery.error?.message}
+                height={500}
+                colors={onlinePlayersSourceQuery.data?.colors || []}
+                distributed
+                drilldown={{
+                  enabled: true,
+                  breadcrumb: { show: true, position: 'top-left', rootLabel: '在线人数分布' },
+                  series: ONLINE_PLAYERS_BUCKETS.map((b) => ({
+                    id: b.label,
+                    name: b.label,
+                    data: onlinePlayersSourceGamesQuery.data?.[b.label] || [],
+                    colors: [b.color],
+                    plotOptions: { treemap: { distributed: false, enableShades: true, colorScale: { min: 0, max: b.ref } } },
+                  })),
+                }}
+              />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* TapPC游戏在线人数分布图 */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0">
-          <div className="fw-semibold">TapPC游戏在线人数分布图</div>
-          <div className="text-muted small">最新统计窗口为 - {onlinePlayersSourceNewestQuery.data || ''}</div>
-        </div>
-        <div className="card-body">
-          <TreemapChart
-            key={onlinePlayersSourceNewestQuery.data}
-            series={[{ name: '在线人数', data: onlinePlayersSourceQuery.data?.data || [] }]}
-            loading={onlinePlayersSourceQuery.isLoading}
-            error={onlinePlayersSourceQuery.error?.message}
-            height={750}
-            colors={onlinePlayersSourceQuery.data?.colors || []}
-            distributed
-            drilldown={{
-              enabled: true,
-              breadcrumb: { show: true, position: 'top-left', rootLabel: '在线人数分布' },
-              series: ONLINE_PLAYERS_BUCKETS.map((b) => ({
-                id: b.label,
-                name: b.label,
-                data: onlinePlayersSourceGamesQuery.data?.[b.label] || [],
-                colors: [b.color],
-                plotOptions: { treemap: { distributed: false, enableShades: true, colorScale: { min: 0, max: b.ref } } },
-              })),
-            }}
-          />
         </div>
       </div>
 
