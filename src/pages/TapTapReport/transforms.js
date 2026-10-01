@@ -215,14 +215,56 @@ export function transformOnlinePlayersTopNTrend(rows) {
   return cards;
 }
 
-/** TapPC游戏在线人数分布（Treemap，x=游戏名 y=在线人数） */
-export function transformOnlinePlayersTreemap(rows) {
-  if (!rows || !rows.length) return { series: [] };
-  const data = rows.map((r) => ({
-    x: r.app_name != null ? String(r.app_name) : '未知',
-    y: Number(r.online_players || 0),
-  }));
-  return { series: [{ name: '在线人数', data }] };
+/** TapPC在线玩家分布桶定义（顺序即展示顺序，ref 为 enableShades 的参考值） */
+export const ONLINE_PLAYERS_BUCKETS = [
+  { label: '在线人数[1-99]', color: '#C0ADDB', ref: 50 },
+  { label: '在线人数[=100]', color: '#7F94B0', ref: 100 },
+  { label: '在线人数[100-500]', color: '#421243', ref: 300 },
+  { label: '在线人数[500-1000]', color: '#1E5D8C', ref: 750 },
+  { label: '在线人数[1000-5000]', color: '#F7B844', ref: 3000 },
+  { label: '在线人数[5000-10000]', color: '#3B93A5', ref: 7500 },
+  { label: '在线人数[10000+]', color: '#D43F97', ref: 10000 },
+];
+
+/** 按在线人数映射到桶标签（与第一层 SQL 的 CASE 一致） */
+function bucketLabelFor(v) {
+  if (v < 100) return '在线人数[1-99]';
+  if (v === 100) return '在线人数[=100]';
+  if (v <= 500) return '在线人数[100-500]';
+  if (v <= 1000) return '在线人数[500-1000]';
+  if (v <= 5000) return '在线人数[1000-5000]';
+  if (v <= 10000) return '在线人数[5000-10000]';
+  return '在线人数[10000+]';
+}
+
+/** TapPC在线玩家分布第一层（大类，带 drilldown id 和颜色） */
+export function transformOnlinePlayersSource(rows) {
+  if (!rows || !rows.length) return { data: [], colors: [] };
+  const byLabel = {};
+  rows.forEach((r) => { byLabel[r.player_bucket] = Number(r.online_players || 0); });
+  const data = [];
+  const colors = [];
+  ONLINE_PLAYERS_BUCKETS.forEach((b) => {
+    if (byLabel[b.label] != null) {
+      data.push({ x: b.label, y: byLabel[b.label], drilldown: b.label });
+      colors.push(b.color);
+    }
+  });
+  return { data, colors };
+}
+
+/** TapPC在线玩家分布第二层（具体游戏，按桶分组） */
+export function transformOnlinePlayersSourceGames(rows) {
+  const buckets = {};
+  (rows || []).forEach((r) => {
+    const label = bucketLabelFor(Number(r.online_players || 0));
+    if (!buckets[label]) buckets[label] = [];
+    buckets[label].push({
+      x: r.app_name != null ? String(r.app_name) : '未知',
+      y: Number(r.online_players || 0),
+    });
+  });
+  return buckets;
 }
 
 /** TopN游戏占比（按排名分桶，柱状+占比折线混合图，排除 Top100+） */

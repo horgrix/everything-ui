@@ -2,7 +2,7 @@ import ChartWrapper from './ChartWrapper';
 
 /**
  * 矩形树图（Treemap）
- * 适用于：占比分布、层级展示
+ * 适用于：占比分布、层级展示、Drilldown 下钻
  */
 export default function TreemapChart({
   series = [],
@@ -11,14 +11,22 @@ export default function TreemapChart({
   error = null,
   /** 颜色区间 [{ from, to, color }] */
   colorRanges = null,
+  /** 各块独立颜色（配合 distributed 使用） */
+  colors = null,
+  /** 每个数据块按顺序独立取色 */
+  distributed = false,
+  /** ApexCharts Drilldown 下钻配置 */
+  drilldown = null,
 }) {
   const options = {
     chart: {
       type: 'treemap',
     },
+    ...(colors ? { colors } : {}),
     plotOptions: {
       treemap: {
         enableShades: false,
+        distributed,
         ...(colorRanges ? { colorScale: { ranges: colorRanges } } : {}),
       },
     },
@@ -29,6 +37,7 @@ export default function TreemapChart({
         colors: ['#fff'],
       },
     },
+    ...(drilldown ? { drilldown } : {}),
   };
 
   return (

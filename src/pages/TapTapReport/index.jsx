@@ -18,7 +18,9 @@ import {
   buildOnlinePlayersStatsSql,
   buildOnlinePlayersDistributionSql,
   buildOnlinePlayersTopNTrendSql,
-  buildOnlinePlayersTreemapSql,
+  buildOnlinePlayersSourceNewestSql,
+  buildOnlinePlayersSourceSql,
+  buildOnlinePlayersSourceGamesSql,
   buildTopNProportionSql,
   buildNewestDateSql,
 } from './sql';
@@ -35,7 +37,9 @@ import {
   transformOnlinePlayersStats,
   transformOnlinePlayersDistribution,
   transformOnlinePlayersTopNTrend,
-  transformOnlinePlayersTreemap,
+  transformOnlinePlayersSource,
+  transformOnlinePlayersSourceGames,
+  ONLINE_PLAYERS_BUCKETS,
   transformTopNProportion,
   transformNewestDate,
 } from './transforms';
@@ -95,16 +99,6 @@ const DISTRIBUTION_CHARTS = [
   { key: 'tapmaker', title: '追踪的游戏分布(TapMaker)' },
 ];
 
-/** TapPC在线人数 Treemap 颜色区间 */
-const ONLINE_PLAYERS_COLOR_RANGES = [
-  { from: 0, to: 100, color: '#7F94B0' },
-  { from: 100.001, to: 500, color: '#421243' },
-  { from: 500.001, to: 1000, color: '#1E5D8C' },
-  { from: 1000.001, to: 5000, color: '#F7B844' },
-  { from: 5000.001, to: 10000, color: '#3B93A5' },
-  { from: 10000.001, to: 999999999, color: '#D43F97' },
-];
-
 /** 下载Top25明细拆分表配置 */
 const TOP25_DETAIL_TABLES = {
   app: { title: '下载Top25明细(APP)', hourFilter: "refer = 'app'", dayFilter: 'app_download_count > 0', orderBy: 'app_download_count' },
@@ -152,7 +146,9 @@ export default function TapTapReport() {
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
   const onlinePlayersDistributionQuery = useSqlQuery('taptap-online-players-distribution', () => buildOnlinePlayersDistributionSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersDistribution, { enabled: !!newestDateQuery.data });
   const onlinePlayersTopNTrendQuery = useSqlQuery('taptap-online-players-topn-trend', buildOnlinePlayersTopNTrendSql, [], transformOnlinePlayersTopNTrend);
-  const onlinePlayersTreemapQuery = useSqlQuery('taptap-online-players-treemap', () => buildOnlinePlayersTreemapSql(newestDateQuery.data), [newestDateQuery.data], transformOnlinePlayersTreemap, { enabled: !!newestDateQuery.data });
+  const onlinePlayersSourceNewestQuery = useSqlQuery('taptap-online-players-source-newest', buildOnlinePlayersSourceNewestSql, [], transformNewestDate);
+  const onlinePlayersSourceQuery = useSqlQuery('taptap-online-players-source', () => buildOnlinePlayersSourceSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSource, { enabled: !!onlinePlayersSourceNewestQuery.data });
+  const onlinePlayersSourceGamesQuery = useSqlQuery('taptap-online-players-source-games', () => buildOnlinePlayersSourceGamesSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSourceGames, { enabled: !!onlinePlayersSourceNewestQuery.data });
   const topNProportionQuery = useSqlQuery('taptap-topn-proportion', () => buildTopNProportionSql(newestDateQuery.data), [newestDateQuery.data], transformTopNProportion, { enabled: !!newestDateQuery.data });
 
   const top25DetailQueries = {
@@ -488,15 +484,28 @@ export default function TapTapReport() {
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0">
           <div className="fw-semibold">TapPC游戏在线人数分布图</div>
-          <div className="text-muted small">最新统计窗口为 - {newestDateQuery.data || ''}</div>
+          <div className="text-muted small">最新统计窗口为 - {onlinePlayersSourceNewestQuery.data || ''}</div>
         </div>
         <div className="card-body">
           <TreemapChart
-            series={onlinePlayersTreemapQuery.data?.series || []}
-            loading={onlinePlayersTreemapQuery.isLoading}
-            error={onlinePlayersTreemapQuery.error?.message}
+            key={onlinePlayersSourceNewestQuery.data}
+            series={[{ name: '在线人数', data: onlinePlayersSourceQuery.data?.data || [] }]}
+            loading={onlinePlayersSourceQuery.isLoading}
+            error={onlinePlayersSourceQuery.error?.message}
             height={750}
-            colorRanges={ONLINE_PLAYERS_COLOR_RANGES}
+            colors={onlinePlayersSourceQuery.data?.colors || []}
+            distributed
+            drilldown={{
+              enabled: true,
+              breadcrumb: { show: true, position: 'top-left', rootLabel: '在线人数分布' },
+              series: ONLINE_PLAYERS_BUCKETS.map((b) => ({
+                id: b.label,
+                name: b.label,
+                data: onlinePlayersSourceGamesQuery.data?.[b.label] || [],
+                colors: [b.color],
+                plotOptions: { treemap: { distributed: false, enableShades: true, colorScale: { min: 0, max: b.ref } } },
+              })),
+            }}
           />
         </div>
       </div>

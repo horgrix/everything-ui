@@ -306,30 +306,51 @@ export function buildOnlinePlayersTopNTrendSql() {
   `;
 }
 
-/** 构建TapPC游戏在线人数分布 SQL（最新窗口，Treemap，<100 合并为「在线人数<100」） */
-export function buildOnlinePlayersTreemapSql(dateStr) {
+/** 构建TapPC在线玩家来源最新统计窗口 SQL */
+export function buildOnlinePlayersSourceNewestSql() {
+  return `
+    SELECT MAX(crawled_at) AS newest_datestr
+    FROM taptap_pc_online_players
+  `;
+}
+
+/** 构建TapPC在线玩家分布第一层 SQL（按人数分桶的大类） */
+export function buildOnlinePlayersSourceSql(dateStr) {
   return `
     SELECT
-      CASE WHEN a.app_id = 0 THEN '在线人数<100' ELSE b.app_name END AS app_name,
+      CASE
+        WHEN online_players < 100 THEN '在线人数[1-99]'
+        WHEN online_players = 100 THEN '在线人数[=100]'
+        WHEN online_players > 100 AND online_players <= 500 THEN '在线人数[100-500]'
+        WHEN online_players > 500 AND online_players <= 1000 THEN '在线人数[500-1000]'
+        WHEN online_players > 1000 AND online_players <= 5000 THEN '在线人数[1000-5000]'
+        WHEN online_players > 5000 AND online_players <= 10000 THEN '在线人数[5000-10000]'
+        ELSE '在线人数[10000+]'
+      END AS player_bucket,
+      COUNT(*) AS game_cnt,
+      SUM(online_players) AS online_players
+    FROM taptap_pc_online_players
+    WHERE crawled_at = '${dateStr}'
+    GROUP BY player_bucket
+  `;
+}
+
+/** 构建TapPC在线玩家分布第二层 SQL（具体游戏明细） */
+export function buildOnlinePlayersSourceGamesSql(dateStr) {
+  return `
+    SELECT
+      b.app_name AS app_name,
       a.online_players AS online_players
     FROM (
-      SELECT
-        app_id,
-        SUM(online_players) AS online_players
-      FROM (
-        SELECT
-          CASE WHEN online_players >= 100 THEN app_id ELSE 0 END AS app_id,
-          online_players
-        FROM taptap_pc_online_players
-        WHERE crawled_at = '${dateStr}'
-      ) t
-      GROUP BY app_id
+      SELECT app_id, online_players
+      FROM taptap_pc_online_players
+      WHERE crawled_at = '${dateStr}'
     ) a
     LEFT JOIN (
       SELECT * FROM taptap_pc_played_ids_daily
       WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
     ) b ON a.app_id = b.app_id
-    ORDER BY (a.app_id = 0), a.online_players DESC
+    ORDER BY a.online_players DESC
   `;
 }
 
