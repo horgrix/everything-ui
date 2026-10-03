@@ -25,6 +25,8 @@ export default function MixedChart({
   toolbar = true,
   /** 自定义 fill 覆盖 */
   fill = null,
+  /** 自定义 dataLabels 覆盖 */
+  dataLabels = null,
 }) {
   const options = {
     chart: {
@@ -42,6 +44,7 @@ export default function MixedChart({
       },
     },
     fill: fill || { opacity: [1, 0.25, 1] },
+    ...(dataLabels ? { dataLabels } : {}),
     xaxis: {
       ...datetimeAxis,
       ...xaxisOverrides,

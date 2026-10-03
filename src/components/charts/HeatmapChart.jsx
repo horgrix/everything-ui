@@ -16,6 +16,8 @@ export default function HeatmapChart({
   valueFormatter = (val) => val?.toFixed(2) ?? '',
   /** 自定义 xaxis 覆盖 */
   xaxisOverrides = {},
+  /** y 轴是否反转（true：第一个 series 显示在顶部，从上到下自然阅读顺序） */
+  yaxisReversed = false,
 }) {
   const defaultRanges = [{ from: -1, to: 1, color: undefined }];
   const options = {
@@ -51,7 +53,7 @@ export default function HeatmapChart({
       ...xaxisOverrides,
     },
     yaxis: {
-      reversed: false,
+      reversed: yaxisReversed,
     },
     tooltip: {
       y: {

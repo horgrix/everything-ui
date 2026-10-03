@@ -267,6 +267,101 @@ export function transformOnlinePlayersSourceGames(rows) {
   return buckets;
 }
 
+/** TapPC广告每日新发现广告位统计（热力图：行=position，列=crawled_at，值=广告加载率） */
+export function transformAdNewPositionStats(rows) {
+  if (!rows || !rows.length) return { series: [], categories: [] };
+  const categories = [...new Set(rows.map((r) => r.crawled_at))].sort();
+  const positions = [...new Set(rows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
+  const byPos = {};
+  rows.forEach((r) => {
+    const pos = String(r.position);
+    if (!byPos[pos]) byPos[pos] = {};
+    byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
+  });
+  const series = positions.map((pos) => ({
+    name: `位置${pos}`,
+    data: categories.map((c) => ({ x: c, y: byPos[pos][c] ?? null })),
+  }));
+  return { series, categories };
+}
+
+/** TapPC广告投放素材分布第一层（大类tag，带drilldown，按加载率降序） */
+export function transformAdMaterialTags(rows) {
+  if (!rows || !rows.length) return { data: [], tags: [] };
+  const sorted = [...rows].sort((a, b) => Number(b.ad_loading_rate || 0) - Number(a.ad_loading_rate || 0));
+  const tags = [];
+  const data = [];
+  sorted.forEach((r) => {
+    const rate = Number(r.ad_loading_rate || 0);
+    tags.push(r.tag);
+    data.push({ x: r.tag, y: rate, drilldown: r.tag });
+  });
+  return { data, tags };
+}
+
+/** TapPC广告投放素材分布第二层（具体游戏，按tag分组，记录每组最大加载次数） */
+export function transformAdMaterialGames(rows) {
+  const byTag = {};
+  const maxByTag = {};
+  (rows || []).forEach((r) => {
+    const tag = r.tag;
+    if (!byTag[tag]) byTag[tag] = [];
+    const cnt = Number(r.loaded_cnt || 0);
+    byTag[tag].push({
+      x: r.app_name != null ? String(r.app_name) : String(r.app_id),
+      y: cnt,
+    });
+    maxByTag[tag] = Math.max(maxByTag[tag] || 0, cnt);
+  });
+  return { byTag, maxByTag };
+}
+
+/** TapPC广告总曝光/总广告次数 */
+export function transformAdTotalStats(rows) {
+  if (!rows || !rows.length) return null;
+  const r = rows[0];
+  return {
+    totalShowCnt: Number(r.total_show_cnt || 0),
+    totalAdCnt: Number(r.total_ad_cnt || 0),
+  };
+}
+
+/** TapPC广告游戏列表（含各项百分比，百分比保留2位小数） */
+export function transformAdGameList(rows, totalStats) {
+  if (!rows || !rows.length) return { rows: [] };
+  const totalShow = totalStats?.totalShowCnt || 0;
+  const totalAd = totalStats?.totalAdCnt || 0;
+  const toPct = (v) => (v == null ? null : parseFloat(v.toFixed(2)));
+  const list = rows.map((r) => {
+    const showCnt = Number(r.show_cnt || 0);
+    const adCnt = Number(r.ad_cnt || 0);
+    return {
+      appId: r.app_id,
+      appName: r.app_name != null ? String(r.app_name) : null,
+      showCnt,
+      adCnt,
+      adDeliveryRate: showCnt > 0 ? toPct((adCnt / showCnt) * 100) : null,
+      adContributionRate: totalAd > 0 ? toPct((adCnt / totalAd) * 100) : null,
+      adLoadingRate: totalShow > 0 ? toPct((adCnt / totalShow) * 100) : null,
+    };
+  });
+  return { rows: list };
+}
+
+/** TapPC广告每日加载率趋势（柱状=曝光次数，折线=加载率） */
+export function transformAdLoadingRateTrend(rows) {
+  if (!rows || !rows.length) return { series: [], categories: [] };
+  const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+  const categories = sorted.map((r) => r.crawled_at);
+  return {
+    categories,
+    series: [
+      { name: '曝光次数', type: 'column', yAxisIndex: 0, data: sorted.map((r) => Number(r.show_cnt || 0)) },
+      { name: '加载率', type: 'line', yAxisIndex: 1, data: sorted.map((r) => Number(r.ad_loading_rate || 0)) },
+    ],
+  };
+}
+
 /** TopN游戏占比（按排名分桶，柱状+占比折线混合图，排除 Top100+） */
 export function transformTopNProportion(rows) {
   if (!rows || !rows.length) return { categories: [], series: [] };

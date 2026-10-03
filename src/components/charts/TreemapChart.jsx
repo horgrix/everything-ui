@@ -17,6 +17,8 @@ export default function TreemapChart({
   distributed = false,
   /** ApexCharts Drilldown 下钻配置 */
   drilldown = null,
+  /** dataLabel 格式化函数（如百分比展示） */
+  dataLabelsFormatter = null,
 }) {
   const options = {
     chart: {
@@ -36,6 +38,7 @@ export default function TreemapChart({
         fontSize: '12px',
         colors: ['#fff'],
       },
+      ...(dataLabelsFormatter ? { formatter: dataLabelsFormatter } : {}),
     },
     ...(drilldown ? { drilldown } : {}),
   };
