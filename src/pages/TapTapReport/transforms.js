@@ -285,6 +285,31 @@ export function transformAdNewPositionStats(rows) {
   return { series, categories };
 }
 
+/** TapApp首页找游戏广告位统计（按平台拆分：ios/android 各自热力图，共用日期横轴与位置行，方便并排对照） */
+export function transformTapAppAdNewPositionStats(rows) {
+  const empty = { ios: { series: [], categories: [] }, android: { series: [], categories: [] } };
+  if (!rows || !rows.length) return empty;
+  const allCategories = [...new Set(rows.map((r) => r.crawled_at))].sort();
+  const allPositions = [...new Set(rows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
+  const build = (platformRows) => {
+    const byPos = {};
+    platformRows.forEach((r) => {
+      const pos = String(r.position);
+      if (!byPos[pos]) byPos[pos] = {};
+      byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
+    });
+    const series = allPositions.map((pos) => ({
+      name: `位置${pos}`,
+      data: allCategories.map((c) => ({ x: c, y: byPos[pos]?.[c] ?? null })),
+    }));
+    return { series, categories: allCategories };
+  };
+  return {
+    ios: build(rows.filter((r) => r.platform === 'ios')),
+    android: build(rows.filter((r) => r.platform === 'android')),
+  };
+}
+
 /** TapPC广告投放素材分布第一层（大类tag，带drilldown，按加载率降序） */
 export function transformAdMaterialTags(rows) {
   if (!rows || !rows.length) return { data: [], tags: [] };
@@ -338,14 +363,35 @@ export function transformAdGameList(rows, totalStats) {
     return {
       appId: r.app_id,
       appName: r.app_name != null ? String(r.app_name) : null,
+      tag1: r.tag_1 != null ? String(r.tag_1) : null,
+      tag2: r.tag_2 != null ? String(r.tag_2) : null,
+      tag3: r.tag_3 != null ? String(r.tag_3) : null,
       showCnt,
+      iosShowCnt: r.ios_show_cnt != null ? Number(r.ios_show_cnt) : null,
+      androidShowCnt: r.android_show_cnt != null ? Number(r.android_show_cnt) : null,
       adCnt,
+      iosAdCnt: r.ios_ad_cnt != null ? Number(r.ios_ad_cnt) : null,
+      androidAdCnt: r.android_ad_cnt != null ? Number(r.android_ad_cnt) : null,
       adDeliveryRate: showCnt > 0 ? toPct((adCnt / showCnt) * 100) : null,
       adContributionRate: totalAd > 0 ? toPct((adCnt / totalAd) * 100) : null,
       adLoadingRate: totalShow > 0 ? toPct((adCnt / totalShow) * 100) : null,
     };
   });
   return { rows: list };
+}
+
+/** TapApp首页找游戏广告每日投放趋势（app_id -> 每日投放次数，共用日期横轴） */
+export function transformTapAppAdGameDailyTrend(rows) {
+  if (!rows || !rows.length) return { byApp: {}, days: [] };
+  const byApp = {};
+  const daySet = new Set();
+  rows.forEach((r) => {
+    const appId = r.app_id;
+    if (!byApp[appId]) byApp[appId] = {};
+    byApp[appId][r.day] = Number(r.ad_cnt || 0);
+    daySet.add(r.day);
+  });
+  return { byApp, days: [...daySet].sort() };
 }
 
 /** TapPC广告每日加载率趋势（柱状=曝光次数，折线=加载率） */
@@ -359,6 +405,61 @@ export function transformAdLoadingRateTrend(rows) {
       { name: '曝光次数', type: 'column', yAxisIndex: 0, data: sorted.map((r) => Number(r.show_cnt || 0)) },
       { name: '加载率', type: 'line', yAxisIndex: 1, data: sorted.map((r) => Number(r.ad_loading_rate || 0)) },
     ],
+  };
+}
+
+/** TapApp搜索页广告位统计（热力图：行=position，列=crawled_at，值=广告加载率） */
+export function transformTapAppSearchPositionStats(rows) {
+  if (!rows || !rows.length) return { series: [], categories: [] };
+  const categories = [...new Set(rows.map((r) => r.crawled_at))].sort();
+  const positions = [...new Set(rows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
+  const byPos = {};
+  rows.forEach((r) => {
+    const pos = String(r.position);
+    if (!byPos[pos]) byPos[pos] = {};
+    byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
+  });
+  const series = positions.map((pos) => ({
+    name: `位置${pos}`,
+    data: categories.map((c) => ({ x: c, y: byPos[pos][c] ?? null })),
+  }));
+  return { series, categories };
+}
+
+/** TapApp搜索页广告每日加载率趋势（柱状=曝光次数，折线=加载率） */
+export function transformTapAppSearchLoadingRateTrend(rows) {
+  if (!rows || !rows.length) return { series: [], categories: [] };
+  const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+  const categories = sorted.map((r) => r.crawled_at);
+  return {
+    categories,
+    series: [
+      { name: '曝光次数', type: 'column', yAxisIndex: 0, data: sorted.map((r) => Number(r.show_cnt || 0)) },
+      { name: '加载率', type: 'line', yAxisIndex: 1, data: sorted.map((r) => Number(r.ad_loading_rate || 0)) },
+    ],
+  };
+}
+
+/** TapApp搜索页关键词广告统计（柱状图：关键词 -> 广告触发次数，按广告次数降序） */
+export function transformTapAppSearchKeywordStats(rows) {
+  if (!rows || !rows.length) return { categories: [], series: [] };
+  const sorted = [...rows].sort((a, b) => Number(b.ad_cnt || 0) - Number(a.ad_cnt || 0));
+  return {
+    categories: sorted.map((r) => r.keyword),
+    series: [
+      { name: '广告次数', color: '#4361ee', data: sorted.map((r) => Number(r.ad_cnt || 0)) },
+    ],
+  };
+}
+
+/** TapApp搜索页广告游戏列表（app_id -> 广告次数） */
+export function transformTapAppSearchGameList(rows) {
+  if (!rows || !rows.length) return { rows: [] };
+  return {
+    rows: rows.map((r) => ({
+      appId: r.app_id,
+      adCnt: Number(r.ad_cnt || 0),
+    })),
   };
 }
 
