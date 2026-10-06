@@ -28,6 +28,7 @@ import {
   buildAdMaterialTagsSql,
   buildAdMaterialGamesSql,
   buildAdGameListSql,
+  buildAdGameDailyTrendSql,
   buildAdTotalStatsSql,
   buildAdLoadingRateTrendSql,
   buildTapAppAdNewPositionStatsSql,
@@ -129,9 +130,6 @@ const AD_MATERIAL_COLORS = [
   '#6B7C8C', '#5F6F5E', '#B9A2AE', '#D8CFC0', '#6E6E6E',
 ];
 
-/** 百分比格式化（保留2位小数） */
-const pct2 = (v) => (v == null ? '-' : `${v.toFixed(2)}%`);
-
 /** 游戏名称截断：最多10个字，超出用...代替 */
 const truncateName = (name) => {
   const s = name || '';
@@ -198,23 +196,36 @@ const PlatformBar = ({ ios = 0, android = 0 }) => {
   );
 };
 
-/** 每日新发现游戏列表列配置 */
-const AD_GAME_LIST_COLUMNS = [
-  { header: 'APPID', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
-  { header: '游戏名称', width: 170, accessor: (r) => r.appName, render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span> },
-  { header: '曝光次数', align: 'end', accessor: (r) => r.showCnt, render: (r) => <span>{formatNumber(r.showCnt)}</span> },
-  { header: '广告投放次数', align: 'end', accessor: (r) => r.adCnt, render: (r) => <span>{formatNumber(r.adCnt)}</span> },
-  { header: '广告投放比', align: 'end', accessor: (r) => r.adDeliveryRate, render: (r) => <span>{pct2(r.adDeliveryRate)}</span> },
-  { header: '广告贡献比例', align: 'end', accessor: (r) => r.adContributionRate, render: (r) => <span>{pct2(r.adContributionRate)}</span> },
-  { header: '广告加载率', align: 'end', accessor: (r) => r.adLoadingRate, render: (r) => <span>{pct2(r.adLoadingRate)}</span> },
-];
-
-/** TapApp首页找游戏标签列配色（取自 AD_MATERIAL_COLORS 色库） */
+/** TapApp广告素材标签列配色（取自 AD_MATERIAL_COLORS 色库） */
 const APP_AD_TAG_COLORS = {
   tag1: '#7A8B99',
   tag2: '#7D8F7B',
   tag3: '#B08B8B',
 };
+
+/** 每日新发现游戏列表列配置 */
+const AD_GAME_LIST_COLUMNS = [
+  { header: 'APPID', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+  { header: '游戏名称', width: 170, accessor: (r) => r.appName, render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span> },
+  {
+    header: '标签',
+    accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
+    render: (r) => (
+      <div className="d-flex flex-wrap gap-1">
+        {r.tag1 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag1, color: '#fff' }}>{r.tag1}</span>}
+        {r.tag2 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag2, color: '#fff' }}>{r.tag2}</span>}
+        {r.tag3 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag3, color: '#fff' }}>{r.tag3}</span>}
+        {!r.tag1 && !r.tag2 && !r.tag3 && <span className="text-muted">-</span>}
+      </div>
+    ),
+  },
+  { header: '曝光次数', align: 'end', accessor: (r) => r.showCnt, render: (r) => <span>{formatNumber(r.showCnt)}</span> },
+  { header: '广告投放次数', align: 'end', accessor: (r) => r.adCnt, render: (r) => <span>{formatNumber(r.adCnt)}</span> },
+  { header: '投放趋势', align: 'center', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
+  { header: '广告投放比', align: 'center', width: 140, accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
+  { header: '广告贡献比例', align: 'center', width: 140, accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
+  { header: '广告加载率', align: 'center', width: 140, accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
+];
 
 /** TapApp首页找游戏曝光游戏明细列表列配置（在游戏名称后加标签列，tag1/tag2/tag3 分级突出显示） */
 const TAPAPP_AD_GAME_LIST_COLUMNS = [
@@ -342,6 +353,14 @@ export default function TapTapReport() {
   const adMaterialGamesQuery = useSqlQuery('taptap-ad-material-games', buildAdMaterialGamesSql, [], transformAdMaterialGames);
   const adTotalStatsQuery = useSqlQuery('taptap-ad-total-stats', buildAdTotalStatsSql, [], transformAdTotalStats);
   const adGameListQuery = useSqlQuery('taptap-ad-game-list', buildAdGameListSql, [], (rows) => transformAdGameList(rows, adTotalStatsQuery.data), { enabled: !!adTotalStatsQuery.data });
+  const adGameDailyTrendQuery = useSqlQuery('taptap-ad-game-daily-trend', buildAdGameDailyTrendSql, [], transformTapAppAdGameDailyTrend);
+  const adGameListRows = useMemo(() => {
+    const list = adGameListQuery.data?.rows || [];
+    const trendData = adGameDailyTrendQuery.data;
+    const days = trendData?.days || [];
+    const byApp = trendData?.byApp || {};
+    return list.map((r) => ({ ...r, trend: days.map((d) => byApp[r.appId]?.[d] ?? 0), trendLabels: days }));
+  }, [adGameListQuery.data, adGameDailyTrendQuery.data]);
   const adLoadingRateTrendQuery = useSqlQuery('taptap-ad-loading-rate-trend', buildAdLoadingRateTrendSql, [], transformAdLoadingRateTrend);
   const tapAppAdNewPositionStatsQuery = useSqlQuery('taptap-app-ad-new-position-stats', buildTapAppAdNewPositionStatsSql, [], transformTapAppAdNewPositionStats);
   const tapAppAdMaterialTagsQuery = useSqlQuery('taptap-app-ad-material-tags', buildTapAppAdMaterialTagsSql, [], transformAdMaterialTags);
@@ -829,14 +848,6 @@ export default function TapTapReport() {
           </div>
         </div>
           </div>
-        </div>
-        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-          <div className="card border-0 shadow-sm h-100">
-          <div className="card-header bg-white border-0 fw-semibold">【每日新发现】曝光游戏明细列表 — 最近7天</div>
-          <DataTable rows={adGameListQuery.data?.rows || []} columns={AD_GAME_LIST_COLUMNS} pageSize={10} />
-          </div>
-          </div>
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0 fw-semibold">【每日新发现】每日广告加载率 — 最近7天</div>
@@ -862,6 +873,14 @@ export default function TapTapReport() {
                 yaxisRight={{ title: { text: '加载率' }, min: 0, max: 0.3, labels: { formatter: (v) => `${(v * 100).toFixed(0)}%` } }}
               />
             </div>
+          </div>
+          </div>
+        </div>
+        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+          <div className="card-header bg-white border-0 fw-semibold">【每日新发现】曝光游戏明细列表 — 最近7天</div>
+          <DataTable rows={adGameListRows} columns={AD_GAME_LIST_COLUMNS} pageSize={10} />
           </div>
           </div>
         </div>

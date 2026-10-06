@@ -492,6 +492,9 @@ export function buildAdGameListSql() {
     SELECT
       app_id,
       MAX(app_name) AS app_name,
+      MAX(tag_1) AS tag_1,
+      MAX(tag_2) AS tag_2,
+      MAX(tag_3) AS tag_3,
       COUNT(*) AS show_cnt,
       SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
     FROM taptap_ad_loading_hourly
@@ -499,6 +502,22 @@ export function buildAdGameListSql() {
       AND ad_type = 'tappc_2671'
     GROUP BY app_id
     ORDER BY ad_cnt DESC, show_cnt DESC
+  `;
+}
+
+/** 构建TapPC广告每日投放趋势 SQL（最近7天，按app_id+日聚合广告投放次数） */
+export function buildAdGameDailyTrendSql() {
+  const dateStr = recentDaysWhere(7);
+  return `
+    SELECT
+      app_id,
+      substr(crawled_at, 1, 10) AS day,
+      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
+    FROM taptap_ad_loading_hourly
+    WHERE crawled_at > '${dateStr}'
+      AND ad_type = 'tappc_2671'
+    GROUP BY app_id, substr(crawled_at, 1, 10)
+    ORDER BY app_id, day
   `;
 }
 
