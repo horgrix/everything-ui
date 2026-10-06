@@ -584,11 +584,11 @@ export function buildTopNProportionSql(dateStr) {
 /** 首页找游戏广告 iOS+Android UNION ALL 基础子查询（仅公共字段，is_ad 判定用 'True'，position<=20） */
 function tapAppLandingBase(dateStr) {
   return `
-    SELECT tag_1, tag_2, tag_3, app_name, app_id, position, is_ad, crawled_at, 'ios' AS platform
+    SELECT tag_1, tag_2, tag_3, distribution_type, app_name, app_id, position, is_ad, crawled_at, 'ios' AS platform
     FROM taptap_app_ios_landing_ad_hourly
     WHERE crawled_at > '${dateStr}' AND position <= 20
     UNION ALL
-    SELECT tag_1, tag_2, tag_3, app_name, app_id, position, is_ad, crawled_at, 'android' AS platform
+    SELECT tag_1, tag_2, tag_3, distribution_type, app_name, app_id, position, is_ad, crawled_at, 'android' AS platform
     FROM taptap_app_android_landing_ad_hourly
     WHERE crawled_at > '${dateStr}' AND position <= 20
   `;
@@ -713,6 +713,7 @@ export function buildTapAppAdGameListSql() {
       MAX(tag_1) AS tag_1,
       MAX(tag_2) AS tag_2,
       MAX(tag_3) AS tag_3,
+      MAX(distribution_type) AS distribution_type,
       COUNT(*) AS show_cnt,
       SUM(CASE WHEN platform = 'ios' THEN 1 ELSE 0 END) AS ios_show_cnt,
       SUM(CASE WHEN platform = 'android' THEN 1 ELSE 0 END) AS android_show_cnt,
@@ -772,23 +773,31 @@ export function buildTapAppAdLoadingRateTrendSql() {
 
 /* ===== TapApp 搜索页广告（search）===== */
 
-/** 搜索页广告 4 表 UNION ALL 基础子查询（is_ad 判定用 'ad'，加 source 列区分 discovery/hot_search） */
+/** 搜索页广告 6 表 UNION ALL 基础子查询（is_ad 判定用 'ad'，加 source 列区分 discovery/hot_search/hot_spot） */
 function tapAppSearchBase(dateStr) {
   return `
-    SELECT keyword, app_id, position, is_ad, crawled_at, 'discovery' AS source
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'discovery' AS source, 'ios' AS platform
     FROM taptap_app_ios_search_discovery_ad_hourly
     WHERE crawled_at > '${dateStr}'
     UNION ALL
-    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_search' AS source
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_search' AS source, 'ios' AS platform
     FROM taptap_app_ios_search_hot_search_ad_hourly
     WHERE crawled_at > '${dateStr}'
     UNION ALL
-    SELECT keyword, app_id, position, is_ad, crawled_at, 'discovery' AS source
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_spot' AS source, 'ios' AS platform
+    FROM taptap_app_ios_search_hot_spot_ad_hourly
+    WHERE crawled_at > '${dateStr}'
+    UNION ALL
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'discovery' AS source, 'android' AS platform
     FROM taptap_app_android_search_discovery_ad_hourly
     WHERE crawled_at > '${dateStr}'
     UNION ALL
-    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_search' AS source
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_search' AS source, 'android' AS platform
     FROM taptap_app_android_search_hot_search_ad_hourly
+    WHERE crawled_at > '${dateStr}'
+    UNION ALL
+    SELECT keyword, app_id, position, is_ad, crawled_at, 'hot_spot' AS source, 'android' AS platform
+    FROM taptap_app_android_search_hot_spot_ad_hourly
     WHERE crawled_at > '${dateStr}'
   `;
 }
@@ -798,6 +807,7 @@ export function buildTapAppSearchPositionStatsSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
+      source,
       crawled_at,
       position,
       show_cnt,
@@ -805,19 +815,20 @@ export function buildTapAppSearchPositionStatsSql() {
       ROUND(ad_cnt * 1.0 / show_cnt, 2) AS ad_loading_rate
     FROM (
       SELECT
+        source,
         substr(crawled_at, 1, 10) AS crawled_at,
         position,
         COUNT(*) AS show_cnt,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt
       FROM (${tapAppSearchBase(dateStr)}) b
-      GROUP BY substr(crawled_at, 1, 10), position
+      GROUP BY source, substr(crawled_at, 1, 10), position
     ) t
   `;
 }
 
-/** 构建TapApp搜索页广告每日加载率趋势 SQL（最近7天，按日聚合曝光/广告次数与加载率） */
+/** 构建TapApp搜索页广告每日加载率趋势 SQL（最近30天，按日聚合曝光/广告次数与加载率） */
 export function buildTapAppSearchLoadingRateTrendSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       crawled_at,
@@ -840,27 +851,47 @@ export function buildTapAppSearchKeywordStatsSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
+      source,
       keyword,
+      COUNT(*) AS show_cnt,
+      SUM(CASE WHEN platform = 'ios' THEN 1 ELSE 0 END) AS ios_show_cnt,
+      SUM(CASE WHEN platform = 'android' THEN 1 ELSE 0 END) AS android_show_cnt,
       SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt,
-      COUNT(*) AS show_cnt
+      SUM(CASE WHEN platform = 'ios' AND is_ad = 'ad' THEN 1 ELSE 0 END) AS ios_ad_cnt,
+      SUM(CASE WHEN platform = 'android' AND is_ad = 'ad' THEN 1 ELSE 0 END) AS android_ad_cnt
     FROM (${tapAppSearchBase(dateStr)}) b
     WHERE keyword IS NOT NULL AND keyword != ''
-    GROUP BY keyword
-    ORDER BY ad_cnt DESC
-    LIMIT 20
+    GROUP BY source, keyword
+    ORDER BY source, ad_cnt DESC
   `;
 }
 
-/** 构建TapApp搜索页广告游戏列表 SQL（最近7天，仅 is_ad='ad' 行，按app_id聚合广告次数） */
-export function buildTapAppSearchGameListSql() {
+/** 构建TapApp搜索页关键词每日投放趋势 SQL（最近7天，按source+keyword+日聚合广告投放次数） */
+export function buildTapAppSearchKeywordDailyTrendSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
-      app_id,
-      COUNT(*) AS ad_cnt
+      source,
+      keyword,
+      substr(crawled_at, 1, 10) AS day,
+      SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt
     FROM (${tapAppSearchBase(dateStr)}) b
-    WHERE is_ad = 'ad' AND app_id IS NOT NULL
-    GROUP BY app_id
-    ORDER BY ad_cnt DESC
+    WHERE keyword IS NOT NULL AND keyword != ''
+    GROUP BY source, keyword, substr(crawled_at, 1, 10)
+    ORDER BY source, keyword, day
   `;
 }
+
+/** 构建TapApp搜索页总曝光/总投放 SQL（最近7天，按source聚合） */
+export function buildTapAppSearchTotalStatsSql() {
+  const dateStr = recentDaysWhere(7);
+  return `
+    SELECT
+      source,
+      COUNT(*) AS total_show_cnt,
+      SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS total_ad_cnt
+    FROM (${tapAppSearchBase(dateStr)}) b
+    GROUP BY source
+  `;
+}
+

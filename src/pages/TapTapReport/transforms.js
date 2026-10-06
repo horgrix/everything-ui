@@ -366,6 +366,7 @@ export function transformAdGameList(rows, totalStats) {
       tag1: r.tag_1 != null ? String(r.tag_1) : null,
       tag2: r.tag_2 != null ? String(r.tag_2) : null,
       tag3: r.tag_3 != null ? String(r.tag_3) : null,
+      distributionType: r.distribution_type != null ? Number(r.distribution_type) : null,
       showCnt,
       iosShowCnt: r.ios_show_cnt != null ? Number(r.ios_show_cnt) : null,
       androidShowCnt: r.android_show_cnt != null ? Number(r.android_show_cnt) : null,
@@ -408,22 +409,31 @@ export function transformAdLoadingRateTrend(rows) {
   };
 }
 
-/** TapApp搜索页广告位统计（热力图：行=position，列=crawled_at，值=广告加载率） */
+/** TapApp搜索页广告位统计（按 source 拆分：discovery/hot_search/hot_spot，各自热力图） */
 export function transformTapAppSearchPositionStats(rows) {
-  if (!rows || !rows.length) return { series: [], categories: [] };
-  const categories = [...new Set(rows.map((r) => r.crawled_at))].sort();
-  const positions = [...new Set(rows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
-  const byPos = {};
-  rows.forEach((r) => {
-    const pos = String(r.position);
-    if (!byPos[pos]) byPos[pos] = {};
-    byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
-  });
-  const series = positions.map((pos) => ({
-    name: `位置${pos}`,
-    data: categories.map((c) => ({ x: c, y: byPos[pos][c] ?? null })),
-  }));
-  return { series, categories };
+  const empty = { discovery: { series: [], categories: [] }, hot_search: { series: [], categories: [] }, hot_spot: { series: [], categories: [] } };
+  if (!rows || !rows.length) return empty;
+  const build = (sourceRows) => {
+    if (!sourceRows.length) return { series: [], categories: [] };
+    const categories = [...new Set(sourceRows.map((r) => r.crawled_at))].sort();
+    const positions = [...new Set(sourceRows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
+    const byPos = {};
+    sourceRows.forEach((r) => {
+      const pos = String(r.position);
+      if (!byPos[pos]) byPos[pos] = {};
+      byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
+    });
+    const series = positions.map((pos) => ({
+      name: `位置${pos}`,
+      data: categories.map((c) => ({ x: c, y: byPos[pos][c] ?? null })),
+    }));
+    return { series, categories };
+  };
+  return {
+    discovery: build(rows.filter((r) => r.source === 'discovery')),
+    hot_search: build(rows.filter((r) => r.source === 'hot_search')),
+    hot_spot: build(rows.filter((r) => r.source === 'hot_spot')),
+  };
 }
 
 /** TapApp搜索页广告每日加载率趋势（柱状=曝光次数，折线=加载率） */
@@ -440,26 +450,76 @@ export function transformTapAppSearchLoadingRateTrend(rows) {
   };
 }
 
-/** TapApp搜索页关键词广告统计（柱状图：关键词 -> 广告触发次数，按广告次数降序） */
+/** TapApp搜索页关键词广告统计（按 source 拆分，输出表格行数据，按广告投放次数降序） */
 export function transformTapAppSearchKeywordStats(rows) {
-  if (!rows || !rows.length) return { categories: [], series: [] };
-  const sorted = [...rows].sort((a, b) => Number(b.ad_cnt || 0) - Number(a.ad_cnt || 0));
+  const empty = { discovery: { rows: [] }, hot_search: { rows: [] }, hot_spot: { rows: [] } };
+  if (!rows || !rows.length) return empty;
+  const toPct = (v) => (v == null ? null : parseFloat(v.toFixed(2)));
+  const build = (sourceRows) => {
+    if (!sourceRows.length) return { rows: [] };
+    const totalShow = sourceRows.reduce((s, r) => s + Number(r.show_cnt || 0), 0);
+    const totalAd = sourceRows.reduce((s, r) => s + Number(r.ad_cnt || 0), 0);
+    const list = sourceRows.map((r) => {
+      const showCnt = Number(r.show_cnt || 0);
+      const adCnt = Number(r.ad_cnt || 0);
+      return {
+        keyword: r.keyword,
+        showCnt,
+        iosShowCnt: r.ios_show_cnt != null ? Number(r.ios_show_cnt) : 0,
+        androidShowCnt: r.android_show_cnt != null ? Number(r.android_show_cnt) : 0,
+        adCnt,
+        iosAdCnt: r.ios_ad_cnt != null ? Number(r.ios_ad_cnt) : 0,
+        androidAdCnt: r.android_ad_cnt != null ? Number(r.android_ad_cnt) : 0,
+        adDeliveryRate: showCnt > 0 ? toPct((adCnt / showCnt) * 100) : null,
+        adContributionRate: totalAd > 0 ? toPct((adCnt / totalAd) * 100) : null,
+        adLoadingRate: totalShow > 0 ? toPct((adCnt / totalShow) * 100) : null,
+      };
+    }).sort((a, b) => b.adCnt - a.adCnt).slice(0, 100);
+    return { rows: list };
+  };
   return {
-    categories: sorted.map((r) => r.keyword),
-    series: [
-      { name: '广告次数', color: '#4361ee', data: sorted.map((r) => Number(r.ad_cnt || 0)) },
-    ],
+    discovery: build(rows.filter((r) => r.source === 'discovery')),
+    hot_search: build(rows.filter((r) => r.source === 'hot_search')),
+    hot_spot: build(rows.filter((r) => r.source === 'hot_spot')),
   };
 }
 
-/** TapApp搜索页广告游戏列表（app_id -> 广告次数） */
-export function transformTapAppSearchGameList(rows) {
-  if (!rows || !rows.length) return { rows: [] };
+/** TapApp搜索页关键词每日投放趋势（按 source 拆分：keyword -> 每日投放次数） */
+export function transformTapAppSearchKeywordDailyTrend(rows) {
+  const empty = { discovery: { byKeyword: {}, days: [] }, hot_search: { byKeyword: {}, days: [] }, hot_spot: { byKeyword: {}, days: [] } };
+  if (!rows || !rows.length) return empty;
+  const build = (sourceRows) => {
+    const byKeyword = {};
+    const daySet = new Set();
+    sourceRows.forEach((r) => {
+      if (!byKeyword[r.keyword]) byKeyword[r.keyword] = {};
+      byKeyword[r.keyword][r.day] = Number(r.ad_cnt || 0);
+      daySet.add(r.day);
+    });
+    return { byKeyword, days: [...daySet].sort() };
+  };
   return {
-    rows: rows.map((r) => ({
-      appId: r.app_id,
-      adCnt: Number(r.ad_cnt || 0),
-    })),
+    discovery: build(rows.filter((r) => r.source === 'discovery')),
+    hot_search: build(rows.filter((r) => r.source === 'hot_search')),
+    hot_spot: build(rows.filter((r) => r.source === 'hot_spot')),
+  };
+}
+
+/** TapApp搜索页总曝光/总投放（按 source 拆分） */
+export function transformTapAppSearchTotalStats(rows) {
+  const empty = { discovery: null, hot_search: null, hot_spot: null };
+  if (!rows || !rows.length) return empty;
+  const map = {};
+  rows.forEach((r) => {
+    map[r.source] = {
+      totalShowCnt: Number(r.total_show_cnt || 0),
+      totalAdCnt: Number(r.total_ad_cnt || 0),
+    };
+  });
+  return {
+    discovery: map.discovery || null,
+    hot_search: map.hot_search || null,
+    hot_spot: map.hot_spot || null,
   };
 }
 
