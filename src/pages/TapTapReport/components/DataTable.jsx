@@ -49,14 +49,23 @@ function HeaderHelp({ help }) {
           borderRadius: 6,
           fontSize: 12,
           lineHeight: 1.5,
-          whiteSpace: 'normal',
+          whiteSpace: 'pre-line',
           width: 220,
           zIndex: 2000,
           textAlign: 'left',
           fontWeight: 400,
           pointerEvents: 'none',
         }}>
-          {help}
+          {Array.isArray(help) ? (
+            help.map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: idx < help.length - 1 ? 4 : 0 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: item.color, display: 'inline-block', flexShrink: 0 }} />
+                <span>{item.text}</span>
+              </div>
+            ))
+          ) : (
+            help
+          )}
         </div>
       )}
     </span>
@@ -75,7 +84,7 @@ const RANK_COLUMN_ID = '__rank__';
  * 排序：有 accessor 的列表头可点击，循环「升序 → 降序 → 取消」，表头显示 ▲/▼。
  * 筛选：顶部全局搜索框，对「有 accessor 的列」取值做忽略大小写的 contains 匹配。
  */
-export default function DataTable({ rows, columns, pageSize = 5 }) {
+export default function DataTable({ rows, columns, pageSize = 5, totalRow = null, fixedLayout = false, rankColWidth = 60 }) {
   const [page, setPage] = useState(1);
   const [sorting, setSorting] = useState([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -148,10 +157,10 @@ export default function DataTable({ rows, columns, pageSize = 5 }) {
       </div>
 
       <div className="table-responsive">
-        <table className="table table-hover align-middle mb-0">
+        <table className="table table-hover align-middle mb-0" style={fixedLayout ? { tableLayout: 'fixed' } : undefined}>
           <thead className="table-light">
             <tr>
-              <th className="text-center" style={{ width: 60 }}>#</th>
+              <th className="text-center" style={{ width: rankColWidth }}>#</th>
               {columns.map((c, i) => {
                 const colId = c.header || `col-${i}`;
                 const sortable = typeof c.accessor === 'function';
@@ -186,7 +195,7 @@ export default function DataTable({ rows, columns, pageSize = 5 }) {
                 const rank = (currentPage - 1) * pageSize + idx + 1;
                 return (
                   <tr key={idx}>
-                    <td className="text-center" style={{ width: 60 }}>
+                    <td className="text-center" style={{ width: rankColWidth }}>
                       <RankBadge rank={rank} />
                     </td>
                     {columns.map((c, i) => (
@@ -201,6 +210,18 @@ export default function DataTable({ rows, columns, pageSize = 5 }) {
               </tr>
             )}
           </tbody>
+          {totalRow && (
+            <tfoot className="table-light fw-semibold">
+              <tr>
+                <td className="text-center" style={{ width: rankColWidth }}>Σ</td>
+                {columns.map((c, i) => (
+                  <td key={c.header || `col-${i}`} className={c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} style={c.width ? { width: c.width, minWidth: c.width, maxWidth: c.width } : undefined}>
+                    {c.render ? c.render(totalRow) : ''}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
       {totalPages > 1 && (

@@ -36,6 +36,10 @@ import {
   buildTapAppAdMaterialGamesSql,
   buildTapAppAdGameListSql,
   buildTapAppAdGameDailyTrendSql,
+  buildTapAppAdOverviewStatsSql,
+  buildTapAppAdOverviewDailyTrendSql,
+  buildTapAppAdOverviewHourlyTrendSql,
+  buildTapAppAdRankSql,
   buildTapAppAdTotalStatsSql,
   buildTapAppAdLoadingRateTrendSql,
   buildTapAppSearchPositionStatsSql,
@@ -67,6 +71,10 @@ import {
   transformAdMaterialGames,
   transformAdGameList,
   transformTapAppAdGameDailyTrend,
+  transformTapAppAdOverviewStats,
+  transformTapAppAdOverviewDailyTrend,
+  transformTapAppAdOverviewHourlyTrend,
+  transformTapAppAdRank,
   transformAdTotalStats,
   transformAdLoadingRateTrend,
   transformTapAppAdNewPositionStats,
@@ -159,13 +167,24 @@ const RateBar = ({ rate }) => {
   );
 };
 
-/** 平台堆叠 bar（iOS + Android，总数居中，悬停显示平台明细） */
-const PlatformBar = ({ ios = 0, android = 0 }) => {
+/** 平台堆叠 bar（iOS + Android，总数居中，悬停显示平台明细；分平台缺失时显示整体总数） */
+const PlatformBar = ({ ios = 0, android = 0, total: totalProp }) => {
   const [pos, setPos] = useState(null);
   const i = Number(ios) || 0;
   const a = Number(android) || 0;
-  const total = i + a;
+  const sum = i + a;
+  const total = sum > 0 ? sum : (Number(totalProp) || 0);
   if (total === 0) return <span className="text-muted">-</span>;
+  if (sum === 0) {
+    return (
+      <div className="position-relative" style={{ height: 18, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundColor: '#9CAF9F' }} />
+        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#333' }}>
+          {total}
+        </span>
+      </div>
+    );
+  }
   const iosPct = (i / total) * 100;
   const androidPct = (a / total) * 100;
   return (
@@ -229,10 +248,23 @@ const AD_GAME_LIST_COLUMNS = [
 
 /** TapApp首页找游戏曝光游戏明细列表列配置（在游戏名称后加标签列，tag1/tag2/tag3 分级突出显示） */
 const TAPAPP_AD_GAME_LIST_COLUMNS = [
-  { header: 'APPID', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
-  { header: '游戏名称', width: 170, accessor: (r) => r.appName, render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span> },
+  { header: 'APPID', width: '5%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+  { header: '游戏名称', width: '10%', accessor: (r) => r.appName, render: (r) => {
+    const dt = r.distributionType;
+    const letter = dt === 1 ? 'C' : dt === 2 ? 'M' : null;
+    const letterColor = dt === 1 ? '#9B93A8' : '#9CAF9F';
+    return (
+      <span className="d-inline-flex align-items-center gap-1" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>
+        {letter && (
+          <span className="rounded-circle d-inline-flex align-items-center justify-content-center fw-bold" style={{ backgroundColor: letterColor, color: '#fff', width: 16, height: 16, fontSize: 10, flexShrink: 0 }}>{letter}</span>
+        )}
+        <span className="fw-semibold">{truncateName(r.appName)}</span>
+      </span>
+    );
+  } },
   {
     header: '标签',
+    width: '16%',
     accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -244,25 +276,40 @@ const TAPAPP_AD_GAME_LIST_COLUMNS = [
     ),
   },
   {
-    header: '游戏类型',
-    accessor: (r) => r.distributionType,
+    header: '投放排名',
+    width: '6%',
+    help: [
+      { color: '#8A8F6B', text: '本日排名' },
+      { color: '#C9B79C', text: '本周排名' },
+      { color: '#B08B8B', text: '本月排名' },
+      { color: '#6E6E6E', text: '无排名' },
+    ],
     render: (r) => {
-      const dt = r.distributionType;
-      if (dt == null || dt <= 0) return <span className="text-muted">-</span>;
+      const items = [
+        { value: r.dailyRank, color: '#8A8F6B' },
+        { value: r.weeklyRank, color: '#C9B79C' },
+        { value: r.monthlyRank, color: '#B08B8B' },
+      ];
       return (
         <div className="d-flex flex-wrap gap-1">
-          <span className="badge" style={{ backgroundColor: '#9B93A8', color: '#fff' }}>创意工坊</span>
-          {dt === 2 && <span className="badge" style={{ backgroundColor: '#7D8F7B', color: '#fff' }}>TapTap制造</span>}
+          {items.map((it, idx) => {
+            const hit = it.value != null;
+            return (
+              <span key={idx} className="badge" style={{ backgroundColor: hit ? it.color : '#6E6E6E', color: '#fff' }}>
+                {hit ? it.value : '-'}
+              </span>
+            );
+          })}
         </div>
       );
     },
   },
-  { header: '曝光次数', align: 'center', width: 140, help: '指命中一次系统采集，则为一次曝光', accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} /> },
-  { header: '广告投放次数', align: 'center', width: 140, help: '指命中一次系统采集，且本次命中的素材中带有AD标志，则为一次广告投放', accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} /> },
-  { header: '投放趋势', align: 'center', help: '为最近7天内每日投放的趋势，x轴为每日时间，y轴为每日的广告投放次数', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
-  { header: '广告投放比', align: 'center', width: 140, help: '广告投放比=广告投放次数/曝光次数', accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
-  { header: '广告贡献比例', align: 'center', width: 140, help: '广告贡献比例=广告投放次数/总广告投放数', accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
-  { header: '广告加载率', align: 'center', width: 140, help: '广告加载率=广告投放次数/总曝光次数', accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
+  { header: '曝光次数', align: 'center', width: '8%', help: '指命中一次系统采集，则为一次曝光', accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} total={r.showCnt} /> },
+  { header: '广告投放次数', align: 'center', width: '8%', help: '指命中一次系统采集，且本次命中的素材中带有AD标志，则为一次广告投放', accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} total={r.adCnt} /> },
+  { header: '投放趋势', align: 'center', width: '20%', help: '为最近7天内每日投放的趋势，x轴为每日时间，y轴为每日的广告投放次数', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
+  { header: '广告投放比', align: 'center', width: '8%', help: '广告投放比=广告投放次数/曝光次数', accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
+  { header: '广告贡献比例', align: 'center', width: '8%', help: '广告贡献比例=广告投放次数/总广告投放数', accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
+  { header: '广告加载率', align: 'center', width: '8%', help: '广告加载率=广告投放次数/总曝光次数', accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
 ];
 
 /** TapApp搜索页广告来源分类 */
@@ -275,8 +322,8 @@ const SEARCH_SOURCES = [
 /** TapApp搜索页关键词统计表格列配置 */
 const TAPAPP_SEARCH_KEYWORD_COLUMNS = [
   { header: '关键字', accessor: (r) => r.keyword, render: (r) => <span className="fw-semibold">{r.keyword}</span> },
-  { header: '曝光次数', align: 'center', width: 140, accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} /> },
-  { header: '广告投放次数', align: 'center', width: 140, accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} /> },
+  { header: '曝光次数', align: 'center', width: 140, accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} total={r.showCnt} /> },
+  { header: '广告投放次数', align: 'center', width: 140, accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} total={r.adCnt} /> },
   { header: '投放趋势', align: 'center', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
   { header: '广告投放比', align: 'center', width: 140, accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
   { header: '广告贡献比', align: 'center', width: 140, accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
@@ -368,6 +415,10 @@ export default function TapTapReport() {
   const tapAppAdTotalStatsQuery = useSqlQuery('taptap-app-ad-total-stats', buildTapAppAdTotalStatsSql, [], transformAdTotalStats);
   const tapAppAdGameListQuery = useSqlQuery('taptap-app-ad-game-list', buildTapAppAdGameListSql, [], (rows) => transformAdGameList(rows, tapAppAdTotalStatsQuery.data), { enabled: !!tapAppAdTotalStatsQuery.data });
   const tapAppAdGameDailyTrendQuery = useSqlQuery('taptap-app-ad-game-daily-trend', buildTapAppAdGameDailyTrendSql, [], transformTapAppAdGameDailyTrend);
+  const tapAppAdOverviewStatsQuery = useSqlQuery('taptap-app-ad-overview-stats', buildTapAppAdOverviewStatsSql, [], transformTapAppAdOverviewStats);
+  const tapAppAdOverviewDailyTrendQuery = useSqlQuery('taptap-app-ad-overview-daily-trend', buildTapAppAdOverviewDailyTrendSql, [], transformTapAppAdOverviewDailyTrend);
+  const tapAppAdOverviewHourlyTrendQuery = useSqlQuery('taptap-app-ad-overview-hourly-trend', buildTapAppAdOverviewHourlyTrendSql, [], transformTapAppAdOverviewHourlyTrend);
+  const tapAppAdRankQuery = useSqlQuery('taptap-app-ad-rank', buildTapAppAdRankSql, [], transformTapAppAdRank);
   const tapAppAdLoadingRateTrendQuery = useSqlQuery('taptap-app-ad-loading-rate-trend', buildTapAppAdLoadingRateTrendSql, [], transformAdLoadingRateTrend);
   const tapAppSearchPositionStatsQuery = useSqlQuery('taptap-app-search-position-stats', buildTapAppSearchPositionStatsSql, [], transformTapAppSearchPositionStats);
   const tapAppSearchLoadingRateTrendQuery = useSqlQuery('taptap-app-search-loading-rate-trend', buildTapAppSearchLoadingRateTrendSql, [], transformTapAppSearchLoadingRateTrend);
@@ -394,8 +445,42 @@ export default function TapTapReport() {
     const trendData = tapAppAdGameDailyTrendQuery.data;
     const days = trendData?.days || [];
     const byApp = trendData?.byApp || {};
-    return list.map((r) => ({ ...r, trend: days.map((d) => byApp[r.appId]?.[d] ?? 0), trendLabels: days }));
-  }, [tapAppAdGameListQuery.data, tapAppAdGameDailyTrendQuery.data]);
+    const rankByApp = tapAppAdRankQuery.data?.byApp || {};
+    return list.map((r) => ({
+      ...r,
+      trend: days.map((d) => byApp[r.appId]?.[d] ?? 0),
+      trendLabels: days,
+      dailyRank: rankByApp[r.appId]?.daily ?? null,
+      weeklyRank: rankByApp[r.appId]?.weekly ?? null,
+      monthlyRank: rankByApp[r.appId]?.monthly ?? null,
+    }));
+  }, [tapAppAdGameListQuery.data, tapAppAdGameDailyTrendQuery.data, tapAppAdRankQuery.data]);
+  const tapAppAdTotalRow = useMemo(() => {
+    const stats = tapAppAdOverviewStatsQuery.data;
+    const trend = tapAppAdOverviewDailyTrendQuery.data;
+    if (!stats) return null;
+    const showCnt = stats.totalViews;
+    const adCnt = stats.adViews;
+    return {
+      appId: null,
+      appName: '总计',
+      tag1: null,
+      tag2: null,
+      tag3: null,
+      distributionType: null,
+      showCnt,
+      iosShowCnt: stats.iosViews,
+      androidShowCnt: stats.androidViews,
+      adCnt,
+      iosAdCnt: stats.iosAdViews,
+      androidAdCnt: stats.androidAdViews,
+      adDeliveryRate: null,
+      adContributionRate: null,
+      adLoadingRate: showCnt > 0 ? parseFloat(((adCnt / showCnt) * 100).toFixed(2)) : null,
+      trend: trend?.adCnts || [],
+      trendLabels: trend?.days || [],
+    };
+  }, [tapAppAdOverviewStatsQuery.data, tapAppAdOverviewDailyTrendQuery.data]);
 
   const top25DetailQueries = {
     app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow),
@@ -897,17 +982,17 @@ export default function TapTapReport() {
       {/* TapApp广告统计 */}
       {chartGroup === 'appAd' && (
         <>
-        {/* 首页找游戏 · 广告位每日追踪（iOS / Android 并排） */}
+        {/* 首页找游戏 · 广告位每日追踪（当天）+ 广告加载率趋势 */}
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div style={{ flex: '0 0 25%', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】广告位每日追踪(iOS) — 最近7天</div>
-            <div className="text-muted small">行=广告位(position)，列=日期(crawled_at)，值=广告加载率(ad_loading_rate)</div>
+            <div className="fw-semibold">【首页找游戏】广告位每日追踪 — 当天</div>
+            <div className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</div>
           </div>
           <div className="card-body">
             <HeatmapChart
-              series={tapAppAdNewPositionStatsQuery.data?.ios?.series || []}
+              series={tapAppAdNewPositionStatsQuery.data?.series || []}
               loading={tapAppAdNewPositionStatsQuery.isLoading}
               error={tapAppAdNewPositionStatsQuery.error?.message}
               height={500}
@@ -918,7 +1003,7 @@ export default function TapTapReport() {
                 { from: 0.68, to: 1.01, name: '68-100%', color: '#421243' },
               ]}
               valueFormatter={(val) => (val > 0 ? `${Math.round(val * 100)}%` : '')}
-              xaxisOverrides={tapAppAdNewPositionStatsQuery.data?.ios?.categories ? { categories: tapAppAdNewPositionStatsQuery.data.ios.categories } : {}}
+              xaxisOverrides={tapAppAdNewPositionStatsQuery.data?.categories ? { categories: tapAppAdNewPositionStatsQuery.data.categories } : {}}
               yaxisReversed
             />
           </div>
@@ -926,28 +1011,23 @@ export default function TapTapReport() {
           </div>
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-          <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】广告位每日追踪(Android) — 最近7天</div>
-            <div className="text-muted small">行=广告位(position)，列=日期(crawled_at)，值=广告加载率(ad_loading_rate)</div>
+            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】广告加载率趋势 — 最近24小时</div>
+            <div className="card-body">
+              <LineChart
+                series={tapAppAdOverviewHourlyTrendQuery.data?.series || []}
+                loading={tapAppAdOverviewHourlyTrendQuery.isLoading}
+                error={tapAppAdOverviewHourlyTrendQuery.error?.message}
+                height={500}
+                colors={['#5C6B7A', '#A9BAC4', '#9CAF9F']}
+                strokeWidth={[4, 2, 2]}
+                strokeDashArray={[0, 5, 5]}
+                shared
+                markers={0}
+                xaxisOverrides={tapAppAdOverviewHourlyTrendQuery.data?.categories ? { type: 'category', categories: tapAppAdOverviewHourlyTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisOverrides={{ title: { text: '加载率(%)' }, labels: { formatter: (v) => `${v}%` } }}
+              />
+            </div>
           </div>
-          <div className="card-body">
-            <HeatmapChart
-              series={tapAppAdNewPositionStatsQuery.data?.android?.series || []}
-              loading={tapAppAdNewPositionStatsQuery.isLoading}
-              error={tapAppAdNewPositionStatsQuery.error?.message}
-              height={500}
-              colorScale={[
-                { from: 0, to: 0.01, name: '0%', color: '#D8D0E4' },
-                { from: 0.01, to: 0.34, name: '1-33%', color: '#B39BC8' },
-                { from: 0.34, to: 0.68, name: '34-67%', color: '#8B6FAD' },
-                { from: 0.68, to: 1.01, name: '68-100%', color: '#421243' },
-              ]}
-              valueFormatter={(val) => (val > 0 ? `${Math.round(val * 100)}%` : '')}
-              xaxisOverrides={tapAppAdNewPositionStatsQuery.data?.android?.categories ? { categories: tapAppAdNewPositionStatsQuery.data.android.categories } : {}}
-              yaxisReversed
-            />
-          </div>
-        </div>
           </div>
         </div>
 
@@ -956,7 +1036,7 @@ export default function TapTapReport() {
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】素材标签追踪 — 最近7天</div>
+            <div className="fw-semibold">【首页找游戏】素材标签追踪 — 最近30天</div>
             <div className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</div>
           </div>
           <div className="card-body">
@@ -994,7 +1074,7 @@ export default function TapTapReport() {
           </div>
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】每日广告加载率 — 最近7天</div>
+            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】每日广告加载率 — 最近30天</div>
             <div className="card-body">
               <MixedChart
                 series={tapAppAdLoadingRateTrendQuery.data?.series || []}
@@ -1002,7 +1082,7 @@ export default function TapTapReport() {
                 error={tapAppAdLoadingRateTrendQuery.error?.message}
                 height={500}
                 toolbar={false}
-                colors={['#4361ee', '#421243']}
+                colors={['#7A8B99', '#B08B8B']}
                 strokeWidths={[0, 4]}
                 dataLabels={{
                   enabled: true,
@@ -1026,10 +1106,10 @@ export default function TapTapReport() {
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】曝光游戏明细列表 — 最近7天</div>
+            <div className="fw-semibold">【首页找游戏】曝光游戏明细列表 — 最近30天</div>
             <div className="text-muted small">记录了TapTap App(IOS+Android2个平台)首页找游戏前20个位置素材广告曝光情况，每2小时自动由系统采集一次。</div>
           </div>
-          <DataTable rows={tapAppAdGameRows} columns={TAPAPP_AD_GAME_LIST_COLUMNS} pageSize={10} />
+          <DataTable rows={tapAppAdGameRows} columns={TAPAPP_AD_GAME_LIST_COLUMNS} pageSize={10} totalRow={tapAppAdTotalRow} fixedLayout rankColWidth="3%" />
           </div>
           </div>
         </div>

@@ -613,13 +613,12 @@ function tapAppLandingBase(dateStr) {
   `;
 }
 
-/** 构建TapApp首页找游戏广告每日广告位统计 SQL（最近7天，按日+position 聚合广告加载率，只看前20个固定位置） */
+/** 构建TapApp首页找游戏广告位统计 SQL（仅当天，按 platform+position 聚合广告加载率，只看前20个固定位置） */
 export function buildTapAppAdNewPositionStatsSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(0);
   return `
     SELECT
       platform,
-      crawled_at,
       position,
       show_cnt,
       ad_cnt,
@@ -627,19 +626,18 @@ export function buildTapAppAdNewPositionStatsSql() {
     FROM (
       SELECT
         platform,
-        substr(crawled_at, 1, 10) AS crawled_at,
         position,
         COUNT(*) AS show_cnt,
         SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
       FROM (${tapAppLandingBase(dateStr)}) b
-      GROUP BY platform, substr(crawled_at, 1, 10), position
+      GROUP BY platform, position
     ) t
   `;
 }
 
-/** 构建TapApp首页找游戏广告投放素材分布第一层 SQL（最近7天，合并tag_1/tag_2/tag_3为大类tag，聚合广告加载率） */
+/** 构建TapApp首页找游戏广告投放素材分布第一层 SQL（最近30天，dws日汇总表合并tag_1/tag_2/tag_3为大类tag，聚合广告加载率） */
 export function buildTapAppAdMaterialTagsSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       tag,
@@ -654,26 +652,26 @@ export function buildTapAppAdMaterialTagsSql() {
       FROM (
         SELECT
           tag_1 AS tag,
-          COUNT(*) AS show_cnt,
-          SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM (${tapAppLandingBase(dateStr)}) b
-        WHERE tag_1 IS NOT NULL
+          SUM(total_views) AS show_cnt,
+          SUM(ad_views) AS ad_cnt
+        FROM dws_taptap_app_landing_ad_daily
+        WHERE crawled_at > '${dateStr}' AND tag_1 IS NOT NULL
         GROUP BY tag_1
         UNION ALL
         SELECT
           tag_2 AS tag,
-          COUNT(*) AS show_cnt,
-          SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM (${tapAppLandingBase(dateStr)}) b
-        WHERE tag_2 IS NOT NULL
+          SUM(total_views) AS show_cnt,
+          SUM(ad_views) AS ad_cnt
+        FROM dws_taptap_app_landing_ad_daily
+        WHERE crawled_at > '${dateStr}' AND tag_2 IS NOT NULL
         GROUP BY tag_2
         UNION ALL
         SELECT
           tag_3 AS tag,
-          COUNT(*) AS show_cnt,
-          SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM (${tapAppLandingBase(dateStr)}) b
-        WHERE tag_3 IS NOT NULL
+          SUM(total_views) AS show_cnt,
+          SUM(ad_views) AS ad_cnt
+        FROM dws_taptap_app_landing_ad_daily
+        WHERE crawled_at > '${dateStr}' AND tag_3 IS NOT NULL
         GROUP BY tag_3
       ) u
       GROUP BY tag
@@ -681,9 +679,9 @@ export function buildTapAppAdMaterialTagsSql() {
   `;
 }
 
-/** 构建TapApp首页找游戏广告投放素材分布第二层 SQL（最近7天，按合并后的tag+app_id聚合广告加载次数） */
+/** 构建TapApp首页找游戏广告投放素材分布第二层 SQL（最近30天，dws日汇总表按合并后的tag+app_id聚合广告加载次数） */
 export function buildTapAppAdMaterialGamesSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       tag,
@@ -695,36 +693,37 @@ export function buildTapAppAdMaterialGamesSql() {
         tag_1 AS tag,
         app_id,
         app_name,
-        COUNT(*) AS loaded_cnt
-      FROM (${tapAppLandingBase(dateStr)}) b
-      WHERE is_ad = 'True' AND tag_1 IS NOT NULL
+        SUM(ad_views) AS loaded_cnt
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE crawled_at > '${dateStr}' AND tag_1 IS NOT NULL
       GROUP BY tag_1, app_id, app_name
       UNION ALL
       SELECT
         tag_2 AS tag,
         app_id,
         app_name,
-        COUNT(*) AS loaded_cnt
-      FROM (${tapAppLandingBase(dateStr)}) b
-      WHERE is_ad = 'True' AND tag_2 IS NOT NULL
+        SUM(ad_views) AS loaded_cnt
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE crawled_at > '${dateStr}' AND tag_2 IS NOT NULL
       GROUP BY tag_2, app_id, app_name
       UNION ALL
       SELECT
         tag_3 AS tag,
         app_id,
         app_name,
-        COUNT(*) AS loaded_cnt
-      FROM (${tapAppLandingBase(dateStr)}) b
-      WHERE is_ad = 'True' AND tag_3 IS NOT NULL
+        SUM(ad_views) AS loaded_cnt
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE crawled_at > '${dateStr}' AND tag_3 IS NOT NULL
       GROUP BY tag_3, app_id, app_name
     ) u
     GROUP BY tag, app_id
+    HAVING SUM(loaded_cnt) > 0
   `;
 }
 
-/** 构建TapApp首页找游戏广告游戏列表 SQL（最近7天，按app_id聚合曝光/广告次数） */
+/** 构建TapApp首页找游戏广告游戏列表 SQL（最近30天，dws日汇总表按app_id聚合） */
 export function buildTapAppAdGameListSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       app_id,
@@ -733,29 +732,76 @@ export function buildTapAppAdGameListSql() {
       MAX(tag_2) AS tag_2,
       MAX(tag_3) AS tag_3,
       MAX(distribution_type) AS distribution_type,
-      COUNT(*) AS show_cnt,
-      SUM(CASE WHEN platform = 'ios' THEN 1 ELSE 0 END) AS ios_show_cnt,
-      SUM(CASE WHEN platform = 'android' THEN 1 ELSE 0 END) AS android_show_cnt,
-      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt,
-      SUM(CASE WHEN platform = 'ios' AND is_ad = 'True' THEN 1 ELSE 0 END) AS ios_ad_cnt,
-      SUM(CASE WHEN platform = 'android' AND is_ad = 'True' THEN 1 ELSE 0 END) AS android_ad_cnt
-    FROM (${tapAppLandingBase(dateStr)}) b
+      SUM(total_views) AS show_cnt,
+      SUM(ios_views) AS ios_show_cnt,
+      SUM(android_views) AS android_show_cnt,
+      SUM(ad_views) AS ad_cnt,
+      SUM(ios_ad_views) AS ios_ad_cnt,
+      SUM(android_ad_views) AS android_ad_cnt
+    FROM dws_taptap_app_landing_ad_daily
+    WHERE crawled_at > '${dateStr}'
     GROUP BY app_id
     ORDER BY ad_cnt DESC, show_cnt DESC
+    LIMIT 100
   `;
 }
 
-/** 构建TapApp首页找游戏广告每日投放趋势 SQL（最近7天，按app_id+日聚合广告投放次数） */
+/** 构建TapApp首页找游戏广告每日投放趋势 SQL（最近30天，dws日汇总表按app_id+日聚合广告投放次数） */
 export function buildTapAppAdGameDailyTrendSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       app_id,
-      substr(crawled_at, 1, 10) AS day,
-      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-    FROM (${tapAppLandingBase(dateStr)}) b
-    GROUP BY app_id, substr(crawled_at, 1, 10)
+      crawled_at AS day,
+      SUM(ad_views) AS ad_cnt
+    FROM dws_taptap_app_landing_ad_daily
+    WHERE crawled_at > '${dateStr}'
+    GROUP BY app_id, crawled_at
     ORDER BY app_id, day
+  `;
+}
+
+/** 构建TapApp首页找游戏广告总计 SQL（最近30天，overview总览表汇总） */
+export function buildTapAppAdOverviewStatsSql() {
+  const dateStr = recentDaysWhere(30);
+  return `
+    SELECT
+      SUM(total_views) AS total_views,
+      SUM(ios_views) AS ios_views,
+      SUM(android_views) AS android_views,
+      SUM(ad_views) AS ad_views,
+      SUM(ios_ad_views) AS ios_ad_views,
+      SUM(android_ad_views) AS android_ad_views
+    FROM dws_taptap_app_landing_ad_overview
+    WHERE crawled_at > '${dateStr}'
+  `;
+}
+
+/** 构建TapApp首页找游戏广告每日总投放趋势 SQL（最近30天，overview总览表按日汇总） */
+export function buildTapAppAdOverviewDailyTrendSql() {
+  const dateStr = recentDaysWhere(30);
+  return `
+    SELECT
+      crawled_at AS day,
+      SUM(ad_views) AS ad_cnt
+    FROM dws_taptap_app_landing_ad_overview
+    WHERE crawled_at > '${dateStr}'
+    GROUP BY crawled_at
+    ORDER BY day
+  `;
+}
+
+/** 构建TapApp首页找游戏广告投放排名 SQL（本日/本周/本月，命中当前周期的排名） */
+export function buildTapAppAdRankSql() {
+  return `
+    SELECT
+      app_id,
+      rank_type,
+      ad_views_rank
+    FROM dws_taptap_app_landing_ad_rank
+    WHERE (rank_type = 'daily' AND crawled_at = strftime('%Y-%m-%d', 'now', 'localtime'))
+       OR (rank_type = 'weekly' AND crawled_at = strftime('%Y-%W', 'now', 'localtime'))
+       OR (rank_type = 'monthly' AND crawled_at = strftime('%Y-%m', 'now', 'localtime'))
   `;
 }
 
@@ -770,9 +816,9 @@ export function buildTapAppAdTotalStatsSql() {
   `;
 }
 
-/** 构建TapApp首页找游戏广告每日加载率趋势 SQL（最近7天，按日聚合曝光/广告次数与加载率） */
+/** 构建TapApp首页找游戏广告每日加载率趋势 SQL（最近30天，dws日汇总表按日聚合曝光/广告次数与加载率） */
 export function buildTapAppAdLoadingRateTrendSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(30);
   return `
     SELECT
       crawled_at,
@@ -781,12 +827,31 @@ export function buildTapAppAdLoadingRateTrendSql() {
       ROUND(ad_cnt * 1.0 / show_cnt, 2) AS ad_loading_rate
     FROM (
       SELECT
-        substr(crawled_at, 1, 10) AS crawled_at,
-        COUNT(*) AS show_cnt,
-        SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-      FROM (${tapAppLandingBase(dateStr)}) b
-      GROUP BY substr(crawled_at, 1, 10)
+        crawled_at,
+        SUM(total_views) AS show_cnt,
+        SUM(ad_views) AS ad_cnt
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE crawled_at > '${dateStr}'
+      GROUP BY crawled_at
     ) t
+  `;
+}
+
+/** 构建TapApp首页找游戏广告加载率趋势 SQL（最近24小时，overview 小时汇总表按小时取曝光/广告次数） */
+export function buildTapAppAdOverviewHourlyTrendSql() {
+  const dateStr = recentHoursWhere(24);
+  return `
+    SELECT
+      crawled_at,
+      total_views,
+      ios_views,
+      android_views,
+      ad_views,
+      ios_ad_views,
+      android_ad_views
+    FROM dws_taptap_app_landing_ad_overview_hourly
+    WHERE crawled_at >= '${dateStr}'
+    ORDER BY crawled_at
   `;
 }
 
