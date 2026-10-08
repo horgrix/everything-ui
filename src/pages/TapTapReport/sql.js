@@ -354,6 +354,40 @@ export function buildOnlinePlayersSourceGamesSql(dateStr) {
   `;
 }
 
+/** 构建TapPC来源在线人数（最新一行全量汇总，三个来源在线人数） */
+export function buildPcSourceOnlinePlayersSql() {
+  return `
+    SELECT
+      pc_played_online_players,
+      pc_emulator_played_online_players,
+      app_hot_creative_played_online_players
+    FROM dws_taptap_pc_source_online_players
+    ORDER BY crawled_at DESC
+    LIMIT 1
+  `;
+}
+
+/** 构建TapPC来源在线人数最新统计窗口 SQL */
+export function buildPcSourceNewestSql() {
+  return `
+    SELECT MAX(crawled_at) AS newest_datestr
+    FROM dws_taptap_pc_source_games_online_players
+  `;
+}
+
+/** 构建TapPC来源在线人数游戏明细 SQL（按来源分组，游戏按在线人数降序） */
+export function buildPcSourceGamesOnlinePlayersSql(dateStr) {
+  return `
+    SELECT
+      list_type,
+      app_name,
+      online_players
+    FROM dws_taptap_pc_source_games_online_players
+    WHERE crawled_at = '${dateStr}'
+    ORDER BY list_type, online_players DESC
+  `;
+}
+
 /** 构建TapPC广告每日新发现广告位统计 SQL（最近7天，按日+position 聚合广告加载率，只看前20个固定位置） */
 export function buildAdNewPositionStatsSql() {
   const dateStr = recentDaysWhere(7);

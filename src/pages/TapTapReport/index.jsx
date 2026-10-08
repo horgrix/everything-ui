@@ -22,6 +22,9 @@ import {
   buildOnlinePlayersSourceNewestSql,
   buildOnlinePlayersSourceSql,
   buildOnlinePlayersSourceGamesSql,
+  buildPcSourceOnlinePlayersSql,
+  buildPcSourceNewestSql,
+  buildPcSourceGamesOnlinePlayersSql,
   buildTopNProportionSql,
   buildNewestDateSql,
   buildAdNewPositionStatsSql,
@@ -67,6 +70,11 @@ import {
   transformOnlinePlayersSource,
   transformOnlinePlayersSourceGames,
   ONLINE_PLAYERS_BUCKETS,
+  transformPcSourceOnlinePlayers,
+  transformPcSourceGamesOnlinePlayers,
+  transformPcSourceGamesOnlinePlayersGames,
+  PC_SOURCE_COLORS,
+  PC_SOURCE_TYPES,
   transformTopNProportion,
   transformNewestDate,
   transformAdNewPositionStats,
@@ -422,6 +430,10 @@ export default function TapTapReport() {
   const onlinePlayersSourceNewestQuery = useSqlQuery('taptap-online-players-source-newest', buildOnlinePlayersSourceNewestSql, [], transformNewestDate);
   const onlinePlayersSourceQuery = useSqlQuery('taptap-online-players-source', () => buildOnlinePlayersSourceSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSource, { enabled: !!onlinePlayersSourceNewestQuery.data });
   const onlinePlayersSourceGamesQuery = useSqlQuery('taptap-online-players-source-games', () => buildOnlinePlayersSourceGamesSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSourceGames, { enabled: !!onlinePlayersSourceNewestQuery.data });
+  const pcSourceNewestQuery = useSqlQuery('taptap-pc-source-newest', buildPcSourceNewestSql, [], transformNewestDate);
+  const pcSourceOnlinePlayersQuery = useSqlQuery('taptap-pc-source-online-players', buildPcSourceOnlinePlayersSql, [], transformPcSourceOnlinePlayers);
+  const pcSourceGamesOnlinePlayersQuery = useSqlQuery('taptap-pc-source-games', () => buildPcSourceGamesOnlinePlayersSql(pcSourceNewestQuery.data), [pcSourceNewestQuery.data], transformPcSourceGamesOnlinePlayers, { enabled: !!pcSourceNewestQuery.data });
+  const pcSourceGamesOnlinePlayersGamesQuery = useSqlQuery('taptap-pc-source-games-detail', () => buildPcSourceGamesOnlinePlayersSql(pcSourceNewestQuery.data), [pcSourceNewestQuery.data], transformPcSourceGamesOnlinePlayersGames, { enabled: !!pcSourceNewestQuery.data });
   const topNProportionQuery = useSqlQuery('taptap-topn-proportion', () => buildTopNProportionSql(newestDateQuery.data), [newestDateQuery.data], transformTopNProportion, { enabled: !!newestDateQuery.data });
   const adNewPositionStatsQuery = useSqlQuery('taptap-ad-new-position-stats', buildAdNewPositionStatsSql, [], transformAdNewPositionStats);
   const adMaterialTagsQuery = useSqlQuery('taptap-ad-material-tags', buildAdMaterialTagsSql, [], transformAdMaterialTags);
@@ -842,6 +854,67 @@ export default function TapTapReport() {
                 xaxisOverrides={topNProportionQuery.data?.categories ? { type: 'category', categories: topNProportionQuery.data.categories, labels: { rotate: -45 } } : {}}
                 yaxisLeft={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
                 yaxisRight={{ title: { text: '占比 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(2) + '%' } }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 游戏数来源占比（30%） + TapPC游戏在线人数来源分布图（70%） */}
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        {/* 游戏数来源占比（左，30%） */}
+        <div style={{ flex: '0 0 30%', minWidth: 240 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">游戏数来源占比</div>
+              <div className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}</div>
+            </div>
+            <div className="card-body d-flex flex-column align-items-center justify-content-center">
+              <PieChart
+                series={pcSourceOnlinePlayersQuery.data?.series || []}
+                labels={pcSourceOnlinePlayersQuery.data?.labels || []}
+                colors={PC_SOURCE_COLORS}
+                loading={pcSourceOnlinePlayersQuery.isLoading}
+                error={pcSourceOnlinePlayersQuery.error?.message}
+                height={420}
+                donut
+                totalLabel="总在线人数"
+                toolbar={false}
+              />
+            </div>
+          </div>
+        </div>
+        {/* TapPC游戏在线人数来源分布图（右，70%） */}
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">TapPC游戏在线人数来源分布图</div>
+              <div className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}</div>
+            </div>
+            <div className="card-body">
+              <TreemapChart
+                key={pcSourceNewestQuery.data}
+                series={[{ name: '在线人数', data: pcSourceGamesOnlinePlayersQuery.data?.data || [] }]}
+                loading={pcSourceGamesOnlinePlayersQuery.isLoading}
+                error={pcSourceGamesOnlinePlayersQuery.error?.message}
+                height={420}
+                colors={pcSourceGamesOnlinePlayersQuery.data?.colors || []}
+                distributed
+                drilldown={{
+                  enabled: true,
+                  breadcrumb: { show: true, position: 'top-left', rootLabel: '在线人数来源' },
+                  series: PC_SOURCE_TYPES.map((t, idx) => {
+                    const games = pcSourceGamesOnlinePlayersGamesQuery.data?.[t.type] || [];
+                    const max = games.length ? Math.max(...games.map((g) => g.y || 0), 1) : 1;
+                    return {
+                      id: t.type,
+                      name: t.label,
+                      data: games,
+                      colors: [PC_SOURCE_COLORS[idx]],
+                      plotOptions: { treemap: { distributed: false, enableShades: true, colorScale: { min: 0, max } } },
+                    };
+                  }),
+                }}
+              />
             </div>
           </div>
         </div>

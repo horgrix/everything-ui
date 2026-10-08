@@ -91,13 +91,16 @@ export default function PieChart({
     ],
   };
 
+  const isEmpty = !series || series.length === 0;
+
   return (
     <ChartWrapper
+      key={JSON.stringify({ series, labels })}
       options={options}
       series={series}
       type={type}
       height={height}
-      loading={loading}
+      loading={loading || isEmpty}
       error={error}
     />
   );

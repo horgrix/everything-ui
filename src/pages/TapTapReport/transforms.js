@@ -267,6 +267,67 @@ export function transformOnlinePlayersSourceGames(rows) {
   return buckets;
 }
 
+/** TapPC来源色板（顺序对应 pc_played / pc_emulator_played / app_hot_creative） */
+export const PC_SOURCE_COLORS = ['#421243', '#3B93A5', '#F7B844'];
+
+/** TapPC来源定义（固定顺序、标签、下钻 id） */
+export const PC_SOURCE_TYPES = [
+  { type: 'pc_played', label: 'TapPC游戏在线' },
+  { type: 'pc_emulator_played', label: 'TapPC模拟器游戏在线' },
+  { type: 'app_hot_creative', label: 'TapPC小游戏在线' },
+];
+
+/** TapPC来源在线人数饼图（最新一行汇总，三个来源） */
+export function transformPcSourceOnlinePlayers(rows) {
+  if (!rows || !rows.length) return { labels: [], series: [] };
+  const r = rows[0];
+  return {
+    labels: PC_SOURCE_TYPES.map((t) => t.label),
+    series: [
+      Number(r.pc_played_online_players || 0),
+      Number(r.pc_emulator_played_online_players || 0),
+      Number(r.app_hot_creative_played_online_players || 0),
+    ],
+  };
+}
+
+/** TapPC来源在线人数第一层（下钻入口，按来源聚合在线人数） */
+export function transformPcSourceGamesOnlinePlayers(rows) {
+  if (!rows || !rows.length) return { data: [], colors: [] };
+  const sum = {};
+  (rows || []).forEach((r) => {
+    sum[r.list_type] = (sum[r.list_type] || 0) + Number(r.online_players || 0);
+  });
+  const data = [];
+  const colors = [];
+  PC_SOURCE_TYPES.forEach((t, idx) => {
+    if (sum[t.type] != null) {
+      data.push({ x: t.label, y: sum[t.type], drilldown: t.type });
+      colors.push(PC_SOURCE_COLORS[idx]);
+    }
+  });
+  return { data, colors };
+}
+
+/** TapPC来源在线人数第二层（按来源分组的具体游戏明细，按在线人数降序） */
+export function transformPcSourceGamesOnlinePlayersGames(rows) {
+  const byType = {
+    pc_played: [],
+    pc_emulator_played: [],
+    app_hot_creative: [],
+  };
+  (rows || []).forEach((r) => {
+    const bucket = byType[r.list_type];
+    if (bucket) {
+      bucket.push({
+        x: r.app_name != null ? String(r.app_name) : '未知',
+        y: Number(r.online_players || 0),
+      });
+    }
+  });
+  return byType;
+}
+
 /** TapPC广告每日新发现广告位统计（热力图：行=position，列=crawled_at，值=广告加载率） */
 export function transformAdNewPositionStats(rows) {
   if (!rows || !rows.length) return { series: [], categories: [] };
