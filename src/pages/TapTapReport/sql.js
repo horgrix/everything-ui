@@ -886,13 +886,13 @@ function tapAppSearchBase(dateStr) {
   `;
 }
 
-/** 构建TapApp搜索页广告位统计 SQL（最近7天，按日+position 聚合广告加载率） */
+/** 构建TapApp搜索页广告位统计 SQL（当天，按source+platform+position聚合广告加载率，仅前10个位置） */
 export function buildTapAppSearchPositionStatsSql() {
-  const dateStr = recentDaysWhere(7);
+  const dateStr = recentDaysWhere(0);
   return `
     SELECT
       source,
-      crawled_at,
+      platform,
       position,
       show_cnt,
       ad_cnt,
@@ -900,82 +900,284 @@ export function buildTapAppSearchPositionStatsSql() {
     FROM (
       SELECT
         source,
-        substr(crawled_at, 1, 10) AS crawled_at,
+        platform,
         position,
         COUNT(*) AS show_cnt,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt
       FROM (${tapAppSearchBase(dateStr)}) b
-      GROUP BY source, substr(crawled_at, 1, 10), position
+      WHERE position <= 10
+      GROUP BY source, platform, position
     ) t
   `;
 }
 
-/** 构建TapApp搜索页广告每日加载率趋势 SQL（最近30天，按日聚合曝光/广告次数与加载率） */
+/** 构建TapApp搜索页广告每日加载率趋势 SQL（最近30天，overview总览表按日直接取值） */
 export function buildTapAppSearchLoadingRateTrendSql() {
   const dateStr = recentDaysWhere(30);
   return `
     SELECT
       crawled_at,
-      show_cnt,
-      ad_cnt,
-      ROUND(ad_cnt * 1.0 / show_cnt, 2) AS ad_loading_rate
-    FROM (
-      SELECT
-        substr(crawled_at, 1, 10) AS crawled_at,
-        COUNT(*) AS show_cnt,
-        SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt
-      FROM (${tapAppSearchBase(dateStr)}) b
-      GROUP BY substr(crawled_at, 1, 10)
-    ) t
+      total_views AS show_cnt,
+      ad_views AS ad_cnt,
+      ROUND(ad_views * 1.0 / total_views, 2) AS ad_loading_rate
+    FROM dws_taptap_app_keywords_ad_overview
+    WHERE crawled_at > '${dateStr}'
+    ORDER BY crawled_at
   `;
 }
 
-/** 构建TapApp搜索页关键词广告统计 SQL（最近7天，按keyword聚合广告触发次数） */
+/** 构建TapApp搜索页关键词广告统计 SQL（最近7天，dws日汇总表按source+keyword聚合，3来源UNION ALL统一别名） */
 export function buildTapAppSearchKeywordStatsSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
       source,
       keyword,
-      COUNT(*) AS show_cnt,
-      SUM(CASE WHEN platform = 'ios' THEN 1 ELSE 0 END) AS ios_show_cnt,
-      SUM(CASE WHEN platform = 'android' THEN 1 ELSE 0 END) AS android_show_cnt,
-      SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt,
-      SUM(CASE WHEN platform = 'ios' AND is_ad = 'ad' THEN 1 ELSE 0 END) AS ios_ad_cnt,
-      SUM(CASE WHEN platform = 'android' AND is_ad = 'ad' THEN 1 ELSE 0 END) AS android_ad_cnt
-    FROM (${tapAppSearchBase(dateStr)}) b
-    WHERE keyword IS NOT NULL AND keyword != ''
-    GROUP BY source, keyword
+      show_cnt,
+      ios_show_cnt,
+      android_show_cnt,
+      ad_cnt,
+      ios_ad_cnt,
+      android_ad_cnt
+    FROM (
+      SELECT
+        'discovery' AS source,
+        keyword,
+        SUM(discover_views) AS show_cnt,
+        SUM(ios_discover_views) AS ios_show_cnt,
+        SUM(android_discover_views) AS android_show_cnt,
+        SUM(discover_ad_views) AS ad_cnt,
+        SUM(ios_discover_ad_views) AS ios_ad_cnt,
+        SUM(android_discover_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword
+
+      UNION ALL
+
+      SELECT
+        'hot_search' AS source,
+        keyword,
+        SUM(hot_search_views) AS show_cnt,
+        SUM(ios_hot_search_views) AS ios_show_cnt,
+        SUM(android_hot_search_views) AS android_show_cnt,
+        SUM(hot_search_ad_views) AS ad_cnt,
+        SUM(ios_hot_search_ad_views) AS ios_ad_cnt,
+        SUM(android_hot_search_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword
+
+      UNION ALL
+
+      SELECT
+        'hot_spot' AS source,
+        keyword,
+        SUM(hot_spot_views) AS show_cnt,
+        SUM(ios_hot_spot_views) AS ios_show_cnt,
+        SUM(android_hot_spot_views) AS android_show_cnt,
+        SUM(hot_spot_ad_views) AS ad_cnt,
+        SUM(ios_hot_spot_ad_views) AS ios_ad_cnt,
+        SUM(android_hot_spot_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword
+    ) t
     ORDER BY source, ad_cnt DESC
   `;
 }
 
-/** 构建TapApp搜索页关键词每日投放趋势 SQL（最近7天，按source+keyword+日聚合广告投放次数） */
+/** 构建TapApp搜索页关键词每日投放趋势 SQL（最近7天，dws日汇总表按source+keyword+日聚合广告投放次数） */
 export function buildTapAppSearchKeywordDailyTrendSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
       source,
       keyword,
-      substr(crawled_at, 1, 10) AS day,
-      SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_cnt
-    FROM (${tapAppSearchBase(dateStr)}) b
-    WHERE keyword IS NOT NULL AND keyword != ''
-    GROUP BY source, keyword, substr(crawled_at, 1, 10)
+      day,
+      ad_cnt
+    FROM (
+      SELECT
+        'discovery' AS source,
+        keyword,
+        crawled_at AS day,
+        SUM(discover_ad_views) AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword, crawled_at
+
+      UNION ALL
+
+      SELECT
+        'hot_search' AS source,
+        keyword,
+        crawled_at AS day,
+        SUM(hot_search_ad_views) AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword, crawled_at
+
+      UNION ALL
+
+      SELECT
+        'hot_spot' AS source,
+        keyword,
+        crawled_at AS day,
+        SUM(hot_spot_ad_views) AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_daily
+      WHERE crawled_at > '${dateStr}'
+        AND keyword IS NOT NULL AND keyword != ''
+      GROUP BY keyword, crawled_at
+    ) t
     ORDER BY source, keyword, day
   `;
 }
 
-/** 构建TapApp搜索页总曝光/总投放 SQL（最近7天，按source聚合） */
+/** 构建TapApp搜索页总曝光/总投放 SQL（最近30天，overview总览表按source直接SUM，供KPI卡片） */
 export function buildTapAppSearchTotalStatsSql() {
+  const dateStr = recentDaysWhere(30);
+  return `
+    SELECT
+      source,
+      total_show_cnt,
+      total_ad_cnt
+    FROM (
+      SELECT
+        'discovery' AS source,
+        SUM(discover_views) AS total_show_cnt,
+        SUM(discover_ad_views) AS total_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_search' AS source,
+        SUM(hot_search_views) AS total_show_cnt,
+        SUM(hot_search_ad_views) AS total_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_spot' AS source,
+        SUM(hot_spot_views) AS total_show_cnt,
+        SUM(hot_spot_ad_views) AS total_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+    ) t
+  `;
+}
+
+/** 构建TapApp搜索页关键词概述 SQL（最近7天，overview总览表每来源直接SUM，供表格总计行） */
+export function buildTapAppSearchKeywordOverviewSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
       source,
-      COUNT(*) AS total_show_cnt,
-      SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS total_ad_cnt
-    FROM (${tapAppSearchBase(dateStr)}) b
-    GROUP BY source
+      show_cnt,
+      ios_show_cnt,
+      android_show_cnt,
+      ad_cnt,
+      ios_ad_cnt,
+      android_ad_cnt
+    FROM (
+      SELECT
+        'discovery' AS source,
+        SUM(discover_views) AS show_cnt,
+        SUM(ios_discover_views) AS ios_show_cnt,
+        SUM(android_discover_views) AS android_show_cnt,
+        SUM(discover_ad_views) AS ad_cnt,
+        SUM(ios_discover_ad_views) AS ios_ad_cnt,
+        SUM(android_discover_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_search' AS source,
+        SUM(hot_search_views) AS show_cnt,
+        SUM(ios_hot_search_views) AS ios_show_cnt,
+        SUM(android_hot_search_views) AS android_show_cnt,
+        SUM(hot_search_ad_views) AS ad_cnt,
+        SUM(ios_hot_search_ad_views) AS ios_ad_cnt,
+        SUM(android_hot_search_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_spot' AS source,
+        SUM(hot_spot_views) AS show_cnt,
+        SUM(ios_hot_spot_views) AS ios_show_cnt,
+        SUM(android_hot_spot_views) AS android_show_cnt,
+        SUM(hot_spot_ad_views) AS ad_cnt,
+        SUM(ios_hot_spot_ad_views) AS ios_ad_cnt,
+        SUM(android_hot_spot_ad_views) AS android_ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+    ) t
+  `;
+}
+
+/** 构建TapApp搜索页关键词概述每日投放趋势 SQL（最近7天，overview总览表每来源按日直接取值） */
+export function buildTapAppSearchKeywordOverviewDailyTrendSql() {
+  const dateStr = recentDaysWhere(7);
+  return `
+    SELECT
+      source,
+      day,
+      ad_cnt
+    FROM (
+      SELECT
+        'discovery' AS source,
+        crawled_at AS day,
+        discover_ad_views AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_search' AS source,
+        crawled_at AS day,
+        hot_search_ad_views AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+
+      UNION ALL
+
+      SELECT
+        'hot_spot' AS source,
+        crawled_at AS day,
+        hot_spot_ad_views AS ad_cnt
+      FROM dws_taptap_app_keywords_ad_overview
+      WHERE crawled_at > '${dateStr}'
+    ) t
+    ORDER BY source, day
+  `;
+}
+
+/** 构建TapApp搜索页关键词投放排名 SQL（本日/本周/本月，命中当前周期的排名） */
+export function buildTapAppSearchKeywordRankSql() {
+  return `
+    SELECT
+      kv_source,
+      keyword,
+      rank_type,
+      ad_views_rank
+    FROM dws_taptap_app_keywords_ad_rank
+    WHERE (rank_type = 'daily' AND crawled_at = strftime('%Y-%m-%d', 'now', 'localtime'))
+       OR (rank_type = 'weekly' AND crawled_at = strftime('%Y-%W', 'now', 'localtime'))
+       OR (rank_type = 'monthly' AND crawled_at = strftime('%Y-%m', 'now', 'localtime'))
   `;
 }
 

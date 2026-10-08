@@ -457,23 +457,23 @@ export function transformAdLoadingRateTrend(rows) {
   };
 }
 
-/** TapApp搜索页广告位统计（按 source 拆分：discovery/hot_search/hot_spot，各自热力图） */
+/** TapApp搜索页广告位统计（按 source 拆分，各自 position×平台 热力图，值=加载率） */
 export function transformTapAppSearchPositionStats(rows) {
   const empty = { discovery: { series: [], categories: [] }, hot_search: { series: [], categories: [] }, hot_spot: { series: [], categories: [] } };
   if (!rows || !rows.length) return empty;
+  const categories = ['ios', 'android'];
   const build = (sourceRows) => {
-    if (!sourceRows.length) return { series: [], categories: [] };
-    const categories = [...new Set(sourceRows.map((r) => r.crawled_at))].sort();
+    if (!sourceRows.length) return { series: [], categories };
     const positions = [...new Set(sourceRows.map((r) => String(r.position)))].sort((a, b) => Number(a) - Number(b));
     const byPos = {};
     sourceRows.forEach((r) => {
       const pos = String(r.position);
       if (!byPos[pos]) byPos[pos] = {};
-      byPos[pos][r.crawled_at] = Number(r.ad_loading_rate);
+      byPos[pos][r.platform] = Number(r.ad_loading_rate);
     });
     const series = positions.map((pos) => ({
       name: `位置${pos}`,
-      data: categories.map((c) => ({ x: c, y: byPos[pos][c] ?? null })),
+      data: categories.map((c) => ({ x: c, y: byPos[pos]?.[c] ?? null })),
     }));
     return { series, categories };
   };
@@ -505,9 +505,12 @@ export function transformTapAppSearchKeywordStats(rows) {
   const toPct = (v) => (v == null ? null : parseFloat(v.toFixed(2)));
   const build = (sourceRows) => {
     if (!sourceRows.length) return { rows: [] };
-    const totalShow = sourceRows.reduce((s, r) => s + Number(r.show_cnt || 0), 0);
-    const totalAd = sourceRows.reduce((s, r) => s + Number(r.ad_cnt || 0), 0);
-    const list = sourceRows.map((r) => {
+    // UNION 会带出所有 keyword（含某来源无数据的），过滤掉 show_cnt=0 且 ad_cnt=0 的无效行
+    const validRows = sourceRows.filter((r) => !(Number(r.show_cnt || 0) === 0 && Number(r.ad_cnt || 0) === 0));
+    if (!validRows.length) return { rows: [] };
+    const totalShow = validRows.reduce((s, r) => s + Number(r.show_cnt || 0), 0);
+    const totalAd = validRows.reduce((s, r) => s + Number(r.ad_cnt || 0), 0);
+    const list = validRows.map((r) => {
       const showCnt = Number(r.show_cnt || 0);
       const adCnt = Number(r.ad_cnt || 0);
       return {
@@ -569,6 +572,58 @@ export function transformTapAppSearchTotalStats(rows) {
     hot_search: map.hot_search || null,
     hot_spot: map.hot_spot || null,
   };
+}
+
+/** TapApp搜索页关键词概述（按 source 拆分，每项含分平台曝光/投放汇总，供表格总计行） */
+export function transformTapAppSearchKeywordOverview(rows) {
+  const empty = { discovery: null, hot_search: null, hot_spot: null };
+  if (!rows || !rows.length) return empty;
+  const map = {};
+  rows.forEach((r) => {
+    map[r.source] = {
+      showCnt: Number(r.show_cnt || 0),
+      iosShowCnt: Number(r.ios_show_cnt || 0),
+      androidShowCnt: Number(r.android_show_cnt || 0),
+      adCnt: Number(r.ad_cnt || 0),
+      iosAdCnt: Number(r.ios_ad_cnt || 0),
+      androidAdCnt: Number(r.android_ad_cnt || 0),
+    };
+  });
+  return {
+    discovery: map.discovery || null,
+    hot_search: map.hot_search || null,
+    hot_spot: map.hot_spot || null,
+  };
+}
+
+/** TapApp搜索页关键词概述每日投放趋势（按 source 拆分：days + adCnts，day 升序） */
+export function transformTapAppSearchKeywordOverviewDailyTrend(rows) {
+  const empty = { discovery: { days: [], adCnts: [] }, hot_search: { days: [], adCnts: [] }, hot_spot: { days: [], adCnts: [] } };
+  if (!rows || !rows.length) return empty;
+  const build = (sourceRows) => {
+    const sorted = [...sourceRows].sort((a, b) => (a.day < b.day ? -1 : 1));
+    return {
+      days: sorted.map((r) => r.day),
+      adCnts: sorted.map((r) => Number(r.ad_cnt || 0)),
+    };
+  };
+  return {
+    discovery: build(rows.filter((r) => r.source === 'discovery')),
+    hot_search: build(rows.filter((r) => r.source === 'hot_search')),
+    hot_spot: build(rows.filter((r) => r.source === 'hot_spot')),
+  };
+}
+
+/** TapApp搜索页关键词投放排名（按 source:keyword 合并本日/本周/本月排名；kv_source discover→discovery） */
+export function transformTapAppSearchKeywordRank(rows) {
+  const byKey = {};
+  (rows || []).forEach((r) => {
+    const src = r.kv_source === 'discover' ? 'discovery' : r.kv_source;
+    const key = `${src}:${r.keyword}`;
+    if (!byKey[key]) byKey[key] = {};
+    byKey[key][r.rank_type] = Number(r.ad_views_rank);
+  });
+  return { byKey };
 }
 
 /** TopN游戏占比（按排名分桶，柱状+占比折线混合图，排除 Top100+） */

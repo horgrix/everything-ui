@@ -47,6 +47,9 @@ import {
   buildTapAppSearchKeywordStatsSql,
   buildTapAppSearchKeywordDailyTrendSql,
   buildTapAppSearchTotalStatsSql,
+  buildTapAppSearchKeywordOverviewSql,
+  buildTapAppSearchKeywordOverviewDailyTrendSql,
+  buildTapAppSearchKeywordRankSql,
 } from './sql';
 import {
   transformAggregate,
@@ -83,6 +86,9 @@ import {
   transformTapAppSearchKeywordStats,
   transformTapAppSearchKeywordDailyTrend,
   transformTapAppSearchTotalStats,
+  transformTapAppSearchKeywordOverview,
+  transformTapAppSearchKeywordOverviewDailyTrend,
+  transformTapAppSearchKeywordRank,
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
@@ -322,6 +328,28 @@ const SEARCH_SOURCES = [
 /** TapApp搜索页关键词统计表格列配置 */
 const TAPAPP_SEARCH_KEYWORD_COLUMNS = [
   { header: '关键字', accessor: (r) => r.keyword, render: (r) => <span className="fw-semibold">{r.keyword}</span> },
+  {
+    header: '投放排名',
+    render: (r) => {
+      const items = [
+        { value: r.dailyRank, color: '#8A8F6B' },
+        { value: r.weeklyRank, color: '#C9B79C' },
+        { value: r.monthlyRank, color: '#B08B8B' },
+      ];
+      return (
+        <div className="d-flex flex-wrap gap-1">
+          {items.map((it, idx) => {
+            const hit = it.value != null;
+            return (
+              <span key={idx} className="badge" style={{ backgroundColor: hit ? it.color : '#6E6E6E', color: '#fff' }}>
+                {hit ? it.value : '-'}
+              </span>
+            );
+          })}
+        </div>
+      );
+    },
+  },
   { header: '曝光次数', align: 'center', width: 140, accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} total={r.showCnt} /> },
   { header: '广告投放次数', align: 'center', width: 140, accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} total={r.adCnt} /> },
   { header: '投放趋势', align: 'center', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
@@ -425,21 +453,56 @@ export default function TapTapReport() {
   const tapAppSearchKeywordStatsQuery = useSqlQuery('taptap-app-search-keyword-stats', buildTapAppSearchKeywordStatsSql, [], transformTapAppSearchKeywordStats);
   const tapAppSearchKeywordDailyTrendQuery = useSqlQuery('taptap-app-search-keyword-daily-trend', buildTapAppSearchKeywordDailyTrendSql, [], transformTapAppSearchKeywordDailyTrend);
   const tapAppSearchTotalStatsQuery = useSqlQuery('taptap-app-search-total-stats', buildTapAppSearchTotalStatsSql, [], transformTapAppSearchTotalStats);
+  const tapAppSearchKeywordOverviewQuery = useSqlQuery('taptap-app-search-keyword-overview', buildTapAppSearchKeywordOverviewSql, [], transformTapAppSearchKeywordOverview);
+  const tapAppSearchKeywordOverviewDailyTrendQuery = useSqlQuery('taptap-app-search-keyword-overview-daily-trend', buildTapAppSearchKeywordOverviewDailyTrendSql, [], transformTapAppSearchKeywordOverviewDailyTrend);
+  const tapAppSearchKeywordRankQuery = useSqlQuery('taptap-app-search-keyword-rank', buildTapAppSearchKeywordRankSql, [], transformTapAppSearchKeywordRank);
   const tapAppSearchKeywordRows = useMemo(() => {
     const statsData = tapAppSearchKeywordStatsQuery.data;
     const trendData = tapAppSearchKeywordDailyTrendQuery.data;
+    const rankByKey = tapAppSearchKeywordRankQuery.data?.byKey || {};
     if (!statsData) return { discovery: [], hot_search: [], hot_spot: [] };
     return Object.fromEntries(SEARCH_SOURCES.map((src) => {
       const rows = statsData[src.key]?.rows || [];
       const days = trendData?.[src.key]?.days || [];
       const byKeyword = trendData?.[src.key]?.byKeyword || {};
-      return [src.key, rows.map((r) => ({
-        ...r,
-        trend: days.map((d) => byKeyword[r.keyword]?.[d] ?? 0),
-        trendLabels: days,
-      }))];
+      return [src.key, rows.map((r) => {
+        const rank = rankByKey[`${src.key}:${r.keyword}`] || {};
+        return {
+          ...r,
+          trend: days.map((d) => byKeyword[r.keyword]?.[d] ?? 0),
+          trendLabels: days,
+          dailyRank: rank.daily ?? null,
+          weeklyRank: rank.weekly ?? null,
+          monthlyRank: rank.monthly ?? null,
+        };
+      })];
     }));
-  }, [tapAppSearchKeywordStatsQuery.data, tapAppSearchKeywordDailyTrendQuery.data]);
+  }, [tapAppSearchKeywordStatsQuery.data, tapAppSearchKeywordDailyTrendQuery.data, tapAppSearchKeywordRankQuery.data]);
+  const tapAppSearchKeywordTotalRows = useMemo(() => {
+    const overview = tapAppSearchKeywordOverviewQuery.data;
+    const trend = tapAppSearchKeywordOverviewDailyTrendQuery.data;
+    if (!overview) return { discovery: null, hot_search: null, hot_spot: null };
+    return Object.fromEntries(SEARCH_SOURCES.map((src) => {
+      const s = overview[src.key];
+      if (!s) return [src.key, null];
+      const showCnt = s.showCnt;
+      const adCnt = s.adCnt;
+      return [src.key, {
+        keyword: '总计',
+        showCnt,
+        iosShowCnt: s.iosShowCnt,
+        androidShowCnt: s.androidShowCnt,
+        adCnt,
+        iosAdCnt: s.iosAdCnt,
+        androidAdCnt: s.androidAdCnt,
+        adDeliveryRate: null,
+        adContributionRate: null,
+        adLoadingRate: showCnt > 0 ? parseFloat(((adCnt / showCnt) * 100).toFixed(2)) : null,
+        trend: trend?.[src.key]?.adCnts || [],
+        trendLabels: trend?.[src.key]?.days || [],
+      }];
+    }));
+  }, [tapAppSearchKeywordOverviewQuery.data, tapAppSearchKeywordOverviewDailyTrendQuery.data]);
   const tapAppAdGameRows = useMemo(() => {
     const list = tapAppAdGameListQuery.data?.rows || [];
     const trendData = tapAppAdGameDailyTrendQuery.data;
@@ -1121,10 +1184,41 @@ export default function TapTapReport() {
           <div className="flex-grow-1" style={{ borderTop: '1px dashed #adb5bd' }}></div>
         </div>
 
+        {/* 搜索页 · 每日广告加载率（最近30天） */}
+        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0 fw-semibold">【搜索页】每日广告加载率 — 最近30天</div>
+            <div className="card-body">
+              <MixedChart
+                series={tapAppSearchLoadingRateTrendQuery.data?.series || []}
+                loading={tapAppSearchLoadingRateTrendQuery.isLoading}
+                error={tapAppSearchLoadingRateTrendQuery.error?.message}
+                height={500}
+                toolbar={false}
+                colors={['#7A8B99', '#B08B8B']}
+                strokeWidths={[0, 4]}
+                dataLabels={{
+                  enabled: true,
+                  enabledOnSeries: [0],
+                  position: 'top',
+                  formatter: (val) => formatNumber(val),
+                  style: { fontSize: '11px', colors: ['#6c757d'] },
+                }}
+                tooltipY={(v, yi) => (yi === 1 ? `${(v * 100).toFixed(2)}%` : formatNumber(v))}
+                xaxisOverrides={tapAppSearchLoadingRateTrendQuery.data?.categories ? { type: 'category', categories: tapAppSearchLoadingRateTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+                yaxisLeft={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                yaxisRight={{ title: { text: '加载率' }, min: 0, max: 0.3, labels: { formatter: (v) => `${(v * 100).toFixed(0)}%` } }}
+              />
+            </div>
+          </div>
+          </div>
+        </div>
+
         {/* 搜索页广告 · 广告位追踪 + 搜索关键词统计（按来源分类） */}
         {SEARCH_SOURCES.map((src) => (
           <div key={src.key} className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-            <div style={{ flex: '0 0 35%', minWidth: 0 }} className="d-flex flex-column">
+            <div style={{ flex: '0 0 25%', minWidth: 0 }} className="d-flex flex-column">
               <div className="row g-2 mb-3">
                 <div className="col-6">
                   <DashboardCard title="总曝光数" value={tapAppSearchTotalStatsQuery.data?.[src.key]?.totalShowCnt != null ? formatNumber(tapAppSearchTotalStatsQuery.data[src.key].totalShowCnt) : '-'} icon="bi-eye" color="primary" />
@@ -1138,8 +1232,8 @@ export default function TapTapReport() {
               </div>
             <div className="card border-0 shadow-sm flex-grow-1 d-flex flex-column">
             <div className="card-header bg-white border-0">
-              <div className="fw-semibold">【搜索页】广告位追踪({src.label}) — 最近7天</div>
-              <div className="text-muted small">行=广告位(position)，列=日期(crawled_at)，值=广告加载率(ad_loading_rate)</div>
+              <div className="fw-semibold">【搜索页】广告位追踪({src.label}) — 当天</div>
+              <div className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</div>
             </div>
             <div className="card-body flex-grow-1 d-flex flex-column">
               <HeatmapChart
@@ -1163,40 +1257,11 @@ export default function TapTapReport() {
             <div style={{ flex: '1 1 0', minWidth: 0 }}>
             <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0 fw-semibold">【搜索页】搜索关键词广告统计({src.label}) — 最近7天</div>
-            <DataTable rows={tapAppSearchKeywordRows[src.key] || []} columns={TAPAPP_SEARCH_KEYWORD_COLUMNS} pageSize={10} />
+            <DataTable rows={tapAppSearchKeywordRows[src.key] || []} columns={TAPAPP_SEARCH_KEYWORD_COLUMNS} pageSize={10} totalRow={tapAppSearchKeywordTotalRows[src.key] || null} />
           </div>
             </div>
           </div>
         ))}
-        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【搜索页】每日广告加载率 — 最近30天</div>
-            <div className="card-body">
-              <MixedChart
-                series={tapAppSearchLoadingRateTrendQuery.data?.series || []}
-                loading={tapAppSearchLoadingRateTrendQuery.isLoading}
-                error={tapAppSearchLoadingRateTrendQuery.error?.message}
-                height={500}
-                toolbar={false}
-                colors={['#4361ee', '#421243']}
-                strokeWidths={[0, 4]}
-                dataLabels={{
-                  enabled: true,
-                  enabledOnSeries: [0],
-                  position: 'top',
-                  formatter: (val) => formatNumber(val),
-                  style: { fontSize: '11px', colors: ['#6c757d'] },
-                }}
-                tooltipY={(v, yi) => (yi === 1 ? `${(v * 100).toFixed(2)}%` : formatNumber(v))}
-                xaxisOverrides={tapAppSearchLoadingRateTrendQuery.data?.categories ? { type: 'category', categories: tapAppSearchLoadingRateTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisLeft={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                yaxisRight={{ title: { text: '加载率' }, min: 0, max: 0.3, labels: { formatter: (v) => `${(v * 100).toFixed(0)}%` } }}
-              />
-            </div>
-          </div>
-          </div>
-        </div>
         </>
       )}
     </div>
