@@ -41,6 +41,7 @@ export default function ChartWrapper({
 
   return (
     <Chart
+      key={JSON.stringify(series)}
       options={mergedOptions}
       series={series}
       type={type}

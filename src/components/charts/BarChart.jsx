@@ -58,6 +58,7 @@ export default function BarChart({
       },
     },
     xaxis: {
+      type: 'category',
       ...xaxisOverrides,
     },
     yaxis: {
