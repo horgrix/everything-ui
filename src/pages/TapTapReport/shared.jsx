@@ -128,7 +128,7 @@ export const PC_GAME_TYPE_META = {
 
 /** TapPC在线人数Top20游戏列表列配置 */
 export const PC_ONLINE_TOP20_COLUMNS = [
-  { header: 'APPID', width: '8%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+  { header: 'APPID', width: '6%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
   {
     header: '游戏名称',
     width: '12%',
@@ -137,7 +137,7 @@ export const PC_ONLINE_TOP20_COLUMNS = [
   },
   {
     header: '标签',
-    width: '20%',
+    width: '16%',
     accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -150,7 +150,7 @@ export const PC_ONLINE_TOP20_COLUMNS = [
   },
   {
     header: '游戏来源',
-    width: '7%',
+    width: '5%',
     accessor: (r) => PC_GAME_SOURCE_META[r.listType]?.label ?? String(r.listType ?? ''),
     render: (r) => {
       const meta = PC_GAME_SOURCE_META[r.listType];
@@ -160,7 +160,7 @@ export const PC_ONLINE_TOP20_COLUMNS = [
   },
   {
     header: '游戏类型',
-    width: '8%',
+    width: '5%',
     accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? String(r.distributionType ?? ''),
     render: (r) => {
       const meta = PC_GAME_TYPE_META[r.distributionType];
@@ -170,6 +170,14 @@ export const PC_ONLINE_TOP20_COLUMNS = [
   },
   { header: '在线人数', align: 'end', width: '6%', accessor: (r) => r.onlinePlayers, render: (r) => <span>{formatNumber(r.onlinePlayers)}</span> },
   {
+    header: '最近24小时平均在线人数',
+    align: 'end',
+    width: '11%',
+    accessor: (r) => r.avgOnlinePlayers,
+    help: '为最近24小时内每小时 online_players 的平均值（仅统计有记录的窗口），四舍五入取整数',
+    render: (r) => (r.avgOnlinePlayers == null ? <span className="text-muted">-</span> : <span>{formatNumber(r.avgOnlinePlayers)}</span>),
+  },
+  {
     header: '最近24小时在线人数',
     align: 'center',
     width: '16%',
@@ -177,17 +185,17 @@ export const PC_ONLINE_TOP20_COLUMNS = [
     render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} />,
   },
   {
-    header: 'DAU贡献度',
+    header: '在线人数贡献度',
     align: 'center',
-    width: '9%',
+    width: '10%',
     accessor: (r) => r.dauContribution,
-    help: 'DAU贡献度 = 在线人数 / 总在线人数（总在线人数取 dws_taptap_pc_online_peak_players_hourly 最新窗口的 online_players）',
+    help: '在线人数贡献度 = 在线人数 / 总在线人数（总在线人数取 dws_taptap_pc_online_peak_players_hourly 最新窗口的 online_players）',
     render: (r) => <PercentBar value={r.dauContribution} color="#8FA3B0" />,
   },
   {
     header: '游戏类型占比',
     align: 'center',
-    width: '9%',
+    width: '10%',
     accessor: (r) => r.typeContribution,
     help: '游戏类型占比 = 在线人数 / 该游戏来源的总在线人数（PC=pc_online_players；模拟器=pc_emulator_online_players；小游戏=creative_online_players）',
     render: (r) => <PercentBar value={r.typeContribution} color="#9CAF9F" />,

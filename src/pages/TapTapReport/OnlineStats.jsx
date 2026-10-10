@@ -55,15 +55,24 @@ export default function OnlineStats() {
     return list.map((r) => {
       const series = byKey[`${r.appId}::${r.listType}`] || {};
       const typeTotal = totals?.byType?.[r.listType] || 0;
+      const trendValues = Object.values(series);
+      const avgOnlinePlayers = trendValues.length
+        ? Math.round(trendValues.reduce((a, b) => a + b, 0) / trendValues.length)
+        : null;
       return {
         ...r,
         trend: labels.map((l) => series[l] ?? 0),
         trendLabels: labels,
+        avgOnlinePlayers,
         dauContribution: totalOnline > 0 ? (r.onlinePlayers / totalOnline) * 100 : null,
         typeContribution: typeTotal > 0 ? (r.onlinePlayers / typeTotal) * 100 : null,
       };
     });
   }, [pcOnlineTop20ListQuery.data, pcOnlineTop20TrendQuery.data, pcOnlinePeakTotalsQuery.data]);
+
+  const trendCategories = onlinePlayersTrendQuery.data?.categories || [];
+  const trendRangeStart = trendCategories[0] || '';
+  const trendRangeEnd = trendCategories[trendCategories.length - 1] || '';
 
   return (
     <>
@@ -74,24 +83,24 @@ export default function OnlineStats() {
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC热玩游戏榜在线人数趋势</div>
-              <div className="text-muted small">最近24小时</div>
+              <div className="text-muted small">统计时间范围为最近24小时【{trendRangeStart} - {trendRangeEnd}】，每组左边Bar表示峰值在线玩家数、右边Bar表示记录统计的游戏数</div>
             </div>
             <div className="card-body">
               <BarChart
                 series={onlinePlayersTrendQuery.data?.series || []}
                 loading={onlinePlayersTrendQuery.isLoading}
                 error={onlinePlayersTrendQuery.error?.message}
-                height={600}
+                height={750}
                 stacked
                 dataLabelsEnabled
                 shared
                 fill={{ opacity: 1 }}
                 colors={['#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0', '#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0']}
                 toolbar={false}
-                legendOverrides={{ show: false }}
+                legendOverrides={{ show: true, position: 'top', horizontalAlign: 'right', fontSize: '12px', itemMargin: { horizontal: 6, vertical: 2 } }}
                 xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
                 yaxisOverrides={{ min: 0, seriesName: ['TapPC峰值在线玩家数', 'TapPC模拟器峰值在线玩家数', 'TapPC小游戏C峰值在线玩家数', 'TapPC小游戏M峰值在线玩家数'], title: { text: '峰值在线玩家数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                yaxisRight={{ min: 0, max: 1500, seriesName: ['TapPC统计游戏数', 'TapPC模拟器统计游戏数', 'TapPC小游戏C统计游戏数', 'TapPC小游戏M统计游戏数'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
+                yaxisRight={{ min: 0, max: 3000, seriesName: ['TapPC统计游戏数', 'TapPC模拟器统计游戏数', 'TapPC小游戏C统计游戏数', 'TapPC小游戏M统计游戏数'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
                 annotations={onlinePlayersStatsQuery.data ? [
                   { y: onlinePlayersStatsQuery.data.maxOnlinePlayers, color: '#421243', position: 'center', label: `历史峰值玩家最高值 (${formatNumber(onlinePlayersStatsQuery.data.maxOnlinePlayers)})` },
                   { y: onlinePlayersStatsQuery.data.minOnlinePlayers, color: '#C0ADDB', position: 'center', label: `历史峰值玩家最低值 (${formatNumber(onlinePlayersStatsQuery.data.minOnlinePlayers)})` },
@@ -179,7 +188,7 @@ export default function OnlineStats() {
             <div className="fw-semibold">在线人数Top20游戏列表</div>
             <div className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（每个来源取 list_type_rk ≤ 20）</div>
           </div>
-          <DataTable rows={pcOnlineTop20Rows} columns={PC_ONLINE_TOP20_COLUMNS} pageSize={10} fixedLayout rankColWidth="5%" />
+          <DataTable rows={pcOnlineTop20Rows} columns={PC_ONLINE_TOP20_COLUMNS} pageSize={10} fixedLayout rankColWidth="3%" />
         </div>
       </div>
 
