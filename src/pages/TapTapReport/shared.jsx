@@ -43,6 +43,20 @@ export const RateBar = ({ rate }) => {
   );
 };
 
+/** 通用百分比进度条（数值居中显示在进度条上，color 缺省用色库中性色） */
+export const PercentBar = ({ value, color = '#8FA3B0' }) => {
+  if (value == null || Number.isNaN(Number(value))) return <span className="text-muted">-</span>;
+  const pct = Math.min(100, Math.max(0, Number(value)));
+  return (
+    <div className="progress position-relative" style={{ height: 18, backgroundColor: '#e9ecef' }}>
+      <div className="progress-bar" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <span className="position-absolute top-50 start-50 translate-middle" style={{ fontSize: 11, fontWeight: 600, color: '#333', whiteSpace: 'nowrap' }}>
+        {Number(value).toFixed(2)}%
+      </span>
+    </div>
+  );
+};
+
 /** 平台堆叠 bar（iOS + Android，总数居中，悬停显示平台明细；分平台缺失时显示整体总数） */
 export const PlatformBar = ({ ios = 0, android = 0, total: totalProp }) => {
   const [pos, setPos] = useState(null);
@@ -97,6 +111,88 @@ export const APP_AD_TAG_COLORS = {
   tag2: '#7D8F7B',
   tag3: '#B08B8B',
 };
+
+/** TapPC在线人数Top20游戏列表：游戏来源（list_type）→ 标签/配色（与来源分布图色一致） */
+export const PC_GAME_SOURCE_META = {
+  pc_played: { label: 'PC', color: '#5C6B7A' },
+  pc_emulator_played: { label: '模拟器', color: '#8A8F6B' },
+  app_hot_creative: { label: '小游戏', color: '#B08B8B' },
+};
+
+/** TapPC在线人数Top20游戏列表：游戏类型（distribution_type）→ 标签/配色 */
+export const PC_GAME_TYPE_META = {
+  0: { label: '商业游戏', color: '#8FA3B0' },
+  1: { label: '创意工坊', color: '#C9B79C' },
+  2: { label: 'TapMaker', color: '#B9A2AE' },
+};
+
+/** TapPC在线人数Top20游戏列表列配置 */
+export const PC_ONLINE_TOP20_COLUMNS = [
+  { header: 'APPID', width: '8%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+  {
+    header: '游戏名称',
+    width: '12%',
+    accessor: (r) => r.appName,
+    render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span>,
+  },
+  {
+    header: '标签',
+    width: '20%',
+    accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
+    render: (r) => (
+      <div className="d-flex flex-wrap gap-1">
+        {r.tag1 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag1, color: '#fff' }}>{r.tag1}</span>}
+        {r.tag2 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag2, color: '#fff' }}>{r.tag2}</span>}
+        {r.tag3 && <span className="badge" style={{ backgroundColor: APP_AD_TAG_COLORS.tag3, color: '#fff' }}>{r.tag3}</span>}
+        {!r.tag1 && !r.tag2 && !r.tag3 && <span className="text-muted">-</span>}
+      </div>
+    ),
+  },
+  {
+    header: '游戏来源',
+    width: '7%',
+    accessor: (r) => PC_GAME_SOURCE_META[r.listType]?.label ?? String(r.listType ?? ''),
+    render: (r) => {
+      const meta = PC_GAME_SOURCE_META[r.listType];
+      if (!meta) return <span className="text-muted">-</span>;
+      return <span className="badge" style={{ backgroundColor: meta.color, color: '#fff' }}>{meta.label}</span>;
+    },
+  },
+  {
+    header: '游戏类型',
+    width: '8%',
+    accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? String(r.distributionType ?? ''),
+    render: (r) => {
+      const meta = PC_GAME_TYPE_META[r.distributionType];
+      if (!meta) return <span className="text-muted">-</span>;
+      return <span className="badge" style={{ backgroundColor: meta.color, color: '#fff' }}>{meta.label}</span>;
+    },
+  },
+  { header: '在线人数', align: 'end', width: '6%', accessor: (r) => r.onlinePlayers, render: (r) => <span>{formatNumber(r.onlinePlayers)}</span> },
+  {
+    header: '最近24小时在线人数',
+    align: 'center',
+    width: '16%',
+    help: '为最近24小时内每小时的在线人数趋势，x轴为小时，y轴为该小时的在线人数',
+    render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} />,
+  },
+  {
+    header: 'DAU贡献度',
+    align: 'center',
+    width: '9%',
+    accessor: (r) => r.dauContribution,
+    help: 'DAU贡献度 = 在线人数 / 总在线人数（总在线人数取 dws_taptap_pc_online_peak_players_hourly 最新窗口的 online_players）',
+    render: (r) => <PercentBar value={r.dauContribution} color="#8FA3B0" />,
+  },
+  {
+    header: '游戏类型占比',
+    align: 'center',
+    width: '9%',
+    accessor: (r) => r.typeContribution,
+    help: '游戏类型占比 = 在线人数 / 该游戏来源的总在线人数（PC=pc_online_players；模拟器=pc_emulator_online_players；小游戏=creative_online_players）',
+    render: (r) => <PercentBar value={r.typeContribution} color="#9CAF9F" />,
+  },
+];
 
 /** 每日新发现游戏列表列配置 */
 export const AD_GAME_LIST_COLUMNS = [

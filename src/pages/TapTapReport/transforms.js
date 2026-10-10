@@ -126,7 +126,7 @@ export function transformGameNameMap(rows) {
   return map;
 }
 
-/** TapPC热门游戏在线人数趋势（今日实线加粗 + 其余虚线） */
+/** TapPC热玩游戏榜在线人数趋势（分组堆叠柱状：峰值玩家数 + 统计游戏数双组双轴） */
 export function transformOnlinePlayersTrend(rows) {
   if (!rows || !rows.length) return { series: [], categories: [] };
   const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
@@ -135,51 +135,30 @@ export function transformOnlinePlayersTrend(rows) {
   return {
     categories,
     series: [
-      { name: '今日', data: toData('today_total_online_players') },
-      { name: '昨日', data: toData('yesterday_total_online_players') },
-      { name: '7日前', data: toData('ago_7_total_online_players') },
-      { name: '30日前', data: toData('ago_30_total_online_players') },
-      { name: '90日前', data: toData('ago_90_total_online_players') },
-      { name: '365日前', data: toData('ago_365_total_online_players') },
+      { name: 'TapPC峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('pc_online_players') },
+      { name: 'TapPC模拟器峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('pc_emulator_online_players') },
+      { name: 'TapPC小游戏C峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('creative_non_online_players') },
+      { name: 'TapPC小游戏M峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('creative_mk_online_players') },
+      { name: 'TapPC统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_pc_game_cnt') },
+      { name: 'TapPC模拟器统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_pc_emulator_game_cnt') },
+      { name: 'TapPC小游戏C统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_creative_non_game_cnt') },
+      { name: 'TapPC小游戏M统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_creative_mk_game_cnt') },
     ],
   };
 }
 
-/** TapPC热玩游戏榜在线人数历史统计（峰值最高/最低/均值及统计区间） */
+/** TapPC热玩游戏榜在线人数历史统计（历史峰值最高/最低/均值，无数据返回 null） */
 export function transformOnlinePlayersStats(rows) {
   if (!rows || !rows.length) return null;
   const r = rows[0];
+  const maxOnlinePlayers = r.max_online_players != null ? Number(r.max_online_players) : null;
+  const minOnlinePlayers = r.min_online_players != null ? Number(r.min_online_players) : null;
+  const avgOnlinePlayers = r.avg_online_players != null ? Number(r.avg_online_players) : null;
+  if (maxOnlinePlayers == null || Number.isNaN(maxOnlinePlayers)) return null;
   return {
-    startCrawledAt: r.start_crawled_at,
-    endCrawledAt: r.end_crawled_at,
-    maxOnlinePlayers: Number(r.max_online_players || 0),
-    avgOnlinePlayers: Number(r.avg_online_players || 0),
-    minOnlinePlayers: Number(r.min_online_players || 0),
-  };
-}
-
-/** TapPC在线人数分布（按人数区间） */
-export function transformOnlinePlayersDistribution(rows) {
-  if (!rows || !rows.length) return { series: [], labels: [], colors: [] };
-  const BUCKET_ORDER = ['1-99', '=100', '100-500', '500-1000', '1000-5000', '5000-10000', '10000+'];
-  const BUCKET_COLORS = {
-    '1-99': '#C0ADDB',
-    '=100': '#7F94B0',
-    '100-500': '#421243',
-    '500-1000': '#1E5D8C',
-    '1000-5000': '#F7B844',
-    '5000-10000': '#3B93A5',
-    '10000+': '#D43F97',
-  };
-  const map = {};
-  rows.forEach((r) => {
-    map[r.player_bucket] = Number(r.cnt || 0);
-  });
-  const labels = BUCKET_ORDER.filter((b) => map[b] != null);
-  return {
-    series: labels.map((b) => map[b]),
-    labels,
-    colors: labels.map((b) => BUCKET_COLORS[b]),
+    maxOnlinePlayers,
+    minOnlinePlayers,
+    avgOnlinePlayers,
   };
 }
 
@@ -189,41 +168,15 @@ export function transformNewestDate(rows) {
   return rows[0].newest_datestr;
 }
 
-/** TapPC在线人数TopN趋势（按 app_id 分组，按最高在线人数降序） */
-export function transformOnlinePlayersTopNTrend(rows) {
-  if (!rows || !rows.length) return [];
-  const groups = {};
-  rows.forEach((r) => {
-    const id = String(r.app_id);
-    if (!groups[id]) {
-      groups[id] = { appId: r.app_id, appName: r.app_name || null, rows: [] };
-    }
-    groups[id].rows.push(r);
-  });
-  const cards = Object.values(groups).map((g) => {
-    const sorted = [...g.rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
-    const data = sorted.map((r) => Number(r.online_players || 0));
-    return {
-      appId: g.appId,
-      appName: g.appName,
-      maxPlayers: data.length ? Math.max(...data) : 0,
-      categories: sorted.map((r) => r.crawled_at),
-      series: [{ name: '在线人数', data }],
-    };
-  });
-  cards.sort((a, b) => b.maxPlayers - a.maxPlayers);
-  return cards;
-}
-
 /** TapPC在线玩家分布桶定义（顺序即展示顺序，ref 为 enableShades 的参考值） */
 export const ONLINE_PLAYERS_BUCKETS = [
-  { label: '在线人数[1-99]', color: '#C0ADDB', ref: 50 },
-  { label: '在线人数[=100]', color: '#7F94B0', ref: 100 },
-  { label: '在线人数[100-500]', color: '#421243', ref: 300 },
-  { label: '在线人数[500-1000]', color: '#1E5D8C', ref: 750 },
-  { label: '在线人数[1000-5000]', color: '#F7B844', ref: 3000 },
-  { label: '在线人数[5000-10000]', color: '#3B93A5', ref: 7500 },
-  { label: '在线人数[10000+]', color: '#D43F97', ref: 10000 },
+  { label: '在线人数[1-99]', color: '#D8CFC0', ref: 50 },
+  { label: '在线人数[=100]', color: '#C9B79C', ref: 100 },
+  { label: '在线人数[100-500]', color: '#C4A4A4', ref: 300 },
+  { label: '在线人数[500-1000]', color: '#B9A2AE', ref: 750 },
+  { label: '在线人数[1000-5000]', color: '#8FA3B0', ref: 3000 },
+  { label: '在线人数[5000-10000]', color: '#6B7C8C', ref: 7500 },
+  { label: '在线人数[10000+]', color: '#5C6B7A', ref: 10000 },
 ];
 
 /** 按在线人数映射到桶标签（与第一层 SQL 的 CASE 一致） */
@@ -268,7 +221,8 @@ export function transformOnlinePlayersSourceGames(rows) {
 }
 
 /** TapPC来源色板（顺序对应 pc_played / pc_emulator_played / app_hot_creative） */
-export const PC_SOURCE_COLORS = ['#421243', '#3B93A5', '#F7B844'];
+/** TapPC来源配色（取自 AD_MATERIAL_COLORS 色库） */
+export const PC_SOURCE_COLORS = ['#5C6B7A', '#8A8F6B', '#B08B8B'];
 
 /** TapPC来源定义（固定顺序、标签、下钻 id） */
 export const PC_SOURCE_TYPES = [
@@ -277,40 +231,26 @@ export const PC_SOURCE_TYPES = [
   { type: 'app_hot_creative', label: 'TapPC小游戏在线' },
 ];
 
-/** TapPC来源在线人数饼图（最新一行汇总，三个来源） */
-export function transformPcSourceOnlinePlayers(rows) {
-  if (!rows || !rows.length) return { labels: [], series: [] };
-  const r = rows[0];
-  return {
-    labels: PC_SOURCE_TYPES.map((t) => t.label),
-    series: [
-      Number(r.pc_played_online_players || 0),
-      Number(r.pc_emulator_played_online_players || 0),
-      Number(r.app_hot_creative_played_online_players || 0),
-    ],
-  };
-}
-
-/** TapPC来源在线人数第一层（下钻入口，按来源聚合在线人数） */
-export function transformPcSourceGamesOnlinePlayers(rows) {
+/** TapPC在线峰值来源在线人数第一层（下钻入口，按来源在线人数） */
+export function transformPcOnlinePeakSource(rows) {
   if (!rows || !rows.length) return { data: [], colors: [] };
-  const sum = {};
-  (rows || []).forEach((r) => {
-    sum[r.list_type] = (sum[r.list_type] || 0) + Number(r.online_players || 0);
-  });
+  const r = rows[0];
+  const values = {
+    pc_played: Number(r.pc_online_players || 0),
+    pc_emulator_played: Number(r.pc_emulator_online_players || 0),
+    app_hot_creative: Number(r.creative_online_players || 0),
+  };
   const data = [];
   const colors = [];
   PC_SOURCE_TYPES.forEach((t, idx) => {
-    if (sum[t.type] != null) {
-      data.push({ x: t.label, y: sum[t.type], drilldown: t.type });
-      colors.push(PC_SOURCE_COLORS[idx]);
-    }
+    data.push({ x: t.label, y: values[t.type], drilldown: t.type });
+    colors.push(PC_SOURCE_COLORS[idx]);
   });
   return { data, colors };
 }
 
-/** TapPC来源在线人数第二层（按来源分组的具体游戏明细，按在线人数降序） */
-export function transformPcSourceGamesOnlinePlayersGames(rows) {
+/** TapPC在线峰值来源第二层（按来源分组的具体游戏明细，按在线人数降序） */
+export function transformPcOnlinePeakRank(rows) {
   const byType = {
     pc_played: [],
     pc_emulator_played: [],
@@ -326,6 +266,52 @@ export function transformPcSourceGamesOnlinePlayersGames(rows) {
     }
   });
   return byType;
+}
+
+/** TapPC在线人数总量（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */
+export function transformPcOnlinePeakTotals(rows) {
+  if (!rows || !rows.length) return null;
+  const r = rows[0];
+  return {
+    total: Number(r.online_players || 0),
+    byType: {
+      pc_played: Number(r.pc_online_players || 0),
+      pc_emulator_played: Number(r.pc_emulator_online_players || 0),
+      app_hot_creative: Number(r.creative_online_players || 0),
+    },
+  };
+}
+
+/** TapPC在线人数Top20游戏列表（最新统计窗口，list_type_rk<=20，按在线人数降序） */
+export function transformPcOnlineTop20List(rows) {
+  if (!rows || !rows.length) return { rows: [] };
+  return {
+    rows: rows.map((r) => ({
+      appId: r.app_id,
+      appName: r.app_name != null ? String(r.app_name) : null,
+      tag1: r.tag_1,
+      tag2: r.tag_2,
+      tag3: r.tag_3,
+      listType: r.list_type,
+      distributionType: r.distribution_type,
+      onlinePlayers: Number(r.online_players || 0),
+      listTypeRk: r.list_type_rk,
+    })),
+  };
+}
+
+/** TapPC在线人数Top20游戏最近24小时趋势（按 app_id+list_type 分组，输出共享时间轴 + 各 app 的时序） */
+export function transformPcOnlineTop20Trend(rows) {
+  if (!rows || !rows.length) return { labels: [], byKey: {} };
+  const labelSet = new Set();
+  const byKey = {};
+  rows.forEach((r) => {
+    const key = `${r.app_id}::${r.list_type}`;
+    labelSet.add(r.crawled_at);
+    if (!byKey[key]) byKey[key] = {};
+    byKey[key][r.crawled_at] = Number(r.online_players || 0);
+  });
+  return { labels: [...labelSet].sort(), byKey };
 }
 
 /** TapPC广告每日新发现广告位统计（热力图：行=position，列=crawled_at，值=广告加载率） */
@@ -685,22 +671,4 @@ export function transformTapAppSearchKeywordRank(rows) {
     byKey[key][r.rank_type] = Number(r.ad_views_rank);
   });
   return { byKey };
-}
-
-/** TopN游戏占比（按排名分桶，柱状+占比折线混合图，排除 Top100+） */
-export function transformTopNProportion(rows) {
-  if (!rows || !rows.length) return { categories: [], series: [] };
-  const map = {};
-  rows.forEach((r) => {
-    map[r.bucket] = Number(r.online_players || 0);
-  });
-  const total = map['Top100+'] || 0;
-  const buckets = ['Top5', 'Top10', 'Top20', 'Top50', 'Top100'];
-  return {
-    categories: buckets,
-    series: [
-      { name: '在线人数', type: 'column', yAxisIndex: 0, data: buckets.map((b) => map[b] || 0) },
-      { name: '占比', type: 'line', yAxisIndex: 1, data: buckets.map((b) => (total > 0 ? parseFloat(((map[b] / total) * 100).toFixed(2)) : null)) },
-    ],
-  };
 }

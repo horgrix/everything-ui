@@ -212,55 +212,34 @@ export function buildGameNameSql() {
   `;
 }
 
-/** 构建TapPC在线人数趋势 SQL（最近24小时） */
+/** 构建TapPC在线人数趋势 SQL（最近24小时，分组堆叠柱状数据源） */
 export function buildOnlinePlayersTrendSql() {
-  const dateStr = recentHoursWhere(24);
   return `
     SELECT
       crawled_at,
-      today_total_online_players,
-      yesterday_total_online_players,
-      ago_7_total_online_players,
-      ago_30_total_online_players,
-      ago_90_total_online_players,
-      ago_365_total_online_players
-    FROM dws_taptap_peak_players_hourly
-    WHERE crawled_at >= '${dateStr}'
+      pc_online_players,
+      pc_emulator_online_players,
+      creative_non_online_players,
+      creative_mk_online_players,
+      stat_pc_game_cnt,
+      stat_pc_emulator_game_cnt,
+      stat_creative_non_game_cnt,
+      stat_creative_mk_game_cnt
+    FROM dws_taptap_pc_online_peak_players_hourly
+    WHERE crawled_at >= '${recentHoursWhere(24)}'
     ORDER BY crawled_at
   `;
 }
 
-/** 构建TapPC热玩游戏榜在线人数历史统计 SQL（峰值最高/最低/均值及统计区间） */
+/** 构建TapPC热玩游戏榜在线人数历史统计 SQL（小于最近24小时的历史峰值最高/最低/均值） */
 export function buildOnlinePlayersStatsSql() {
   return `
     SELECT
-      MIN(crawled_at) AS start_crawled_at,
-      MAX(crawled_at) AS end_crawled_at,
       MAX(online_players) AS max_online_players,
-      AVG(online_players) AS avg_online_players,
-      MIN(online_players) AS min_online_players
-    FROM dws_tmp_taptap_peak_players_hourly
-    WHERE crawled_at < substr(datetime('now', 'localtime', '-1 day'), 1, 13)
-  `;
-}
-
-/** 构建TapPC在线人数分布 SQL（指定时间点，按人数区间分桶） */
-export function buildOnlinePlayersDistributionSql(dateStr) {
-  return `
-    SELECT
-      CASE
-        WHEN online_players < 100 THEN '1-99'
-        WHEN online_players = 100 THEN '=100'
-        WHEN online_players > 100 AND online_players <= 500 THEN '100-500'
-        WHEN online_players > 500 AND online_players <= 1000 THEN '500-1000'
-        WHEN online_players > 1000 AND online_players <= 5000 THEN '1000-5000'
-        WHEN online_players > 5000 AND online_players <= 10000 THEN '5000-10000'
-        ELSE '10000+'
-      END AS player_bucket,
-      COUNT(*) AS cnt
-    FROM taptap_pc_online_players
-    WHERE crawled_at = '${dateStr}'
-    GROUP BY player_bucket
+      MIN(online_players) AS min_online_players,
+      AVG(online_players) AS avg_online_players
+    FROM dws_taptap_pc_online_peak_players_hourly
+    WHERE crawled_at < '${recentHoursWhere(24)}'
   `;
 }
 
@@ -271,38 +250,6 @@ export function buildNewestDateSql() {
     SELECT MAX(crawled_at) AS newest_datestr
     FROM dws_taptap_download_hourly
     WHERE crawled_at >= '${dateStr}'
-  `;
-}
-
-/** 构建TapPC在线人数TopN趋势 SQL（最近24小时，Top20 app 的在线人数时序） */
-export function buildOnlinePlayersTopNTrendSql() {
-  const dateStr = recentHoursWhere(24);
-  return `
-    SELECT
-      a.app_id,
-      b.app_name,
-      a.crawled_at,
-      a.online_players
-    FROM (
-      SELECT *
-      FROM taptap_pc_online_players
-      WHERE crawled_at >= '${dateStr}'
-        AND app_id IN (
-          SELECT app_id
-          FROM taptap_pc_online_players
-          WHERE crawled_at >= '${dateStr}'
-          GROUP BY app_id
-          ORDER BY MAX(online_players) DESC
-          LIMIT 20
-        )
-    ) a
-    LEFT JOIN (
-      SELECT *
-      FROM taptap_pc_played_ids_daily
-      WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
-    ) b
-      ON a.app_id = b.app_id
-    ORDER BY a.app_id, a.crawled_at
   `;
 }
 
@@ -354,37 +301,95 @@ export function buildOnlinePlayersSourceGamesSql(dateStr) {
   `;
 }
 
-/** 构建TapPC来源在线人数（最新一行全量汇总，三个来源在线人数） */
-export function buildPcSourceOnlinePlayersSql() {
+/** 构建TapPC在线峰值来源在线人数 SQL（最新一行全量汇总，三个来源在线人数） */
+export function buildPcOnlinePeakSourceSql() {
   return `
     SELECT
-      pc_played_online_players,
-      pc_emulator_played_online_players,
-      app_hot_creative_played_online_players
-    FROM dws_taptap_pc_source_online_players
+      pc_online_players,
+      pc_emulator_online_players,
+      creative_online_players,
+      crawled_at
+    FROM dws_taptap_pc_online_peak_players_hourly
     ORDER BY crawled_at DESC
     LIMIT 1
   `;
 }
 
-/** 构建TapPC来源在线人数最新统计窗口 SQL */
-export function buildPcSourceNewestSql() {
+/** 构建TapPC在线人数总量 SQL（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */
+export function buildPcOnlinePeakTotalsSql() {
   return `
-    SELECT MAX(crawled_at) AS newest_datestr
-    FROM dws_taptap_pc_source_games_online_players
+    SELECT
+      online_players,
+      pc_online_players,
+      pc_emulator_online_players,
+      creative_online_players
+    FROM dws_taptap_pc_online_peak_players_hourly
+    ORDER BY crawled_at DESC
+    LIMIT 1
   `;
 }
 
-/** 构建TapPC来源在线人数游戏明细 SQL（按来源分组，游戏按在线人数降序） */
-export function buildPcSourceGamesOnlinePlayersSql(dateStr) {
+/** 构建TapPC在线峰值来源最新统计窗口 SQL */
+export function buildPcOnlinePeakNewestSql() {
+  return `
+    SELECT MAX(crawled_at) AS newest_datestr
+    FROM dws_taptap_pc_online_peak_players_rank_hourly
+  `;
+}
+
+/** 构建TapPC在线峰值来源游戏明细 SQL（最新窗口，按来源分组，游戏按在线人数降序） */
+export function buildPcOnlinePeakRankSql() {
   return `
     SELECT
       list_type,
       app_name,
       online_players
-    FROM dws_taptap_pc_source_games_online_players
-    WHERE crawled_at = '${dateStr}'
+    FROM dws_taptap_pc_online_peak_players_rank_hourly
+    WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
     ORDER BY list_type, online_players DESC
+  `;
+}
+
+/** 构建TapPC在线人数Top20游戏列表 SQL（最新统计窗口，筛选 list_type_rk<=20） */
+export function buildPcOnlineTop20ListSql() {
+  return `
+    SELECT
+      app_id,
+      app_name,
+      tag_1,
+      tag_2,
+      tag_3,
+      list_type,
+      distribution_type,
+      online_players,
+      list_type_rk
+    FROM dws_taptap_pc_online_peak_players_rank_hourly
+    WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
+      AND list_type_rk <= 20
+    ORDER BY online_players DESC
+  `;
+}
+
+/** 构建TapPC在线人数Top20游戏最近24小时趋势 SQL（仅取最新窗口 Top20 的 app_id+list_type） */
+export function buildPcOnlineTop20TrendSql() {
+  const dateStr = recentHoursWhere(24);
+  return `
+    SELECT
+      r.app_id,
+      r.list_type,
+      r.crawled_at,
+      r.online_players
+    FROM dws_taptap_pc_online_peak_players_rank_hourly r
+    WHERE r.crawled_at >= '${dateStr}'
+      AND EXISTS (
+        SELECT 1
+        FROM dws_taptap_pc_online_peak_players_rank_hourly t
+        WHERE t.app_id = r.app_id
+          AND t.list_type = r.list_type
+          AND t.list_type_rk <= 20
+          AND t.crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
+      )
+    ORDER BY r.app_id, r.list_type, r.crawled_at
   `;
 }
 
@@ -587,48 +592,6 @@ export function buildAdLoadingRateTrendSql() {
         AND ad_type = 'tappc_2671'
       GROUP BY substr(crawled_at, 1, 10)
     ) t
-  `;
-}
-
-/** 构建TopN游戏占比 SQL（最新窗口，按排名分桶的累计在线人数） */
-export function buildTopNProportionSql(dateStr) {
-  return `
-    SELECT
-      bucket,
-      cum_total_players AS online_players
-    FROM (
-      SELECT
-        bucket,
-        app_cnt,
-        min_rk,
-        SUM(app_cnt) OVER (ORDER BY min_rk) AS cum_app_cnt,
-        SUM(total_players) OVER (ORDER BY min_rk) AS cum_total_players
-      FROM (
-        SELECT
-          CASE
-            WHEN rk <= 5 THEN 'Top5'
-            WHEN rk <= 10 THEN 'Top10'
-            WHEN rk <= 20 THEN 'Top20'
-            WHEN rk <= 50 THEN 'Top50'
-            WHEN rk <= 100 THEN 'Top100'
-            ELSE 'Top100+'
-          END AS bucket,
-          MIN(rk) AS min_rk,
-          COUNT(*) AS app_cnt,
-          SUM(online_players) AS total_players
-        FROM (
-          SELECT
-            app_id,
-            online_players,
-            RANK() OVER (ORDER BY online_players DESC) AS rk
-          FROM taptap_pc_online_players
-          WHERE crawled_at = '${dateStr}'
-            AND online_players IS NOT NULL
-        ) t
-        GROUP BY bucket
-      ) g
-    ) x
-    ORDER BY min_rk
   `;
 }
 
