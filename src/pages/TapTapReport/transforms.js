@@ -6,8 +6,8 @@ export function transformAggregate(rows) {
   return {
     categories,
     series: [
-      { name: 'APP下载数', color: '#2ec4b6', data: sorted.map((r) => Number(r.app_download_count || 0)) },
-      { name: 'PC端下载数', color: '#4361ee', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
+      { name: 'APP下载数', color: '#7A8B99', data: sorted.map((r) => Number(r.app_download_count || 0)) },
+      { name: 'PC端下载数', color: '#9CAF9F', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
     ],
   };
 }
@@ -90,16 +90,16 @@ export function transformMonthlyBreakdown(rows) {
   return {
     categories,
     platform: [
-      { name: 'APP下载数', color: '#2ec4b6', data: sorted.map((r) => Number(r.app_download_count || 0)) },
-      { name: 'PC端下载数', color: '#4361ee', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
+      { name: 'APP下载数', color: '#7A8B99', data: sorted.map((r) => Number(r.app_download_count || 0)) },
+      { name: 'PC端下载数', color: '#9CAF9F', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
     ],
     ai: [
-      { name: '非AI游戏下载数', color: '#2ec4b6', data: sorted.map((r) => Number(r.none_ai_download_count || 0)) },
-      { name: 'AI游戏下载数', color: '#f77f00', data: sorted.map((r) => Number(r.ai_download_count || 0)) },
+      { name: '非AI游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.none_ai_download_count || 0)) },
+      { name: 'AI游戏下载数', color: '#C9B79C', data: sorted.map((r) => Number(r.ai_download_count || 0)) },
     ],
     tapmaker: [
-      { name: '非TapMaker游戏下载数', color: '#2ec4b6', data: sorted.map((r) => Number(r.ai_none_maker_download_count || 0)) },
-      { name: 'TapMaker游戏下载数', color: '#9b5de5', data: sorted.map((r) => Number(r.ai_maker_download_count || 0)) },
+      { name: '非TapMaker游戏下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.ai_none_maker_download_count || 0)) },
+      { name: 'TapMaker游戏下载数', color: '#B08B8B', data: sorted.map((r) => Number(r.ai_maker_download_count || 0)) },
     ],
   };
 }

@@ -206,7 +206,7 @@ export default function BusinessReport() {
         return {
           series: [{ name: STEAM_GAMES[selectedId] || '峰值在线', data }],
           xaxisMin,
-          avgAnnotation: { y: Math.round(avg), label: '近30天平均玩家', color: PEAK_AVG_ANNOTATION_COLOR, dash: 2 },
+          avgAnnotation: { y: Math.round(avg), position: 'center', label: `最近30天平均玩家数：${Math.round(avg).toLocaleString('zh-CN')}`, color: PEAK_AVG_ANNOTATION_COLOR, dash: 2 },
         };
       },
     }
@@ -311,7 +311,14 @@ export default function BusinessReport() {
         // 计算每个赛季的平均值作为 Y 轴标注，颜色与折线对应
         const avgAnnotations = Object.entries(groups).map(([name, data], idx) => {
           const avg = data.reduce((s, d) => s + d.y, 0) / data.length;
-          return { y: avg, label: `${name} 均值`, color: seasonColors[idx % seasonColors.length], dash: 2 };
+          const rounded = Math.round(avg);
+          return {
+            y: rounded,
+            position: 'center',
+            label: `${name} 均值：${rounded.toLocaleString('zh-CN')}`,
+            color: seasonColors[idx % seasonColors.length],
+            dash: 2,
+          };
         });
         return {
           series: Object.entries(groups).map(([name, data]) => ({ name, data })),

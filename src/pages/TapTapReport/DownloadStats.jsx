@@ -28,7 +28,7 @@ import {
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import KpiRow from './components/KpiRow';
-import { truncateName } from './shared';
+import { truncateName, AD_MATERIAL_COLORS } from './shared';
 
 /** 时间范围快捷选项 */
 const TIME_RANGES = [
@@ -74,6 +74,22 @@ const DISTRIBUTION_CHARTS = [
   { key: 'ai', title: '追踪的游戏分布(AI)' },
   { key: 'tapmaker', title: '追踪的游戏分布(TapMaker)' },
 ];
+
+/* ===== 图表配色（均取自 AD_MATERIAL_COLORS 色库） ===== */
+/** 平台拆分：APP / PC */
+const PLATFORM_DOWNLOAD_COLORS = ['#7A8B99', '#9CAF9F'];
+/** 月趋势三个拆分图各自的配色（APP/PC、非AI/AI、非TapMaker/TapMaker） */
+const MONTHLY_BREAKDOWN_COLORS = {
+  platform: ['#7A8B99', '#9CAF9F'],
+  ai: ['#8FA3B0', '#C9B79C'],
+  tapmaker: ['#9B93A8', '#B08B8B'],
+};
+/** 日趋势 7 条折线：按色库循环 */
+const DAILY_TREND_COLORS = AD_MATERIAL_COLORS;
+/** 分布饼图扇区：按色库循环 */
+const DISTRIBUTION_COLORS = AD_MATERIAL_COLORS;
+/** 游戏详情趋势：PC / 移动 / 总下载数 */
+const DETAIL_TREND_COLORS = ['#7A8B99', '#9CAF9F', '#C4A4A4'];
 
 /** 下载Top25明细拆分表配置 */
 const TOP25_DETAIL_TABLES = {
@@ -148,6 +164,7 @@ export default function DownloadStats() {
             error={hotListQuery.error?.message}
             height={675}
             stacked
+            colors={PLATFORM_DOWNLOAD_COLORS}
             totalLabels
             xaxisOverrides={hotListQuery.data?.categories ? { categories: hotListQuery.data.categories, labels: { rotate: -45 } } : {}}
             yaxisOverrides={{
@@ -172,6 +189,7 @@ export default function DownloadStats() {
                   error={monthlyBreakdownQuery.error?.message}
                   height={350}
                   stacked
+                  colors={MONTHLY_BREAKDOWN_COLORS[c.key]}
                   totalLabels
                   shared
                   xaxisOverrides={monthlyBreakdownQuery.data?.categories ? { categories: monthlyBreakdownQuery.data.categories, labels: { rotate: -45 } } : {}}
@@ -192,6 +210,7 @@ export default function DownloadStats() {
             error={dailyTrendQuery.error?.message}
             height={350}
             strokeWidth={2}
+            colors={DAILY_TREND_COLORS}
             strokeDashArray={[0, 5, 5, 5, 5, 5, 5]}
             markers={3}
             shared
@@ -245,6 +264,7 @@ export default function DownloadStats() {
                   error={distributionByWindowQuery.error?.message}
                   height={300}
                   donut
+                  colors={DISTRIBUTION_COLORS}
                   totalLabel={distributionByWindowQuery.data?.[c.key]?.totalLabel}
                   totalValue={distributionByWindowQuery.data?.[c.key]?.totalValue}
                 />
@@ -328,6 +348,7 @@ export default function DownloadStats() {
               error={detailQuery.error?.message}
               height={400}
               strokeWidth={2}
+              colors={DETAIL_TREND_COLORS}
               strokeDashArray={[5, 5, 0]}
               shared
               xaxisOverrides={detailQuery.data?.categories ? { type: 'category', categories: detailQuery.data.categories, labels: { rotate: -45 } } : {}}
