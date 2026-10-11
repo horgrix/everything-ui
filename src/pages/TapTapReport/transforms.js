@@ -268,6 +268,30 @@ export function transformPcOnlinePeakRank(rows) {
   return byType;
 }
 
+/** TapPC 峰值在线 KPI 字段定义（顺序即展示顺序） */
+export const PC_ONLINE_KPI_FIELDS = [
+  { key: 'online', label: '最高在线人数' },
+  { key: 'pc', label: 'PC最高在线人数' },
+  { key: 'pc_emulator', label: '模拟器最高在线人数' },
+  { key: 'creative', label: '小游戏最高在线人数' },
+  { key: 'creative_non', label: '小游戏C最高在线人数' },
+  { key: 'creative_mk', label: '小游戏M最高在线人数' },
+];
+
+/** TapPC峰值在线 KPI（各指标的最大值及其发生的时间节点） */
+export function transformPcOnlinePeakKpis(rows) {
+  const byKey = {};
+  (rows || []).forEach((r) => {
+    byKey[r.k] = { value: r.v == null ? null : Number(r.v), at: r.at || null };
+  });
+  return PC_ONLINE_KPI_FIELDS.map((f) => ({
+    key: f.key,
+    label: f.label,
+    value: byKey[f.key] ? byKey[f.key].value : null,
+    at: byKey[f.key] ? byKey[f.key].at : null,
+  }));
+}
+
 /** TapPC在线人数总量（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */
 export function transformPcOnlinePeakTotals(rows) {
   if (!rows || !rows.length) return null;

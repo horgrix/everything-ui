@@ -294,8 +294,8 @@ export function buildOnlinePlayersSourceGamesSql(dateStr) {
       WHERE crawled_at = '${dateStr}'
     ) a
     LEFT JOIN (
-      SELECT * FROM taptap_pc_played_ids_daily
-      WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+      SELECT * FROM taptap_online_peak_players_ids_weekly
+      WHERE crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
     ) b ON a.app_id = b.app_id
     ORDER BY a.online_players DESC
   `;
@@ -313,6 +313,20 @@ export function buildPcOnlinePeakSourceSql() {
     ORDER BY crawled_at DESC
     LIMIT 1
   `;
+}
+
+/** 构建TapPC峰值在线 KPI SQL（各指标的最大值及其发生的时间节点） */
+export function buildPcOnlinePeakKpisSql() {
+  const table = 'dws_taptap_pc_online_peak_players_hourly';
+  const one = (key, col) => `SELECT * FROM (SELECT '${key}' AS k, ${col} AS v, crawled_at AS at FROM ${table} ORDER BY ${col} DESC, crawled_at DESC LIMIT 1)`;
+  return [
+    one('online', 'online_players'),
+    one('pc', 'pc_online_players'),
+    one('pc_emulator', 'pc_emulator_online_players'),
+    one('creative', 'creative_online_players'),
+    one('creative_non', 'creative_non_online_players'),
+    one('creative_mk', 'creative_mk_online_players'),
+  ].join('\n    UNION ALL\n    ');
 }
 
 /** 构建TapPC在线人数总量 SQL（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */

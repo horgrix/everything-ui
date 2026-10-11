@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import TreemapChart from '../../components/charts/TreemapChart';
+import DashboardCard from '../../components/layout/DashboardCard';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 import {
   buildOnlinePlayersTrendSql,
@@ -9,6 +10,7 @@ import {
   buildOnlinePlayersSourceSql,
   buildOnlinePlayersSourceGamesSql,
   buildPcOnlinePeakSourceSql,
+  buildPcOnlinePeakKpisSql,
   buildPcOnlinePeakTotalsSql,
   buildPcOnlinePeakNewestSql,
   buildPcOnlinePeakRankSql,
@@ -22,6 +24,7 @@ import {
   transformOnlinePlayersSource,
   transformOnlinePlayersSourceGames,
   transformPcOnlinePeakSource,
+  transformPcOnlinePeakKpis,
   transformPcOnlinePeakTotals,
   transformPcOnlinePeakRank,
   transformPcOnlineTop20List,
@@ -33,6 +36,16 @@ import {
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import { PC_ONLINE_TOP20_COLUMNS } from './shared';
+
+/** TapPC 峰值在线 KPI 图标与配色 */
+const PC_KPI_META = {
+  online: { icon: 'bi-people', color: 'primary' },
+  pc: { icon: 'bi-pc-display', color: 'info' },
+  pc_emulator: { icon: 'bi-cpu', color: 'success' },
+  creative: { icon: 'bi-controller', color: 'warning' },
+  creative_non: { icon: 'bi-dpad', color: 'secondary' },
+  creative_mk: { icon: 'bi-joystick', color: 'dark' },
+};
 
 export default function OnlineStats() {
   const onlinePlayersTrendQuery = useSqlQuery('taptap-online-players-trend', buildOnlinePlayersTrendSql, [], transformOnlinePlayersTrend, { enabled: true });
@@ -46,6 +59,7 @@ export default function OnlineStats() {
   const pcOnlineTop20ListQuery = useSqlQuery('taptap-pc-online-top20-list', buildPcOnlineTop20ListSql, [], transformPcOnlineTop20List, { enabled: true });
   const pcOnlineTop20TrendQuery = useSqlQuery('taptap-pc-online-top20-trend', buildPcOnlineTop20TrendSql, [], transformPcOnlineTop20Trend, { enabled: true });
   const pcOnlinePeakTotalsQuery = useSqlQuery('taptap-pc-online-peak-totals', buildPcOnlinePeakTotalsSql, [], transformPcOnlinePeakTotals, { enabled: true });
+  const pcOnlinePeakKpisQuery = useSqlQuery('taptap-pc-online-peak-kpis', buildPcOnlinePeakKpisSql, [], transformPcOnlinePeakKpis, { enabled: true });
   const pcOnlineTop20Rows = useMemo(() => {
     const list = pcOnlineTop20ListQuery.data?.rows || [];
     const labels = pcOnlineTop20TrendQuery.data?.labels || [];
@@ -76,6 +90,24 @@ export default function OnlineStats() {
 
   return (
     <>
+      {/* TapPC峰值在线 KPI */}
+      <div className="row g-3 mb-4">
+        {(pcOnlinePeakKpisQuery.data || []).map((k) => {
+          const meta = PC_KPI_META[k.key] || {};
+          return (
+            <div className="col-12 col-sm-6 col-md-4 col-lg-2" key={k.key}>
+              <DashboardCard
+                title={k.label}
+                value={k.value != null ? formatNumber(k.value) : '-'}
+                subtitle={k.at ? `统计时间 ${k.at}` : ''}
+                icon={meta.icon || 'bi-graph-up'}
+                color={meta.color || 'primary'}
+              />
+            </div>
+          );
+        })}
+      </div>
+
       {/* TapPC热玩游戏榜在线人数趋势 */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
         {/* 趋势（独占整行） */}
