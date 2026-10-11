@@ -18,6 +18,15 @@ export const COLORS = {
   ],
 };
 
+/** 统一色库（25 种柔和色，全局图表/标签共用） */
+export const AD_MATERIAL_COLORS = [
+  '#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0', '#9B93A8',
+  '#8FA3B0', '#7D8F7B', '#D0B4B4', '#BFAE8E', '#B4AEC0',
+  '#5C6B7A', '#8A8F6B', '#B08B8B', '#C9B79C', '#A0A0A0',
+  '#A9BAC4', '#A8BFAE', '#C9B6C0', '#A6947E', '#B0AAA4',
+  '#6B7C8C', '#5F6F5E', '#B9A2AE', '#D8CFC0', '#6E6E6E',
+];
+
 // 通用 ApexCharts 配置
 export const baseChartOptions = {
   chart: {

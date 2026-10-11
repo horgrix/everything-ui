@@ -5,14 +5,8 @@ import { useState } from 'react';
 import Sparkline from '../../components/common/Sparkline';
 import { formatNumber } from '../../utils/formatters';
 
-/** TapPC广告投放素材分布 Treemap 颜色库 */
-export const AD_MATERIAL_COLORS = [
-  '#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0', '#9B93A8',
-  '#8FA3B0', '#7D8F7B', '#D0B4B4', '#BFAE8E', '#B4AEC0',
-  '#5C6B7A', '#8A8F6B', '#B08B8B', '#C9B79C', '#A0A0A0',
-  '#A9BAC4', '#A8BFAE', '#C9B6C0', '#A6947E', '#B0AAA4',
-  '#6B7C8C', '#5F6F5E', '#B9A2AE', '#D8CFC0', '#6E6E6E',
-];
+/** 统一色库（从 ../../utils/chart-theme 重导出，保持旧引用不变） */
+export { AD_MATERIAL_COLORS } from '../../utils/chart-theme';
 
 /** 游戏名称截断：最多10个字，超出用...代替 */
 export const truncateName = (name) => {

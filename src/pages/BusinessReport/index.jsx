@@ -4,6 +4,7 @@ import query from '../../api/query';
 import LineChart from '../../components/charts/LineChart';
 import HeatmapChart from '../../components/charts/HeatmapChart';
 import MixedChart from '../../components/charts/MixedChart';
+import { AD_MATERIAL_COLORS } from '../../utils/chart-theme';
 
 const TABLE_NAME = 'steam_best_seller_list_hourly';
 const WEEKLY_TABLE_NAME = 'steam_best_seller_list_weekly';
@@ -20,6 +21,31 @@ const STEAM_GAMES = {
 };
 
 const GAME_IDS = Object.keys(STEAM_GAMES);
+
+/** 排名趋势折线配色（地区数不定，按色库循环） */
+const TREND_COLORS = AD_MATERIAL_COLORS;
+/** 赛季峰值对比折线配色（取自色库） */
+const SEASON_COLORS = ['#7A8B99', '#9CAF9F', '#C9B79C', '#B08B8B', '#9B93A8'];
+/** 峰值在线人数：折线色与均值标注线色（取自色库） */
+const PEAK_LINE_COLOR = '#8FA3B0';
+const PEAK_AVG_ANNOTATION_COLOR = '#B08B8B';
+/** 峰值在线人数月趋势配色（平均在线 / 峰值在线，取自色库） */
+const MONTHLY_PEAK_COLORS = ['#7A8B99', '#C4A4A4'];
+/** 评论分析配色（推荐 / 不推荐 / 推荐率，取自色库） */
+const REVIEW_COLORS = ['#9CAF9F', '#D0B4B4', '#7A8B99'];
+/** 排名热力图色阶（top10 最深 → top100 最深，中间最浅；取自色库） */
+const HEATMAP_RANGES = [
+  { from: 1, to: 10, name: 'top10', color: '#5C6B7A' },
+  { from: 11, to: 20, name: 'top20', color: '#6B7C8C' },
+  { from: 21, to: 30, name: 'top30', color: '#7A8B99' },
+  { from: 31, to: 40, name: 'top40', color: '#A9BAC4' },
+  { from: 41, to: 50, name: 'top50', color: '#D8CFC0' },
+  { from: 51, to: 60, name: 'top60', color: '#C9B79C' },
+  { from: 61, to: 70, name: 'top70', color: '#BFAE8E' },
+  { from: 71, to: 80, name: 'top80', color: '#A6947E' },
+  { from: 81, to: 90, name: 'top90', color: '#8A8F6B' },
+  { from: 91, to: 100, name: 'top100', color: '#5F6F5E' },
+];
 
 /** 最近 N 天 */
 function recentDaysWhere(days = 3) {
@@ -180,7 +206,7 @@ export default function BusinessReport() {
         return {
           series: [{ name: STEAM_GAMES[selectedId] || '峰值在线', data }],
           xaxisMin,
-          avgAnnotation: { y: Math.round(avg), label: '近30天平均玩家', color: '#ff9f1c', dash: 2 },
+          avgAnnotation: { y: Math.round(avg), label: '近30天平均玩家', color: PEAK_AVG_ANNOTATION_COLOR, dash: 2 },
         };
       },
     }
@@ -281,7 +307,7 @@ export default function BusinessReport() {
           if (!groups[key]) groups[key] = [];
           groups[key].push({ x: Number(r.ss_day), y: Number(r.peak_players) });
         }
-        const seasonColors = ['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6'];
+        const seasonColors = SEASON_COLORS;
         // 计算每个赛季的平均值作为 Y 轴标注，颜色与折线对应
         const avgAnnotations = Object.entries(groups).map(([name, data], idx) => {
           const avg = data.reduce((s, d) => s + d.y, 0) / data.length;
@@ -339,6 +365,7 @@ export default function BusinessReport() {
             loading={trendQuery.isLoading}
             error={trendQuery.error?.message}
             height={450}
+            colors={TREND_COLORS}
             xaxisOverrides={{
               type: 'datetime',
               labels: { format: 'MM/dd HH:mm', datetimeUTC: false, rotate: -45 },
@@ -367,18 +394,8 @@ export default function BusinessReport() {
             error={heatmapQuery.error?.message}
             height={500}
             xaxisOverrides={heatmapQuery.data?.categories ? { categories: heatmapQuery.data.categories } : {}}
-            colorScale={[
-              { from: 1, to: 10, name: 'top10', color: '#831A21' },
-              { from: 11, to: 20, name: 'top20', color: '#A13D3B' },
-              { from: 21, to: 30, name: 'top30', color: '#C16D58' },
-              { from: 31, to: 40, name: 'top40', color: '#ECD0B4' },
-              { from: 41, to: 50, name: 'top50', color: '#F2EBE5' },
-              { from: 51, to: 60, name: 'top60', color: '#C8D6E7' },
-              { from: 61, to: 70, name: 'top70', color: '#9EBCDB' },
-              { from: 71, to: 80, name: 'top80', color: '#7091C7' },
-              { from: 81, to: 90, name: 'top90', color: '#4E70AF' },
-              { from: 91, to: 100, name: 'top100', color: '#375093' },
-            ]}
+            colorScale={HEATMAP_RANGES}
+            noDataColor="#ffffff"
             valueFormatter={(val) => Math.round(val)}
           />
         </div>
@@ -395,7 +412,7 @@ export default function BusinessReport() {
                 loading={monthlyPeakQuery.isLoading}
                 error={monthlyPeakQuery.error?.message}
                 height={400}
-                colors={['#4361ee', '#e71d36']}
+                colors={MONTHLY_PEAK_COLORS}
                 strokeWidths={[0, 2]}
                 tooltipY={(v, yi) => yi === 1 ? formatAmount(v) : formatAmount(v)}
                 xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
@@ -414,6 +431,7 @@ export default function BusinessReport() {
                 error={peakQuery.error?.message}
                 area
                 height={400}
+                colors={[PEAK_LINE_COLOR]}
                 xaxisOverrides={{
                   type: 'datetime',
                   min: peakQuery.data?.xaxisMin,
@@ -439,7 +457,7 @@ export default function BusinessReport() {
               loading={seasonQuery.isLoading}
               error={seasonQuery.error?.message}
               height={400}
-              colors={['#97c786', '#7dc3ea', '#ffa600', '#f46a64', '#fcaaa6']}
+              colors={SEASON_COLORS}
               xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
               yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
               strokeWidth={2} markers={3}
@@ -455,7 +473,7 @@ export default function BusinessReport() {
             <div className="card-header bg-white border-0 fw-semibold">最近评论</div>
             <div className="card-body">
               <MixedChart series={recentReviewQuery.data?.series || []} loading={recentReviewQuery.isLoading} error={recentReviewQuery.error?.message} height={400}
-                colors={['#2ec4b6', '#e71d36', '#4361ee']} strokeWidths={[0, 0, 2]}
+                colors={REVIEW_COLORS} strokeWidths={[0, 0, 2]}
                 xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
                 yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
                 yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
@@ -467,7 +485,7 @@ export default function BusinessReport() {
             <div className="card-header bg-white border-0 fw-semibold">历史评论</div>
             <div className="card-body">
               <MixedChart series={rollupReviewQuery.data?.series || []} loading={rollupReviewQuery.isLoading} error={rollupReviewQuery.error?.message} height={400}
-                colors={['#2ec4b6', '#e71d36', '#4361ee']} strokeWidths={[0, 0, 2]}
+                colors={REVIEW_COLORS} strokeWidths={[0, 0, 2]}
                 xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
                 yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
                 yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />

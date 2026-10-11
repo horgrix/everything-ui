@@ -18,9 +18,17 @@ export default function HeatmapChart({
   xaxisOverrides = {},
   /** y 轴是否反转（true：第一个 series 显示在顶部，从上到下自然阅读顺序） */
   yaxisReversed = false,
+  /**
+   * 无值(null)格子的填充色（如 '#ffffff'）。
+   * ApexCharts 热力图对 null 不匹配任何色阶，会回退成默认系列色；
+   * 传入此色后，未命中 colorScale 的格子统一显示为该色。
+   */
+  noDataColor = null,
 }) {
   const defaultRanges = [{ from: -1, to: 1, color: undefined }];
   const options = {
+    // 未命中色阶的格子（无值/null）回退到该色：ApexCharts 会把 chart.colors 自动补齐到系列数
+    ...(noDataColor ? { colors: [noDataColor] } : {}),
     chart: {
       type: 'heatmap',
       toolbar: { show: false },
