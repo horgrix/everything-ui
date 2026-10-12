@@ -99,6 +99,44 @@ export const PlatformBar = ({ ios = 0, android = 0, total: totalProp }) => {
   );
 };
 
+/** AD/PCE 堆叠 bar（商业推广 + 资源置换，总数居中，悬停显示明细） */
+export const AD_PCE_COLORS = { ad: '#7A8B99', pce: '#B08B8B' };
+export const AdPceBar = ({ ad = 0, pce = 0 }) => {
+  const [pos, setPos] = useState(null);
+  const a = Number(ad) || 0;
+  const p = Number(pce) || 0;
+  const total = a + p;
+  if (total === 0) return <span className="text-muted">-</span>;
+  const adPct = (a / total) * 100;
+  const pcePct = (p / total) * 100;
+  return (
+    <div
+      className="position-relative"
+      style={{ height: 18, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}
+      onMouseEnter={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
+      }}
+      onMouseLeave={() => setPos(null)}
+    >
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${adPct}%`, backgroundColor: AD_PCE_COLORS.ad }} />
+      <div style={{ position: 'absolute', left: `${adPct}%`, top: 0, bottom: 0, width: `${pcePct}%`, backgroundColor: AD_PCE_COLORS.pce }} />
+      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#333', pointerEvents: 'none' }}>
+        {total}
+      </span>
+      {pos && (
+        <div style={{
+          position: 'fixed', left: pos.x, top: pos.y, transform: 'translateX(-50%)',
+          background: 'rgba(33,37,41,0.95)', color: '#fff', padding: '6px 8px',
+          borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'nowrap', zIndex: 2000, pointerEvents: 'none',
+        }}>
+          商业推广(AD)：{a}　资源置换(PCE)：{p}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** TapApp广告素材标签列配色（取自 AD_MATERIAL_COLORS 色库） */
 export const APP_AD_TAG_COLORS = {
   tag1: '#7A8B99',
@@ -238,7 +276,7 @@ export const TAPAPP_AD_GAME_LIST_COLUMNS = [
   } },
   {
     header: '标签',
-    width: '16%',
+    width: '15%',
     accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -249,41 +287,14 @@ export const TAPAPP_AD_GAME_LIST_COLUMNS = [
       </div>
     ),
   },
-  {
-    header: '投放排名',
-    width: '6%',
-    help: [
-      { color: '#8A8F6B', text: '本日排名' },
-      { color: '#C9B79C', text: '本周排名' },
-      { color: '#B08B8B', text: '本月排名' },
-      { color: '#6E6E6E', text: '无排名' },
-    ],
-    render: (r) => {
-      const items = [
-        { value: r.dailyRank, color: '#8A8F6B' },
-        { value: r.weeklyRank, color: '#C9B79C' },
-        { value: r.monthlyRank, color: '#B08B8B' },
-      ];
-      return (
-        <div className="d-flex flex-wrap gap-1">
-          {items.map((it, idx) => {
-            const hit = it.value != null;
-            return (
-              <span key={idx} className="badge" style={{ backgroundColor: hit ? it.color : '#6E6E6E', color: '#fff' }}>
-                {hit ? it.value : '-'}
-              </span>
-            );
-          })}
-        </div>
-      );
-    },
-  },
-  { header: '曝光次数', align: 'center', width: '8%', help: '指命中一次系统采集，则为一次曝光', accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} total={r.showCnt} /> },
-  { header: '广告投放次数', align: 'center', width: '8%', help: '指命中一次系统采集，且本次命中的素材中带有AD标志，则为一次广告投放', accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} total={r.adCnt} /> },
-  { header: '投放趋势', align: 'center', width: '20%', help: '为最近7天内每日投放的趋势，x轴为每日时间，y轴为每日的广告投放次数', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
-  { header: '广告投放比', align: 'center', width: '8%', help: '广告投放比=广告投放次数/曝光次数', accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
-  { header: '广告贡献比例', align: 'center', width: '8%', help: '广告贡献比例=广告投放次数/总广告投放数', accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
-  { header: '广告加载率', align: 'center', width: '8%', help: '广告加载率=广告投放次数/总曝光次数', accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
+  { header: '曝光次数', align: 'center', width: '7%', help: '指命中一次系统采集，则为一次曝光', accessor: (r) => r.showCnt, render: (r) => <PlatformBar ios={r.iosShowCnt} android={r.androidShowCnt} total={r.showCnt} /> },
+  { header: '总投放数', align: 'center', width: '7%', help: '总投放数 = 商业推广(AD) + 资源置换(PCE)，由两者堆叠组成', accessor: (r) => (Number(r.adCnt) || 0) + (Number(r.pcebidCnt) || 0), render: (r) => <AdPceBar ad={r.adCnt} pce={r.pcebidCnt} /> },
+  { header: '商业推广(AD)', align: 'center', width: '7%', help: '指命中一次系统采集，且本次命中的素材中带有AD标志，则为一次商业推广(AD)', accessor: (r) => r.adCnt, render: (r) => <PlatformBar ios={r.iosAdCnt} android={r.androidAdCnt} total={r.adCnt} /> },
+  { header: '资源置换(PCE)', align: 'center', width: '7%', help: '指命中一次系统采集，且本次命中的素材中带有 pcebid 标志，则为一次资源置换(PCE)；由 iOS + Android 堆叠组成', accessor: (r) => r.pcebidCnt, render: (r) => <PlatformBar ios={r.iosPcebidCnt} android={r.androidPcebidCnt} total={r.pcebidCnt} /> },
+  { header: '投放趋势', align: 'center', width: '15%', help: '本周（实线加粗）与上周（虚线）按周几对齐的总投放数对比；y=每日总投放数（商业推广(AD)+资源置换(PCE)）', render: (r) => <Sparkline data={r.trend || []} prevData={r.prevTrend || null} labels={r.trendLabels || []} currentLabel="本周" prevLabel="上周" width={120} height={32} /> },
+  { header: '广告投放比', align: 'center', width: '8%', help: '广告投放比=总投放数/曝光次数', accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
+  { header: '广告贡献比例', align: 'center', width: '8%', help: '广告贡献比例=总投放数/总计的总投放数', accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
+  { header: '广告加载率', align: 'center', width: '8%', help: '广告加载率=总投放数/总计的曝光次数', accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
 ];
 
 /** TapApp搜索页广告来源分类 */

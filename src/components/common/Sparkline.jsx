@@ -4,45 +4,76 @@ import { useId, useState } from 'react';
 const UP_COLOR = '#dc3545';
 const DOWN_COLOR = '#198754';
 const FALLBACK_COLOR = '#6c757d';
+/** 对比序列（上周等）默认颜色：中性灰 */
+const PREV_COLOR = '#B0AAA4';
 
 /**
  * 自绘 SVG 迷你折线图（sparkline），零外部依赖，支持悬停提示。
  *
- * @param {Array<number|null|undefined>} data 数值序列；null/undefined/NaN 会被跳过
- * @param {Array<string>} [labels] 每个数据点对应的标签（如日期），悬停时显示在提示里
+ * 带 `prevData` 时进入「对比模式」：主序列用实线加粗，对比序列用虚线，
+ * 两者按数组索引对齐（适合「本周 vs 上周」按周几对比）。
+ *
+ * @param {Array<number|null|undefined>} data 主序列；null/undefined/NaN 处不画点（但保留位置）
+ * @param {Array<string>} [labels] 每个索引对应的标签（如「周一」），悬停时显示
  * @param {number} width 宽度（px）
  * @param {number} height 高度（px）
- * @param {string} [color] 线条颜色；缺省时按首尾值自动「红涨绿跌」
+ * @param {string} [color] 主线颜色；缺省时按首尾值自动「红涨绿跌」
+ * @param {Array<number|null|undefined>} [prevData] 对比序列（与 data 同长度、按索引对齐），虚线绘制
+ * @param {string} [prevColor] 对比序列颜色
+ * @param {string} [currentLabel] 主序列名称（对比模式下 tooltip 显示）
+ * @param {string} [prevLabel] 对比序列名称（对比模式下 tooltip 显示）
  */
-export default function Sparkline({ data = [], labels = [], width = 120, height = 32, color }) {
+export default function Sparkline({
+  data = [],
+  labels = [],
+  width = 120,
+  height = 32,
+  color,
+  prevData = null,
+  prevColor = PREV_COLOR,
+  currentLabel = '本周',
+  prevLabel = '上周',
+}) {
   const gradId = `sparkline-grad-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [hoverIdx, setHoverIdx] = useState(null);
-  const points = (data || []).filter((v) => typeof v === 'number' && Number.isFinite(v));
 
+  const toNum = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const cur = (data || []).map(toNum);
+  const prev = prevData ? prevData.map(toNum) : null;
+  const n = Math.max(cur.length, prev ? prev.length : 0);
+  const prevCount = prev ? prev.filter((v) => v != null).length : 0;
+  const curCount = cur.filter((v) => v != null).length;
+
+  const allVals = [...cur, ...(prev || [])].filter((v) => v != null);
+  const hasData = allVals.length > 0;
+
+  // 自动配色：仅看主序列
+  const curVals = cur.filter((v) => v != null);
   let strokeColor = color;
-  if (!strokeColor && points.length >= 2) {
-    strokeColor = points[points.length - 1] >= points[0] ? UP_COLOR : DOWN_COLOR;
+  if (!strokeColor && curVals.length >= 2) {
+    strokeColor = curVals[curVals.length - 1] >= curVals[0] ? UP_COLOR : DOWN_COLOR;
   }
   if (!strokeColor) strokeColor = FALLBACK_COLOR;
 
   const pad = 1.5;
   const innerH = height - pad * 2;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
+  const min = hasData ? Math.min(...allVals) : 0;
+  const max = hasData ? Math.max(...allVals) : 1;
   const range = max - min || 1;
-  const x = (i) => (points.length > 1 ? (i * width) / (points.length - 1) : width / 2);
+  // x 按原数组索引定位（null 占位但不画点），保证多序列/多行标签对齐
+  const x = (i) => (n > 1 ? (i * width) / (n - 1) : width / 2);
   const y = (v) => pad + innerH - ((v - min) / range) * innerH;
 
   const handleMove = (e) => {
-    if (!points.length) return;
+    if (!hasData) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left;
-    const idx = points.length > 1 ? Math.round((px / width) * (points.length - 1)) : 0;
-    setHoverIdx(Math.max(0, Math.min(points.length - 1, idx)));
+    const idx = n > 1 ? Math.round((px / width) * (n - 1)) : 0;
+    setHoverIdx(Math.max(0, Math.min(n - 1, idx)));
   };
 
   // 空数据占位：一条居中的虚线
-  if (!points.length) {
+  if (!hasData) {
     return (
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{ display: 'block' }}>
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="#dee2e6" strokeWidth="1" strokeDasharray="3 3" />
@@ -50,16 +81,27 @@ export default function Sparkline({ data = [], labels = [], width = 120, height 
     );
   }
 
-  const linePoints = points.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(' ');
-  const areaPath = points.length > 1
-    ? `M ${x(0).toFixed(2)},${y(points[0]).toFixed(2)} ${points
+  const polyOf = (arr) =>
+    arr
+      .map((v, i) => (v == null ? null : `${x(i).toFixed(2)},${y(v).toFixed(2)}`))
+      .filter(Boolean)
+      .join(' ');
+
+  const curPoints = polyOf(cur);
+  const prevPoints = prev ? polyOf(prev) : '';
+  const curIdxs = cur.map((v, i) => (v == null ? -1 : i)).filter((i) => i >= 0);
+  const areaPath = curIdxs.length > 1
+    ? `M ${x(curIdxs[0]).toFixed(2)},${y(cur[curIdxs[0]]).toFixed(2)} ${curIdxs
         .slice(1)
-        .map((v, i) => `L ${x(i + 1).toFixed(2)},${y(v).toFixed(2)}`)
-        .join(' ')} L ${x(points.length - 1).toFixed(2)},${height} L ${x(0).toFixed(2)},${height} Z`
+        .map((i) => `L ${x(i).toFixed(2)},${y(cur[i]).toFixed(2)}`)
+        .join(' ')} L ${x(curIdxs[curIdxs.length - 1]).toFixed(2)},${height} L ${x(curIdxs[0]).toFixed(2)},${height} Z`
     : '';
 
-  const tooltipLabel = hoverIdx != null ? labels?.[hoverIdx] : null;
-  const tooltipValue = hoverIdx != null ? points[hoverIdx] : null;
+  const isCompare = prev != null;
+  const curStrokeWidth = isCompare ? 2.5 : 1.5; // 对比模式下主线加粗
+  const hoverCur = hoverIdx != null ? cur[hoverIdx] : null;
+  const hoverPrev = hoverIdx != null && prev ? prev[hoverIdx] : null;
+  const hoverLabel = hoverIdx != null ? labels?.[hoverIdx] : null;
 
   return (
     <div
@@ -74,28 +116,49 @@ export default function Sparkline({ data = [], labels = [], width = 120, height 
             <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
           </linearGradient>
         </defs>
-        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />}
-        {points.length > 1 ? (
+
+        {/* 对比序列（上周）：虚线、细、画在底层 */}
+        {prevCount > 1 && (
           <polyline
-            points={linePoints}
+            points={prevPoints}
             fill="none"
-            stroke={strokeColor}
-            strokeWidth="1.5"
+            stroke={prevColor}
+            strokeWidth="1.2"
+            strokeDasharray="3 2.5"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
-        ) : (
-          <circle cx={x(0)} cy={y(points[0])} r="2" fill={strokeColor} />
         )}
+
+        {areaPath && <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />}
+
+        {/* 主序列（本周）：实线、加粗 */}
+        {curCount > 1 ? (
+          <polyline
+            points={curPoints}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={curStrokeWidth}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : curCount === 1 ? (
+          <circle cx={x(curIdxs[0])} cy={y(cur[curIdxs[0]])} r="2" fill={strokeColor} />
+        ) : null}
+
         {/* 透明命中区：扩大悬停命中范围 */}
-        {points.length > 1 && (
-          <polyline points={linePoints} fill="none" stroke="transparent" strokeWidth="8" />
+        {curCount > 1 && <polyline points={curPoints} fill="none" stroke="transparent" strokeWidth="8" />}
+        {isCompare && prevCount > 1 && <polyline points={prevPoints} fill="none" stroke="transparent" strokeWidth="8" />}
+
+        {hoverCur != null && (
+          <circle cx={x(hoverIdx)} cy={y(hoverCur)} r="3" fill={strokeColor} stroke="#fff" strokeWidth="1" />
         )}
-        {hoverIdx != null && (
-          <circle cx={x(hoverIdx)} cy={y(points[hoverIdx])} r="3" fill={strokeColor} stroke="#fff" strokeWidth="1" />
+        {hoverPrev != null && (
+          <circle cx={x(hoverIdx)} cy={y(hoverPrev)} r="2.5" fill={prevColor} stroke="#fff" strokeWidth="1" />
         )}
       </svg>
-      {hoverIdx != null && (
+
+      {hoverIdx != null && (hoverCur != null || hoverPrev != null) && (
         <div
           style={{
             position: 'absolute',
@@ -113,7 +176,15 @@ export default function Sparkline({ data = [], labels = [], width = 120, height 
             zIndex: 10,
           }}
         >
-          {tooltipLabel != null ? `${tooltipLabel}：${tooltipValue}` : String(tooltipValue)}
+          {hoverLabel != null && <div style={{ opacity: 0.75 }}>{hoverLabel}</div>}
+          {isCompare ? (
+            <>
+              <div>{currentLabel}：{hoverCur != null ? hoverCur : '-'}</div>
+              <div>{prevLabel}：{hoverPrev != null ? hoverPrev : '-'}</div>
+            </>
+          ) : (
+            <div>{hoverCur != null ? hoverCur : '-'}</div>
+          )}
         </div>
       )}
     </div>

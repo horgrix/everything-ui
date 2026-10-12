@@ -24,6 +24,8 @@ export default function HeatmapChart({
    * 传入此色后，未命中 colorScale 的格子统一显示为该色。
    */
   noDataColor = null,
+  /** 自定义 tooltip：传入后覆盖默认 tooltip（ApexCharts custom 形式，返回 HTML 字符串） */
+  tooltipCustom = null,
 }) {
   const defaultRanges = [{ from: -1, to: 1, color: undefined }];
   const options = {
@@ -63,11 +65,13 @@ export default function HeatmapChart({
     yaxis: {
       reversed: yaxisReversed,
     },
-    tooltip: {
-      y: {
-        formatter: (val) => val?.toFixed(4) ?? '',
-      },
-    },
+    tooltip: tooltipCustom
+      ? { custom: tooltipCustom }
+      : {
+          y: {
+            formatter: (val) => val?.toFixed(4) ?? '',
+          },
+        },
     grid: {
       padding: { right: 20 },
     },

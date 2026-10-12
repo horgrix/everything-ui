@@ -365,11 +365,20 @@ export function transformTapAppAdNewPositionStats(rows) {
   rows.forEach((r) => {
     const pos = String(r.position);
     if (!byPos[pos]) byPos[pos] = {};
-    byPos[pos][r.platform] = Number(r.ad_loading_rate);
+    byPos[pos][r.platform] = {
+      rate: r.ad_loading_rate != null ? Number(r.ad_loading_rate) : null,
+      ad: r.ad_cnt != null ? Number(r.ad_cnt) : null,
+      bid: r.pcebid_cnt != null ? Number(r.pcebid_cnt) : null,
+    };
   });
   const series = positions.map((pos) => ({
     name: `位置${pos}`,
-    data: categories.map((c) => ({ x: c, y: byPos[pos]?.[c] ?? null })),
+    data: categories.map((c) => {
+      const cell = byPos[pos]?.[c];
+      if (!cell) return { x: c, y: null };
+      // 除 y(加载率) 外额外携带 ad/pcebid 计数，供 tooltip 展示
+      return { x: c, y: cell.rate, ad: cell.ad, bid: cell.bid };
+    }),
   }));
   return { series, categories };
 }
@@ -412,6 +421,8 @@ export function transformAdTotalStats(rows) {
   return {
     totalShowCnt: Number(r.total_show_cnt || 0),
     totalAdCnt: Number(r.total_ad_cnt || 0),
+    totalPcebidCnt: Number(r.total_pcebid_cnt || 0),
+    totalPushCnt: Number(r.total_push_cnt || 0),
   };
 }
 
@@ -419,11 +430,13 @@ export function transformAdTotalStats(rows) {
 export function transformAdGameList(rows, totalStats) {
   if (!rows || !rows.length) return { rows: [] };
   const totalShow = totalStats?.totalShowCnt || 0;
-  const totalAd = totalStats?.totalAdCnt || 0;
+  const totalPush = totalStats?.totalPushCnt || 0;
   const toPct = (v) => (v == null ? null : parseFloat(v.toFixed(2)));
   const list = rows.map((r) => {
     const showCnt = Number(r.show_cnt || 0);
     const adCnt = Number(r.ad_cnt || 0);
+    const pcebidCnt = Number(r.pcebid_cnt || 0);
+    const pushCnt = adCnt + pcebidCnt; // 总投放数 = 商业推广(AD) + 资源置换(PCE)
     return {
       appId: r.app_id,
       appName: r.app_name != null ? String(r.app_name) : null,
@@ -437,26 +450,59 @@ export function transformAdGameList(rows, totalStats) {
       adCnt,
       iosAdCnt: r.ios_ad_cnt != null ? Number(r.ios_ad_cnt) : null,
       androidAdCnt: r.android_ad_cnt != null ? Number(r.android_ad_cnt) : null,
-      adDeliveryRate: showCnt > 0 ? toPct((adCnt / showCnt) * 100) : null,
-      adContributionRate: totalAd > 0 ? toPct((adCnt / totalAd) * 100) : null,
-      adLoadingRate: totalShow > 0 ? toPct((adCnt / totalShow) * 100) : null,
+      pcebidCnt,
+      iosPcebidCnt: Number(r.ios_pcebid_cnt || 0),
+      androidPcebidCnt: Number(r.android_pcebid_cnt || 0),
+      pushCnt,
+      // 广告投放比 = 总投放数 / 曝光次数
+      adDeliveryRate: showCnt > 0 ? toPct((pushCnt / showCnt) * 100) : null,
+      // 广告贡献比例 = 总投放数 / 总计的总投放数
+      adContributionRate: totalPush > 0 ? toPct((pushCnt / totalPush) * 100) : null,
+      // 广告加载率 = 总投放数 / 总计的曝光次数
+      adLoadingRate: totalShow > 0 ? toPct((pushCnt / totalShow) * 100) : null,
     };
   });
   return { rows: list };
 }
 
 /** TapApp首页找游戏广告每日投放趋势（app_id -> 每日投放次数，共用日期横轴） */
-export function transformTapAppAdGameDailyTrend(rows) {
-  if (!rows || !rows.length) return { byApp: {}, days: [] };
-  const byApp = {};
-  const daySet = new Set();
+/** 周几标签（周一为一周起点） */
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+/** 本周一 00:00（本地时间） */
+function mondayOfThisWeek() {
+  const now = new Date();
+  const diff = (now.getDay() + 6) % 7;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
+}
+
+/**
+ * 把「日期 → 值」的行按周几拆分成本周/上周两条 7 长度序列（周一=0…周日=6）。
+ * @param {Array} rows 含 day / push_cnt 的行
+ * @param {(row) => string} keyFn 分组键（按 app 或固定常量）
+ */
+function splitDailyByWeek(rows, keyFn) {
+  const thisWeek = {};
+  const lastWeek = {};
+  const monday = mondayOfThisWeek().getTime();
   rows.forEach((r) => {
-    const appId = r.app_id;
-    if (!byApp[appId]) byApp[appId] = {};
-    byApp[appId][r.day] = Number(r.ad_cnt || 0);
-    daySet.add(r.day);
+    const dayStr = String(r.day || '').slice(0, 10);
+    const d = new Date(`${dayStr}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    const idx = (d.getDay() + 6) % 7;
+    const bucket = d.getTime() >= monday ? thisWeek : lastWeek;
+    const key = keyFn(r);
+    if (!bucket[key]) bucket[key] = new Array(7).fill(null);
+    bucket[key][idx] = Number(r.push_cnt || 0);
   });
-  return { byApp, days: [...daySet].sort() };
+  return { thisWeek, lastWeek };
+}
+
+/** TapApp首页找游戏广告每日投放趋势（按 app_id 拆分本周/上周，按周几对齐） */
+export function transformTapAppAdGameDailyTrend(rows) {
+  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: {}, lastWeek: {} };
+  const { thisWeek, lastWeek } = splitDailyByWeek(rows, (r) => r.app_id);
+  return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
 }
 
 /** TapApp首页找游戏广告总计（overview总览表汇总） */
@@ -470,16 +516,20 @@ export function transformTapAppAdOverviewStats(rows) {
     adViews: Number(r.ad_views || 0),
     iosAdViews: Number(r.ios_ad_views || 0),
     androidAdViews: Number(r.android_ad_views || 0),
+    pcebidViews: Number(r.pcebid_views || 0),
+    iosPcebidViews: Number(r.ios_pcebid_views || 0),
+    androidPcebidViews: Number(r.android_pcebid_views || 0),
   };
 }
 
 /** TapApp首页找游戏广告每日总投放趋势（overview总览表按日） */
 export function transformTapAppAdOverviewDailyTrend(rows) {
-  if (!rows || !rows.length) return { days: [], adCnts: [] };
-  const sorted = [...rows].sort((a, b) => (a.day < b.day ? -1 : 1));
+  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: [], lastWeek: [] };
+  const { thisWeek, lastWeek } = splitDailyByWeek(rows, () => '_all');
   return {
-    days: sorted.map((r) => r.day),
-    adCnts: sorted.map((r) => Number(r.ad_cnt || 0)),
+    labels: WEEKDAY_LABELS,
+    thisWeek: thisWeek._all || new Array(7).fill(null),
+    lastWeek: lastWeek._all || new Array(7).fill(null),
   };
 }
 
@@ -488,17 +538,18 @@ export function transformTapAppAdOverviewHourlyTrend(rows) {
   if (!rows || !rows.length) return { categories: [], series: [] };
   const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
   const categories = sorted.map((r) => r.crawled_at);
-  const rate = (ad, views) => {
+  // 加载率 = (广告曝光 + pcebid 曝光) / 总曝光
+  const rate = (ad, pcebid, views) => {
     const v = Number(views);
     if (!v) return null;
-    return parseFloat(((Number(ad) / v) * 100).toFixed(2));
+    return parseFloat((((Number(ad) + Number(pcebid)) / v) * 100).toFixed(2));
   };
   return {
     categories,
     series: [
-      { name: '整体', data: sorted.map((r) => rate(r.ad_views, r.total_views)) },
-      { name: 'iOS', data: sorted.map((r) => rate(r.ios_ad_views, r.ios_views)) },
-      { name: 'Android', data: sorted.map((r) => rate(r.android_ad_views, r.android_views)) },
+      { name: '整体', data: sorted.map((r) => rate(r.ad_views, r.pcebid_views, r.total_views)) },
+      { name: 'iOS', data: sorted.map((r) => rate(r.ios_ad_views, r.ios_pcebid_views, r.ios_views)) },
+      { name: 'Android', data: sorted.map((r) => rate(r.android_ad_views, r.android_pcebid_views, r.android_views)) },
     ],
   };
 }

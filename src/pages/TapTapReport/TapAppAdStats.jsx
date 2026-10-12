@@ -121,13 +121,15 @@ export default function TapAppAdStats() {
   const tapAppAdGameRows = useMemo(() => {
     const list = tapAppAdGameListQuery.data?.rows || [];
     const trendData = tapAppAdGameDailyTrendQuery.data;
-    const days = trendData?.days || [];
-    const byApp = trendData?.byApp || {};
+    const weekLabels = trendData?.labels || [];
+    const thisWeek = trendData?.thisWeek || {};
+    const lastWeek = trendData?.lastWeek || {};
     const rankByApp = tapAppAdRankQuery.data?.byApp || {};
     return list.map((r) => ({
       ...r,
-      trend: days.map((d) => byApp[r.appId]?.[d] ?? 0),
-      trendLabels: days,
+      trend: thisWeek[r.appId] || [],
+      prevTrend: lastWeek[r.appId] || [],
+      trendLabels: weekLabels,
       dailyRank: rankByApp[r.appId]?.daily ?? null,
       weeklyRank: rankByApp[r.appId]?.weekly ?? null,
       monthlyRank: rankByApp[r.appId]?.monthly ?? null,
@@ -139,6 +141,7 @@ export default function TapAppAdStats() {
     if (!stats) return null;
     const showCnt = stats.totalViews;
     const adCnt = stats.adViews;
+    const pushCnt = adCnt + (stats.pcebidViews || 0); // 总投放数 = 商业推广(AD) + 资源置换(PCE)
     return {
       appId: null,
       appName: '总计',
@@ -154,9 +157,13 @@ export default function TapAppAdStats() {
       androidAdCnt: stats.androidAdViews,
       adDeliveryRate: null,
       adContributionRate: null,
-      adLoadingRate: showCnt > 0 ? parseFloat(((adCnt / showCnt) * 100).toFixed(2)) : null,
-      trend: trend?.adCnts || [],
-      trendLabels: trend?.days || [],
+      adLoadingRate: showCnt > 0 ? parseFloat(((pushCnt / showCnt) * 100).toFixed(2)) : null,
+      pcebidCnt: stats.pcebidViews,
+      iosPcebidCnt: stats.iosPcebidViews,
+      androidPcebidCnt: stats.androidPcebidViews,
+      trend: trend?.thisWeek || [],
+      prevTrend: trend?.lastWeek || [],
+      trendLabels: trend?.labels || [],
     };
   }, [tapAppAdOverviewStatsQuery.data, tapAppAdOverviewDailyTrendQuery.data]);
 
@@ -183,6 +190,14 @@ export default function TapAppAdStats() {
                 { from: 0.68, to: 1.01, name: '68-100%', color: '#421243' },
               ]}
               valueFormatter={(val) => (val > 0 ? `${Math.round(val * 100)}%` : '')}
+              tooltipCustom={({ seriesIndex, dataPointIndex, w }) => {
+                const dp = w.config.series?.[seriesIndex]?.data?.[dataPointIndex];
+                if (!dp || dp.y == null) return '<div style="padding:4px 8px;font-size:12px;color:#999">无数据</div>';
+                const ad = dp.ad == null ? '-' : dp.ad;
+                const bid = dp.bid == null ? '-' : dp.bid;
+                const rate = `${Math.round(Number(dp.y) * 100)}%`;
+                return `<div style="padding:4px 8px;font-size:12px;line-height:1.5;white-space:nowrap">ad: ${ad} | bid: ${bid} | rate: ${rate}</div>`;
+              }}
               xaxisOverrides={tapAppAdNewPositionStatsQuery.data?.categories ? { categories: tapAppAdNewPositionStatsQuery.data.categories } : {}}
               yaxisReversed
             />
@@ -213,10 +228,10 @@ export default function TapAppAdStats() {
 
         {/* 首页找游戏 · 素材标签追踪 + 每日加载率 */}
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div style={{ flex: '65 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】素材标签追踪 — 最近30天</div>
+            <div className="fw-semibold">【首页找游戏】素材标签追踪 — 最近7天</div>
             <div className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</div>
           </div>
           <div className="card-body">
@@ -252,9 +267,9 @@ export default function TapAppAdStats() {
           </div>
         </div>
           </div>
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <div style={{ flex: '35 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】每日广告加载率 — 最近30天</div>
+            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】每日广告加载率 — 最近7天</div>
             <div className="card-body">
               <MixedChart
                 series={tapAppAdLoadingRateTrendQuery.data?.series || []}
@@ -286,7 +301,7 @@ export default function TapAppAdStats() {
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【首页找游戏】曝光游戏明细列表 — 最近30天</div>
+            <div className="fw-semibold">【首页找游戏】曝光游戏明细列表 — 本周</div>
             <div className="text-muted small">记录了TapTap App(IOS+Android2个平台)首页找游戏前20个位置素材广告曝光情况，每2小时自动由系统采集一次。</div>
           </div>
           <DataTable rows={tapAppAdGameRows} columns={TAPAPP_AD_GAME_LIST_COLUMNS} pageSize={10} totalRow={tapAppAdTotalRow} fixedLayout rankColWidth="3%" />
