@@ -31,7 +31,7 @@ export default function Navbar() {
                 }
               >
                 <i className="bi bi-bar-chart me-1"></i>
-                Steam报表
+                Games报表
               </NavLink>
             </li>
             <li className="nav-item">

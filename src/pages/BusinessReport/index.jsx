@@ -3,36 +3,49 @@ import useChartData from '../../hooks/useChartData';
 import query from '../../api/query';
 import LineChart from '../../components/charts/LineChart';
 import HeatmapChart from '../../components/charts/HeatmapChart';
+import BarChart from '../../components/charts/BarChart';
 import MixedChart from '../../components/charts/MixedChart';
+import DashboardCard from '../../components/layout/DashboardCard';
+import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 import { AD_MATERIAL_COLORS } from '../../utils/chart-theme';
 
 const TABLE_NAME = 'steam_best_seller_list_hourly';
 const WEEKLY_TABLE_NAME = 'steam_best_seller_list_weekly';
-const PEAK_TABLE_NAME = 'steam_game_peak_players_hourly';
-const MONTHLY_PEAK_TABLE = 'steam_game_peak_players_monthly';
-const REVIEW_RECENT_TABLE = 'steam_player_review_recent';
-const REVIEW_ROLLUP_TABLE = 'steam_player_review_rollup';
-const SEASON_TABLE_NAME = 'torchlight_season_steam_peak_players';
 
+/**
+ * 大盘游戏配置。
+ * 火炬之光的「国际服 / 国服」是两个 Steam 版本，已合并为一个入口；
+ * servers 的顺序即展示顺序（国际服在上、国服在下）。
+ */
 const STEAM_GAMES = {
-  '1974050': '火炬之光国际服',
-  '2315040': '火炬之光国服',
-  '4025700': '心动小镇国际服',
+  torchlight: {
+    name: '火炬之光: 无限',
+    /** 【全平台】在线人数趋势的数据源（仅该游戏有） */
+    /** 【全平台】在线/峰值趋势的多个数据源（仅该游戏有） */
+    onlineTrend: {
+      appName: '火炬之光：无限',
+      hourlyTable: 'dws_games_torchlight_online_players_hourly',
+      dailyTable: 'dws_games_torchlight_online_players_daily',
+      monthlyTable: 'dws_games_torchlight_online_players_monthly',
+    },
+    /** 【全平台】赛季日在线人数对比的数据源（仅该游戏有） */
+    seasonCompare: { table: 'dws_games_torchlight_season_online_players' },
+    servers: [
+      { key: 'global', label: '国际服', steamId: '1974050' },
+      { key: 'cn', label: '国服', steamId: '2315040' },
+    ],
+  },
+  heartopia: {
+    name: '心动小镇国际服',
+    servers: [{ key: 'global', label: '国际服', steamId: '4025700' }],
+  },
 };
 
-const GAME_IDS = Object.keys(STEAM_GAMES);
+const GAME_KEYS = Object.keys(STEAM_GAMES);
 
 /** 排名趋势折线配色（地区数不定，按色库循环） */
 const TREND_COLORS = AD_MATERIAL_COLORS;
-/** 赛季峰值对比折线配色（取自色库） */
-const SEASON_COLORS = ['#7A8B99', '#9CAF9F', '#C9B79C', '#B08B8B', '#9B93A8'];
-/** 峰值在线人数：折线色与均值标注线色（取自色库） */
-const PEAK_LINE_COLOR = '#8FA3B0';
-const PEAK_AVG_ANNOTATION_COLOR = '#B08B8B';
-/** 峰值在线人数月趋势配色（平均在线 / 峰值在线，取自色库） */
-const MONTHLY_PEAK_COLORS = ['#7A8B99', '#C4A4A4'];
-/** 评论分析配色（推荐 / 不推荐 / 推荐率，取自色库） */
-const REVIEW_COLORS = ['#9CAF9F', '#D0B4B4', '#7A8B99'];
+
 /** 排名热力图色阶（top10 最深 → top100 最深，中间最浅；取自色库） */
 const HEATMAP_RANGES = [
   { from: 1, to: 10, name: 'top10', color: '#5C6B7A' },
@@ -47,74 +60,413 @@ const HEATMAP_RANGES = [
   { from: 91, to: 100, name: 'top100', color: '#5F6F5E' },
 ];
 
-/** 最近 N 天 */
-function recentDaysWhere(days = 3) {
-  const now = new Date();
-  const start = new Date(now - days * 86400000);
+/** 【全平台】在线人数趋势配色（与系列顺序一致：TapPC国服 / Steam国际服 / Steam国服，取自色库） */
+const PLATFORM_TREND_COLORS = ['#C4A4A4', '#7A8B99', '#9CAF9F'];
+/** 峰值/平均趋势配色（柱=峰值，线=平均；取自色库） */
+const PEAK_TREND_COLORS = ['#7A8B99', '#C4A4A4'];
+
+/** 最近 N 小时（withSeconds=true 输出 'YYYY-MM-DD HH:MM:SS'，false 输出 'YYYY-MM-DD HH'） */
+function recentHoursWhere(hours = 24, withSeconds = true) {
+  const start = new Date(Date.now() - hours * 3600000);
   const y = start.getFullYear();
   const m = String(start.getMonth() + 1).padStart(2, '0');
   const d = String(start.getDate()).padStart(2, '0');
-  return [{ col: 'crawled_at', op: '>=', value: `${y}-${m}-${d} 00:00:00` }];
+  const h = String(start.getHours()).padStart(2, '0');
+  return [{ col: 'crawled_at', op: '>=', value: withSeconds ? `${y}-${m}-${d} ${h}:00:00` : `${y}-${m}-${d} ${h}` }];
 }
 
-/** 金额格式化 */
-function formatAmount(v) {
-  const abs = Math.abs(v);
-  if (abs >= 1e8) return (v / 1e8).toFixed(1) + '亿';
-  if (abs >= 1e4) return (v / 1e4).toFixed(1) + '万';
-  return String(v);
+/** 最近 N 天（日期边界；兼容 crawled_at 的 'YYYY-MM-DD' 与 'YYYY-MM-DD HH' 两种格式） */
+function recentDaysWhere(days = 7) {
+  const start = new Date(Date.now() - days * 86400000);
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  const d = String(start.getDate()).padStart(2, '0');
+  return [{ col: 'crawled_at', op: '>=', value: `${y}-${m}-${d}` }];
 }
 
-/** 最近 N 个月 */
-function recentMonthsWhere(months = 9) {
+/** 最近 N 个月（从 N 个月前的 1 号起） */
+function recentMonthsWhere(months = 3) {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - months, 1);
-  const val = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
-  return [{ col: 'crawled_at', op: '>=', value: val }];
+  const y = start.getFullYear();
+  const m = String(start.getMonth() + 1).padStart(2, '0');
+  return [{ col: 'crawled_at', op: '>=', value: `${y}-${m}-01` }];
 }
 
-export default function BusinessReport() {
-  const [selectedId, setSelectedId] = useState('1974050');
+/** 排名趋势（按 region 分组的折线数据） */
+function transformTrend(rows) {
+  if (!rows || rows.length === 0) return { series: [] };
+  const groups = {};
+  for (const row of rows) {
+    const key = row.region || 'unknown';
+    if (!groups[key]) groups[key] = [];
+    const ts = row.crawled_at;
+    groups[key].push({
+      x: ts.includes(':') ? ts : ts + ':00',
+      y: Number(row.rank),
+    });
+  }
+  return {
+    series: Object.entries(groups).map(([name, data]) => ({ name, data })),
+  };
+}
 
-  // 折线图 where（3天）
-  const trendWhere = useMemo(() => {
-    const c = recentDaysWhere(3);
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
+/** 周热销榜（行=region，列=日期，值=排名；缺失日期填 null） */
+function transformHeatmap(rows) {
+  if (!rows || rows.length === 0) return { series: [], categories: [] };
 
-  // 热力图 where（9个月）
-  const heatmapWhere = useMemo(() => {
-    const c = recentMonthsWhere(9);
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
+  // 1) 收集所有唯一日期并排序
+  const dateSet = new Set();
+  for (const r of rows) {
+    dateSet.add(String(r.crawled_at).slice(0, 10));
+  }
+  const categories = Array.from(dateSet).sort();
 
-  // 峰值人数 where（30天，用 stat_ts 时间戳过滤）
-  const peakWhere = useMemo(() => {
-    const cutoff = Date.now() - 30 * 86400000;
-    const c = [{ col: 'stat_ts', op: '>=', value: cutoff }];
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
+  // 2) 按 region 收集原始数据，做快速查找 map
+  const rawMap = {};
+  for (const r of rows) {
+    const region = r.region || 'unknown';
+    const date = String(r.crawled_at).slice(0, 10);
+    const key = `${region}||${date}`;
+    if (!rawMap[key]) rawMap[key] = Number(r.rank);
+  }
+  const regions = [...new Set(Object.keys(rawMap).map((k) => k.split('||')[0]))];
 
-  // 评论 where
-  const reviewWhere = useMemo(() => {
-    const c = [];
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
+  // 3) 为每个 region 生成统一对齐的数据（缺失日期填 null）
+  const series = regions.map((region) => ({
+    name: region,
+    data: categories.map((date) => ({
+      x: date,
+      y: rawMap[`${region}||${date}`] ?? null,
+    })),
+  }));
 
-  // 赛季对比 where
-  const seasonWhere = useMemo(() => {
-    const c = [];
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
+  return { series, categories };
+}
 
-  // ====== 折线图 ======
+/**
+ * 【全平台】在线人数趋势（最近24小时，堆叠柱；x=小时，y=在线人数）。
+ * 数据源为游戏级小时表，crawled_at 格式为 'YYYY-MM-DD HH'。
+ */
+function PlatformOnlineTrend({ table, appName }) {
+  const where = useMemo(
+    () => [...recentHoursWhere(24, false), { col: 'app_name', op: '=', value: appName }],
+    [appName]
+  );
+
   const trendQuery = useChartData(
-    'steam-rank-trend',
+    `games-online-trend-${appName}`,
+    (p) => query(table, p),
+    {
+      fields: 'crawled_at,steam_1974050_online_players,steam_2315040_online_players,tappc_online_players',
+      where,
+      order_by: 'crawled_at ASC',
+      limit: 9999,
+    },
+    {
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return { series: [], categories: [] };
+        const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+        const categories = sorted.map((r) => r.crawled_at);
+        const toData = (field) => sorted.map((r) => Number(r[field] || 0));
+        return {
+          categories,
+          series: [
+            { name: 'TapPC国服', data: toData('tappc_online_players') },
+            { name: 'Steam国际服', data: toData('steam_1974050_online_players') },
+            { name: 'Steam国服', data: toData('steam_2315040_online_players') },
+          ],
+        };
+      },
+    }
+  );
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-header bg-white border-0 fw-semibold">
+        【全平台】在线人数趋势 — 最近24小时
+      </div>
+      <div className="card-body">
+        <BarChart
+          series={trendQuery.data?.series || []}
+          loading={trendQuery.isLoading}
+          error={trendQuery.error?.message}
+          height={700}
+          stacked
+          totalLabels
+          shared
+          colors={PLATFORM_TREND_COLORS}
+          toolbar={false}
+          xaxisOverrides={trendQuery.data?.categories ? { categories: trendQuery.data.categories, labels: { rotate: -45 } } : {}}
+          yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 【全平台】峰值在线人数日/月趋势（混合图：左轴柱=峰值，右轴线=平均，右轴取整）。
+ */
+function PeakTrendCard({ title, table, days = null, height = 240 }) {
+  const where = useMemo(() => (days ? recentDaysWhere(days) : null), [days]);
+
+  const trendQuery = useChartData(
+    `games-peak-trend-${table}-${days || 'all'}`,
+    (p) => query(table, p),
+    {
+      fields: 'crawled_at,peak_players,avg_players',
+      order_by: 'crawled_at ASC',
+      limit: 9999,
+      ...(where ? { where } : {}),
+    },
+    {
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return { series: [], categories: [] };
+        const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+        const num = (v) => (v == null ? null : Number(v));
+        return {
+          categories: sorted.map((r) => r.crawled_at),
+          series: [
+            { name: '峰值在线', type: 'column', yAxisIndex: 0, data: sorted.map((r) => num(r.peak_players)) },
+            { name: '平均在线', type: 'line', yAxisIndex: 1, data: sorted.map((r) => num(r.avg_players)) },
+          ],
+        };
+      },
+    }
+  );
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-header bg-white border-0 fw-semibold">{title}</div>
+      <div className="card-body">
+        <MixedChart
+          series={trendQuery.data?.series || []}
+          loading={trendQuery.isLoading}
+          error={trendQuery.error?.message}
+          height={height}
+          colors={PEAK_TREND_COLORS}
+          strokeWidths={[0, 2]}
+          toolbar={false}
+          tooltipY={(v, yi) => (yi === 1 ? Math.round(v) : formatCompactNumber(v))}
+          xaxisOverrides={trendQuery.data?.categories ? { categories: trendQuery.data.categories, labels: { rotate: -45 } } : {}}
+          yaxisLeft={{ title: { text: '峰值在线' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+          yaxisRight={{ title: { text: '平均在线' }, min: 0, labels: { formatter: (v) => Math.round(v) } }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** 赛季表「历史最高」KPI 定义（顺序即展示顺序） */
+const SEASON_KPI_FIELDS = [
+  { key: 'peak', label: '历史最高在线人数', field: 'peak_players', icon: 'bi-people', color: 'primary' },
+  { key: 'steam', label: '历史Steam最高在线人数', field: 'steam_peak_players', icon: 'bi-steam', color: 'info' },
+  { key: 'steamGlobal', label: '历史Steam国际服最高在线人数', field: 'steam_1974050_peak_players', icon: 'bi-globe', color: 'success' },
+  { key: 'steamCn', label: '历史Steam国服最高在线人数', field: 'steam_2315040_peak_players', icon: 'bi-globe2', color: 'warning' },
+  { key: 'tappc', label: '历史TapPC最高在线人数', field: 'tappc_peak_players', icon: 'bi-pc-display', color: 'secondary' },
+];
+
+/**
+ * 【全平台】在线人数趋势上方的 KPI：赛季表各指标的历史最高值及其发生的时间节点。
+ * 时间节点取自赛季表本身的定位（第 ss 赛季第 ss_day 天）。
+ */
+function SeasonKpiRow({ table }) {
+  const kpiQuery = useChartData(
+    `games-season-kpi-${table}`,
+    (p) => query(table, p),
+    {
+      fields: 'ss,ss_day,crawled_at,peak_players,steam_peak_players,steam_1974050_peak_players,steam_2315040_peak_players,tappc_peak_players',
+      order_by: 'ss ASC, ss_day ASC',
+      limit: 9999,
+    },
+    {
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return [];
+        return SEASON_KPI_FIELDS.map((f) => {
+          let best = null;
+          for (const r of rows) {
+            const v = r[f.field] == null ? null : Number(r[f.field]);
+            if (v == null || Number.isNaN(v)) continue;
+            if (!best || v > best.value) {
+              best = { value: v, ss: r.ss, ssDay: r.ss_day, crawledAt: r.crawled_at };
+            }
+          }
+          return {
+            key: f.key,
+            label: f.label,
+            icon: f.icon,
+            color: f.color,
+            value: best ? best.value : null,
+            ss: best ? best.ss : null,
+            ssDay: best ? best.ssDay : null,
+          };
+        });
+      },
+    }
+  );
+
+  if (kpiQuery.isLoading || kpiQuery.error) {
+    return null;
+  }
+
+  return (
+    <div className="row g-3 mb-4">
+      {(kpiQuery.data || []).map((k) => (
+        <div className="col-12 col-sm-6 col-lg" key={k.key}>
+          <DashboardCard
+            title={k.label}
+            value={k.value != null ? formatNumber(k.value) : '-'}
+            subtitle={k.ss != null ? `第${k.ss}赛季第${k.ssDay}天` : ''}
+            icon={k.icon}
+            color={k.color}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 在线/峰值区域：在线人数趋势 70%，右侧两图 30%（上下各占一半高度） */
+function OnlineSection({ config }) {
+  return (
+    <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+      <div style={{ flex: '65 1 0', minWidth: 0 }}>
+        <PlatformOnlineTrend table={config.hourlyTable} appName={config.appName} />
+      </div>
+      <div className="d-flex flex-column gap-3" style={{ flex: '35 1 0', minWidth: 0 }}>
+        <div style={{ flex: '1 1 0', minHeight: 0 }}>
+          <PeakTrendCard title="【全平台】峰值在线人数日趋势 — 最近7天" table={config.dailyTable} days={7} />
+        </div>
+        <div style={{ flex: '1 1 0', minHeight: 0 }}>
+          <PeakTrendCard title="【全平台】峰值在线人数月趋势" table={config.monthlyTable} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 赛季日在线人数对比的数据（一次查询，三张图共用）。
+ * 输出 { seasons: [{ ss, points: [{ ssDay, peak_players, steam_peak_players, tappc_peak_players }] }] }
+ */
+function useSeasonData(table) {
+  return useChartData(
+    `games-season-online-${table}`,
+    (p) => query(table, p),
+    {
+      fields: 'ss,ss_day,peak_players,steam_peak_players,tappc_peak_players',
+      order_by: 'ss ASC, ss_day ASC',
+      limit: 9999,
+    },
+    {
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return { seasons: [] };
+        const sorted = [...rows].sort((a, b) => (Number(a.ss) - Number(b.ss)) || (Number(a.ss_day) - Number(b.ss_day)));
+        const num = (v) => (v == null ? null : Number(v));
+        const groups = {};
+        for (const r of sorted) {
+          const ss = Number(r.ss);
+          if (!groups[ss]) groups[ss] = [];
+          groups[ss].push({
+            ssDay: Number(r.ss_day),
+            peak_players: num(r.peak_players),
+            steam_peak_players: num(r.steam_peak_players),
+            tappc_peak_players: num(r.tappc_peak_players),
+          });
+        }
+        return {
+          seasons: Object.keys(groups)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map((ss) => ({ ss, points: groups[ss] })),
+        };
+      },
+    }
+  );
+}
+
+/** 取每个赛季在指定指标上的折线数据；当赛季 = 最大赛季号 */
+function buildSeasonSeries(seasons, field) {
+  const currentSs = seasons.length ? seasons[seasons.length - 1].ss : null;
+  return seasons.map((s) => ({
+    name: `第${s.ss}赛季`,
+    isCurrent: s.ss === currentSs,
+    data: s.points.map((p) => ({ x: p.ssDay, y: p[field] })),
+  }));
+}
+
+/** 单张赛季对比折线卡片（供整行 / 并排复用） */
+function SeasonCompareCard({ title, field, seasons, loading, error }) {
+  const series = buildSeasonSeries(seasons || [], field);
+  const currentSs = seasons && seasons.length ? seasons[seasons.length - 1].ss : null;
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-header bg-white border-0 fw-semibold">
+        {title}
+        <div className="text-muted small fw-normal">
+          当赛季{currentSs != null ? `（第${currentSs}赛季）` : ''}实线加粗，其余赛季虚线
+        </div>
+      </div>
+      <div className="card-body">
+        <LineChart
+          series={series}
+          loading={loading}
+          error={error}
+          height={500}
+          colors={AD_MATERIAL_COLORS}
+          strokeWidth={series.length ? series.map((s) => (s.isCurrent ? 4 : 2)) : 2}
+          strokeDashArray={series.length ? series.map((s) => (s.isCurrent ? 0 : 5)) : null}
+          shared
+          xaxisOverrides={{ type: 'numeric', min: 0, max: 90, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
+          yaxisOverrides={{ title: { text: '峰值在线' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** 赛季区域：全平台整行，下方 Steam / TapPC 并排各 50% */
+function SeasonSection({ table }) {
+  const seasonQuery = useSeasonData(table);
+  const seasons = seasonQuery.data?.seasons || [];
+  const loading = seasonQuery.isLoading;
+  const error = seasonQuery.error?.message;
+
+  return (
+    <>
+      <div className="mb-4">
+        <SeasonCompareCard title="【全平台】赛季日在线人数对比" field="peak_players" seasons={seasons} loading={loading} error={error} />
+      </div>
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <SeasonCompareCard title="【Steam】赛季日在线人数对比" field="steam_peak_players" seasons={seasons} loading={loading} error={error} />
+        </div>
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+          <SeasonCompareCard title="【TapPC】赛季日在线人数对比" field="tappc_peak_players" seasons={seasons} loading={loading} error={error} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * 单个服（steam_id）的「实时热销榜 + 周热销榜」两张图。
+ * 每个实例各自持有查询，缓存键带 steamId 以避免不同服互相命中。
+ */
+function ServerCharts({ server }) {
+  const trendWhere = useMemo(
+    () => [...recentHoursWhere(24), { col: 'steam_id', op: '=', value: server.steamId }],
+    [server.steamId]
+  );
+  const heatmapWhere = useMemo(
+    () => [...recentMonthsWhere(3), { col: 'steam_id', op: '=', value: server.steamId }],
+    [server.steamId]
+  );
+
+  const trendQuery = useChartData(
+    `steam-rank-trend-${server.steamId}`,
     (p) => query(TABLE_NAME, p),
     {
       fields: 'steam_id,rank,region,crawled_at',
@@ -122,29 +474,11 @@ export default function BusinessReport() {
       order_by: 'crawled_at ASC',
       limit: 9999,
     },
-    {
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return { series: [] };
-        const groups = {};
-        for (const row of rows) {
-          const key = row.region || 'unknown';
-          if (!groups[key]) groups[key] = [];
-          const ts = row.crawled_at;
-          groups[key].push({
-            x: ts.includes(':') ? ts : ts + ':00',
-            y: Number(row.rank),
-          });
-        }
-        return {
-          series: Object.entries(groups).map(([name, data]) => ({ name, data })),
-        };
-      },
-    }
+    { transform: transformTrend }
   );
 
-  // ====== 热力图 ======
   const heatmapQuery = useChartData(
-    'steam-rank-heatmap',
+    `steam-rank-heatmap-${server.steamId}`,
     (p) => query(WEEKLY_TABLE_NAME, p),
     {
       fields: 'region,crawled_at,rank',
@@ -152,191 +486,74 @@ export default function BusinessReport() {
       order_by: 'crawled_at ASC',
       limit: 9999,
     },
-    {
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return { series: [], categories: [] };
-
-        // 1) 收集所有唯一日期并排序
-        const dateSet = new Set();
-        for (const r of rows) {
-          dateSet.add(String(r.crawled_at).slice(0, 10));
-        }
-        const categories = Array.from(dateSet).sort();
-
-        // 2) 按 region 收集原始数据，做快速查找 map
-        const rawMap = {};
-        for (const r of rows) {
-          const region = r.region || 'unknown';
-          const date   = String(r.crawled_at).slice(0, 10);
-          const key    = `${region}||${date}`;
-          if (!rawMap[key]) rawMap[key] = Number(r.rank);
-        }
-        const regions = [...new Set(Object.keys(rawMap).map(k => k.split('||')[0]))];
-
-        // 3) 为每个 region 生成统一对齐的数据（缺失日期填 null）
-        const series = regions.map(region => ({
-          name: region,
-          data: categories.map(date => {
-            const key = `${region}||${date}`;
-            return { x: date, y: rawMap[key] ?? null };
-          }),
-        }));
-
-        return { series, categories };
-      },
-    }
+    { transform: transformHeatmap }
   );
 
-  // ====== 峰值在线人数 ======
-  const peakQuery = useChartData(
-    'steam-peak-players',
-    (p) => query(PEAK_TABLE_NAME, p),
-    {
-      fields: 'stat_ts,peak_players',
-      where: peakWhere,
-      order_by: 'stat_ts ASC',
-      limit: 9999,
-    },
-    {
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return { series: [], xaxisMin: null, avgAnnotation: null };
-        const data = rows.map((r) => [Number(r.stat_ts), Number(r.peak_players)]);
-        const xaxisMin = rows[0].stat_ts;
-        const avg = rows.reduce((s, r) => s + Number(r.peak_players), 0) / rows.length;
-        return {
-          series: [{ name: STEAM_GAMES[selectedId] || '峰值在线', data }],
-          xaxisMin,
-          avgAnnotation: { y: Math.round(avg), position: 'center', label: `最近30天平均玩家数：${Math.round(avg).toLocaleString('zh-CN')}`, color: PEAK_AVG_ANNOTATION_COLOR, dash: 2 },
-        };
-      },
-    }
+  return (
+    <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+      {/* 实时热销榜（60%） */}
+      <div style={{ flex: '60 1 0', minWidth: 0 }}>
+        <div className="card border-0 shadow-sm h-100">
+          <div className="card-header bg-white border-0 fw-semibold">
+            <span>【Steam】{server.label}-实时热销榜 — 最近24小时（Y轴倒序: 排名1=顶部）</span>
+          </div>
+          <div className="card-body">
+            <LineChart
+              series={trendQuery.data?.series || []}
+              loading={trendQuery.isLoading}
+              error={trendQuery.error?.message}
+              height={500}
+              colors={TREND_COLORS}
+              xaxisOverrides={{
+                type: 'datetime',
+                labels: { format: 'MM/dd HH:mm', datetimeUTC: false, rotate: -45 },
+              }}
+              yaxisOverrides={{
+                reversed: true,
+                tickAmount: 10,
+                labels: { formatter: (val) => Math.round(val) },
+                title: { text: '排名' },
+              }}
+              strokeWidth={2}
+              markers={3}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 周热销榜（40%） */}
+      <div style={{ flex: '40 1 0', minWidth: 0 }}>
+        <div className="card border-0 shadow-sm h-100">
+          <div className="card-header bg-white border-0 fw-semibold">
+            <span>【Steam】{server.label}-周热销榜 — 最近3个月（X=日期, Y=地区, 值=排名）</span>
+          </div>
+          <div className="card-body">
+            <HeatmapChart
+              series={heatmapQuery.data?.series || []}
+              loading={heatmapQuery.isLoading}
+              error={heatmapQuery.error?.message}
+              height={500}
+              xaxisOverrides={heatmapQuery.data?.categories ? { categories: heatmapQuery.data.categories } : {}}
+              colorScale={HEATMAP_RANGES}
+              noDataColor="#ffffff"
+              valueFormatter={(val) => Math.round(val)}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
+}
 
-  // ====== 辅助：评论数据转 MixedChart 格式 ======
-  function reviewTransform(rows) {
-    if (!rows || rows.length === 0) return { series: [] };
-    const data = rows
-      .map((r) => ({
-        x: Number(r.stat_ts) * 1000, // 秒 → 毫秒
-        up: Number(r.up),
-        down: Number(r.down),
-      }))
-      .sort((a, b) => a.x - b.x);
-    return {
-      series: [
-        {
-          name: '推荐',
-          type: 'column',
-          yAxisIndex: 0,
-          data: data.map((d) => ({ x: d.x, y: d.up })),
-        },
-        {
-          name: '不推荐',
-          type: 'column',
-          yAxisIndex: 0,
-          data: data.map((d) => ({ x: d.x, y: -d.down })),
-        },
-        {
-          name: '推荐率',
-          type: 'line',
-          yAxisIndex: 1,
-          data: data.map((d) => ({
-            x: d.x,
-            y: parseFloat(((d.up / (d.up + d.down)) * 100).toFixed(2)),
-          })),
-        },
-      ],
-    };
-  }
-
-  // ====== 最近评论 ======
-  const recentReviewQuery = useChartData(
-    'steam-review-recent',
-    (p) => query(REVIEW_RECENT_TABLE, p),
-    { fields: 'stat_ts,up,down', where: reviewWhere, order_by: 'stat_ts ASC', limit: 9999 },
-    { transform: reviewTransform }
-  );
-
-  // ====== 历史评论 ======
-  const rollupReviewQuery = useChartData(
-    'steam-review-rollup',
-    (p) => query(REVIEW_ROLLUP_TABLE, p),
-    { fields: 'stat_ts,up,down', where: reviewWhere, order_by: 'stat_ts ASC', limit: 9999 },
-    { transform: reviewTransform }
-  );
-
-  // ====== 峰值在线人数月趋势 ======
-  const monthlyPeakWhere = useMemo(() => {
-    const start = new Date();
-    start.setMonth(start.getMonth() - 13);
-    const val = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
-    const c = [{ col: 'stat_month', op: '>=', value: val }];
-    if (selectedId) c.push({ col: 'steam_id', op: '=', value: selectedId });
-    return c;
-  }, [selectedId]);
-
-  const monthlyPeakQuery = useChartData(
-    'steam-monthly-peak',
-    (p) => query(MONTHLY_PEAK_TABLE, p),
-    { fields: 'stat_month,avg_players,peak_players', where: monthlyPeakWhere, order_by: 'stat_month ASC', limit: 200 },
-    {
-      transform: (rows) => {
-        if (!rows || !rows.length) return { series: [] };
-        const sorted = [...rows].sort((a, b) => a.stat_month < b.stat_month ? -1 : 1);
-        return {
-          series: [
-            { name: '平均在线', type: 'column', yAxisIndex: 0, data: sorted.map((r) => ({ x: String(r.stat_month).slice(0, 7), y: Number(r.avg_players) })) },
-            { name: '峰值在线', type: 'line', yAxisIndex: 1, data: sorted.map((r) => ({ x: String(r.stat_month).slice(0, 7), y: Number(r.peak_players) })) },
-          ],
-        };
-      },
-    }
-  );
-
-  // ====== 赛季对比 ======
-  const seasonQuery = useChartData(
-    'torchlight-season-peak',
-    (p) => query(SEASON_TABLE_NAME, p),
-    { fields: 'ss,ss_day,peak_players', where: seasonWhere, order_by: 'ss ASC, ss_day ASC', limit: 9999 },
-    {
-      transform: (rows) => {
-        if (!rows || !rows.length) return { series: [], avgAnnotations: [] };
-        const groups = {};
-        for (const r of rows) {
-          const key = `S${r.ss}`;
-          if (!groups[key]) groups[key] = [];
-          groups[key].push({ x: Number(r.ss_day), y: Number(r.peak_players) });
-        }
-        const seasonColors = SEASON_COLORS;
-        // 计算每个赛季的平均值作为 Y 轴标注，颜色与折线对应
-        const avgAnnotations = Object.entries(groups).map(([name, data], idx) => {
-          const avg = data.reduce((s, d) => s + d.y, 0) / data.length;
-          const rounded = Math.round(avg);
-          return {
-            y: rounded,
-            position: 'center',
-            label: `${name} 均值：${rounded.toLocaleString('zh-CN')}`,
-            color: seasonColors[idx % seasonColors.length],
-            dash: 2,
-          };
-        });
-        return {
-          series: Object.entries(groups).map(([name, data]) => ({ name, data })),
-          avgAnnotations,
-        };
-      },
-    }
-  );
-
-  // 赛季支持的游戏 ID
-  const SEASON_GAME_IDS = ['1974050', '2315040'];
-  const showSeason = SEASON_GAME_IDS.includes(selectedId);
+export default function BusinessReport() {
+  const [gameKey, setGameKey] = useState(GAME_KEYS[0]);
+  const game = STEAM_GAMES[gameKey];
 
   return (
     <div className="container-fluid p-4">
       <h2 className="fw-bold mb-4">
         <i className="bi bi-bar-chart text-primary me-2"></i>
-        Steam 畅销榜排名趋势
+        Games 数据大盘
       </h2>
 
       {/* 筛选栏 */}
@@ -344,163 +561,36 @@ export default function BusinessReport() {
         <div className="card-body">
           <div className="d-flex align-items-center flex-wrap gap-2">
             <span className="text-muted small me-2">选择游戏:</span>
-            {GAME_IDS.map((id) => (
+            {GAME_KEYS.map((key) => (
               <button
-                key={id}
+                key={key}
                 type="button"
-                className={`btn btn-sm ${selectedId === id ? 'btn-primary' : 'btn-outline-secondary'}`}
-                onClick={() => setSelectedId(id)}
+                className={`btn btn-sm ${gameKey === key ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => setGameKey(key)}
               >
-                {STEAM_GAMES[id]}
+                {STEAM_GAMES[key].name}
               </button>
             ))}
             <span className="ms-auto text-muted small">
-              已选: {STEAM_GAMES[selectedId]}
+              已选: {game.name}
             </span>
           </div>
         </div>
       </div>
 
-      {/* 第一部分: 折线图（最近3天） */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">
-          <span>排名趋势 — 最近3天（Y轴倒序: 排名1=顶部）</span>
-        </div>
-        <div className="card-body">
-          <LineChart
-            series={trendQuery.data?.series || []}
-            loading={trendQuery.isLoading}
-            error={trendQuery.error?.message}
-            height={450}
-            colors={TREND_COLORS}
-            xaxisOverrides={{
-              type: 'datetime',
-              labels: { format: 'MM/dd HH:mm', datetimeUTC: false, rotate: -45 },
-            }}
-            yaxisOverrides={{
-              reversed: true,
-              tickAmount: 10,
-              labels: { formatter: (val) => Math.round(val) },
-              title: { text: '排名' },
-            }}
-            strokeWidth={2}
-            markers={3}
-          />
-        </div>
-      </div>
+      {/* 【全平台】在线人数趋势（仅配置了数据源的游戏） */}
+      {/* 【全平台】在线人数趋势上方的历史最高 KPI（仅配置了赛季数据源的游戏） */}
+      {game.seasonCompare && <SeasonKpiRow table={game.seasonCompare.table} />}
 
-      {/* 第二部分: 热力图（最近9个月） */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">
-          <span>排名热力图 — 最近9个月（X=日期, Y=地区, 值=排名）</span>
-        </div>
-        <div className="card-body">
-          <HeatmapChart
-            series={heatmapQuery.data?.series || []}
-            loading={heatmapQuery.isLoading}
-            error={heatmapQuery.error?.message}
-            height={500}
-            xaxisOverrides={heatmapQuery.data?.categories ? { categories: heatmapQuery.data.categories } : {}}
-            colorScale={HEATMAP_RANGES}
-            noDataColor="#ffffff"
-            valueFormatter={(val) => Math.round(val)}
-          />
-        </div>
-      </div>
+      {game.onlineTrend && <OnlineSection config={game.onlineTrend} />}
 
-      {/* 第三部分: 峰值在线人数月趋势 + 峰值在线人数 */}
-      <div className="row g-3 mb-4">
-        <div className="col-12 col-md-8">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">峰值在线人数月趋势</div>
-            <div className="card-body">
-              <MixedChart
-                series={monthlyPeakQuery.data?.series || []}
-                loading={monthlyPeakQuery.isLoading}
-                error={monthlyPeakQuery.error?.message}
-                height={400}
-                colors={MONTHLY_PEAK_COLORS}
-                strokeWidths={[0, 2]}
-                tooltipY={(v, yi) => yi === 1 ? formatAmount(v) : formatAmount(v)}
-                xaxisOverrides={{ type: 'category', labels: { rotate: -45 } }}
-                yaxisLeft={{ title: { text: '平均在线' }, labels: { formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v } }}
-                yaxisRight={{ title: { text: '峰值在线' }, labels: { formatter: (v) => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v } }} />
-            </div>
-          </div>
-        </div>
-        <div className="col-12 col-md-4">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">峰值在线人数（最近30天）</div>
-            <div className="card-body">
-              <LineChart
-                series={peakQuery.data?.series || []}
-                loading={peakQuery.isLoading}
-                error={peakQuery.error?.message}
-                area
-                height={400}
-                colors={[PEAK_LINE_COLOR]}
-                xaxisOverrides={{
-                  type: 'datetime',
-                  min: peakQuery.data?.xaxisMin,
-                  labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 },
-                }}
-                yaxisOverrides={{
-                  labels: { formatter: (v) => v >= 10000 ? (v / 10000).toFixed(1) + '万' : v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v },
-                  title: { text: '在线' },
-                }}
-                yaxisAnnotations={peakQuery.data?.avgAnnotation ? [peakQuery.data.avgAnnotation] : []} />
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* 赛季区域：全平台整行 + Steam/TapPC 并排 50% */}
+      {game.seasonCompare && <SeasonSection table={game.seasonCompare.table} />}
 
-      {/* 第五部分: 赛季对比（仅火炬之光） */}
-      {showSeason && (
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-header bg-white border-0 fw-semibold">赛季峰值在线对比</div>
-          <div className="card-body">
-            <LineChart
-              series={seasonQuery.data?.series || []}
-              loading={seasonQuery.isLoading}
-              error={seasonQuery.error?.message}
-              height={400}
-              colors={SEASON_COLORS}
-              xaxisOverrides={{ type: 'numeric', title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
-              yaxisOverrides={{ labels: { formatter: (v) => (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v) }, title: { text: '峰值在线' } }}
-              strokeWidth={2} markers={3}
-              yaxisAnnotations={seasonQuery.data?.avgAnnotations || []} />
-          </div>
-        </div>
-      )}
-
-      {/* 第四部分: 评论分析（左右并排） */}
-      <div className="row g-3">
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">最近评论</div>
-            <div className="card-body">
-              <MixedChart series={recentReviewQuery.data?.series || []} loading={recentReviewQuery.isLoading} error={recentReviewQuery.error?.message} height={400}
-                colors={REVIEW_COLORS} strokeWidths={[0, 0, 2]}
-                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
-                yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
-                yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
-            </div>
-          </div>
-        </div>
-        <div className="col-12 col-md-6">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">历史评论</div>
-            <div className="card-body">
-              <MixedChart series={rollupReviewQuery.data?.series || []} loading={rollupReviewQuery.isLoading} error={rollupReviewQuery.error?.message} height={400}
-                colors={REVIEW_COLORS} strokeWidths={[0, 0, 2]}
-                xaxisOverrides={{ type: 'datetime', labels: { format: 'MM/dd', datetimeUTC: false } }}
-                yaxisLeft={{ title: { text: '评论数' }, labels: { formatter: (v) => (v >= 0 ? String(Math.round(v)) : String(Math.round(Math.abs(v)))) } }}
-                yaxisRight={{ title: { text: '推荐率 (%)' }, min: 0, max: 100, labels: { formatter: (v) => v.toFixed(1) + '%' } }} />
-            </div>
-          </div>
-        </div>
-      </div>
-
+      {/* 每个服一组：国际服在上、国服在下 */}
+      {game.servers.map((server) => (
+        <ServerCharts key={`${gameKey}-${server.key}`} server={server} />
+      ))}
     </div>
   );
 }
