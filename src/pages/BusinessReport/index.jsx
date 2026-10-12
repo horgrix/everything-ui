@@ -396,10 +396,60 @@ function buildSeasonSeries(seasons, field) {
   }));
 }
 
+/**
+ * 赛季对比图的合并 tooltip：按同一个「赛季第N天」把**所有赛季**的值列出来。
+ * （默认的 shared tooltip 依赖各系列 x 对齐，赛季长度不一就会漏值）
+ */
+function seasonTooltip({ seriesIndex, dataPointIndex, w }) {
+  const cfgSeries = (w.config.series || []).filter((s) => s.name);
+  const hovered = cfgSeries[seriesIndex]?.data?.[dataPointIndex] || cfgSeries[0]?.data?.[dataPointIndex];
+  if (!hovered) return '';
+  const day = hovered.x;
+  const colors = w.config.colors || [];
+  const items = cfgSeries
+    .map((s) => {
+      const pt = (s.data || []).find((d) => Number(d.x) === Number(day));
+      const val = pt && pt.y != null ? formatCompactNumber(pt.y) : '-';
+      const idx = (w.config.series || []).indexOf(s);
+      const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colors[idx] || '#999'};margin-right:6px"></span>`;
+      return `<div style="display:flex;align-items:center;gap:12px;justify-content:space-between"><span>${dot}${s.name}</span><b>${val}</b></div>`;
+    })
+    .join('');
+  return `<div style="padding:6px 12px;font-size:12px;line-height:1.7;min-width:130px"><div style="opacity:.75;margin-bottom:4px">赛季第 ${Math.round(day)} 天</div>${items}</div>`;
+}
+
 /** 单张赛季对比折线卡片（供整行 / 并排复用） */
 function SeasonCompareCard({ title, field, seasons, loading, error }) {
   const series = buildSeasonSeries(seasons || [], field);
   const currentSs = seasons && seasons.length ? seasons[seasons.length - 1].ss : null;
+
+  // 各赛季均值（右 Y 轴注解）
+  const seasonMeans = series
+    .map((s, i) => {
+      const vals = s.data.map((d) => d.y).filter((v) => v != null && Number.isFinite(v));
+      if (!vals.length) return null;
+      return { name: s.name, mean: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), colorIndex: i };
+    })
+    .filter(Boolean);
+
+  // 右 Y 轴固定为 0 ~ 赛季均值最大值的 1.5 倍
+  const rightMax = seasonMeans.length ? Math.round(Math.max(...seasonMeans.map((m) => m.mean)) * 1.5) : null;
+
+  const annotations = seasonMeans.map((m) => ({
+    y: m.mean,
+    yAxisIndex: 1,
+    color: AD_MATERIAL_COLORS[m.colorIndex % AD_MATERIAL_COLORS.length],
+    dash: 2,
+    position: 'right',
+    label: `${m.name}均值：${formatCompactNumber(m.mean)}`,
+  }));
+
+  // 右轴必须挂一个 series 才能承载注解定位（ApexCharts 注解的像素位置取自该轴上 series 的 min/range）；
+  // 这里挂一个透明、零线宽、无名称的锚点系列，视觉上不可见，也不进图例文字/合并 tooltip。
+  const chartSeries = [...series, { name: '', type: 'line', data: [{ x: 0, y: 0 }, { x: 90, y: 0 }] }];
+  const chartColors = [...series.map((_, i) => AD_MATERIAL_COLORS[i % AD_MATERIAL_COLORS.length]), 'transparent'];
+  const chartStrokeWidths = [...series.map((s) => (s.isCurrent ? 4 : 2)), 0];
+  const chartDashArrays = [...series.map((s) => (s.isCurrent ? 0 : 5)), 0];
 
   return (
     <div className="card border-0 shadow-sm h-100">
@@ -411,16 +461,21 @@ function SeasonCompareCard({ title, field, seasons, loading, error }) {
       </div>
       <div className="card-body">
         <LineChart
-          series={series}
+          series={chartSeries}
           loading={loading}
           error={error}
           height={500}
-          colors={AD_MATERIAL_COLORS}
-          strokeWidth={series.length ? series.map((s) => (s.isCurrent ? 4 : 2)) : 2}
-          strokeDashArray={series.length ? series.map((s) => (s.isCurrent ? 0 : 5)) : null}
+          colors={chartColors}
+          strokeWidth={chartSeries.length ? chartStrokeWidths : 2}
+          strokeDashArray={chartSeries.length ? chartDashArrays : null}
           shared
+          tooltipCustom={seasonTooltip}
+          toolbar={false}
+          legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
           xaxisOverrides={{ type: 'numeric', min: 0, max: 90, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
-          yaxisOverrides={{ title: { text: '峰值在线' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+          yaxisOverrides={{ seriesName: series.map((s) => s.name), title: { text: '峰值在线' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+          yaxisRight={{ min: 0, ...(rightMax != null ? { max: rightMax } : {}), seriesName: [''], labels: { formatter: (v) => formatCompactNumber(v) } }}
+          yaxisAnnotations={annotations}
         />
       </div>
     </div>
