@@ -17,26 +17,70 @@ const WEEKLY_TABLE_NAME = 'steam_best_seller_list_weekly';
  * 火炬之光的「国际服 / 国服」是两个 Steam 版本，已合并为一个入口；
  * servers 的顺序即展示顺序（国际服在上、国服在下）。
  */
+/** 火炬之光赛季表「历史最高」KPI 定义（顺序即展示顺序） */
+const SEASON_KPI_FIELDS = [
+  { key: 'peak', label: '历史最高在线人数', field: 'peak_players', icon: 'bi-people', color: 'primary' },
+  { key: 'steam', label: '历史Steam最高在线人数', field: 'steam_peak_players', icon: 'bi-steam', color: 'info' },
+  { key: 'steamGlobal', label: '历史Steam国际服最高在线人数', field: 'steam_1974050_peak_players', icon: 'bi-globe', color: 'success' },
+  { key: 'steamCn', label: '历史Steam国服最高在线人数', field: 'steam_2315040_peak_players', icon: 'bi-globe2', color: 'warning' },
+  { key: 'tappc', label: '历史TapPC最高在线人数', field: 'tappc_peak_players', icon: 'bi-pc-display', color: 'secondary' },
+];
+
+/** 心动小镇日表「历史最高」KPI 定义（顺序即展示顺序） */
+const HEARTOPIA_KPI_FIELDS = [
+  { key: 'peak', label: '历史最高在线人数', field: 'peak_players', icon: 'bi-people', color: 'primary' },
+  { key: 'steam', label: '历史Steam最高在线人数', field: 'steam_peak_players', icon: 'bi-steam', color: 'info' },
+  { key: 'tappc', label: '历史TapPC最高在线人数', field: 'tappc_peak_players', icon: 'bi-pc-display', color: 'secondary' },
+];
+
 const STEAM_GAMES = {
   torchlight: {
     name: '火炬之光: 无限',
-    /** 【全平台】在线人数趋势的数据源（仅该游戏有） */
     /** 【全平台】在线/峰值趋势的多个数据源（仅该游戏有） */
     onlineTrend: {
       appName: '火炬之光：无限',
       hourlyTable: 'dws_games_torchlight_online_players_hourly',
+      /** 堆叠柱系列（顺序即图例顺序） */
+      series: [
+        { name: 'TapPC国服', field: 'tappc_online_players', color: '#C4A4A4' },
+        { name: 'Steam国际服', field: 'steam_1974050_online_players', color: '#7A8B99' },
+        { name: 'Steam国服', field: 'steam_2315040_online_players', color: '#9CAF9F' },
+      ],
       dailyTable: 'dws_games_torchlight_online_players_daily',
       monthlyTable: 'dws_games_torchlight_online_players_monthly',
     },
     /** 【全平台】赛季日在线人数对比的数据源（仅该游戏有） */
     seasonCompare: { table: 'dws_games_torchlight_season_online_players' },
+    /** 趋势上方的「历史最高」KPI（时间节点用赛季定位） */
+    kpi: {
+      table: 'dws_games_torchlight_season_online_players',
+      fields: SEASON_KPI_FIELDS,
+      extraFields: ['ss', 'ss_day'],
+      subtitle: (r) => `第${r.ss}赛季第${r.ss_day}天`,
+    },
     servers: [
       { key: 'global', label: '国际服', steamId: '1974050' },
       { key: 'cn', label: '国服', steamId: '2315040' },
     ],
   },
   heartopia: {
-    name: '心动小镇国际服',
+    name: '心动小镇',
+    /** 【全平台】在线/峰值趋势（心动小镇小时表只按 Steam / TapPC 两档拆分） */
+    onlineTrend: {
+      hourlyTable: 'dws_games_heartopia_online_players_hourly',
+      series: [
+        { name: 'TapPC', field: 'tappc_online_players', color: '#C4A4A4' },
+        { name: 'Steam', field: 'steam_online_players', color: '#7A8B99' },
+      ],
+      dailyTable: 'dws_games_heartopia_online_players_daily',
+      monthlyTable: 'dws_games_heartopia_online_players_monthly',
+    },
+    /** 趋势上方的「历史最高」KPI（时间节点用该日数据日期） */
+    kpi: {
+      table: 'dws_games_heartopia_online_players_daily',
+      fields: HEARTOPIA_KPI_FIELDS,
+      subtitle: (r) => r.crawled_at,
+    },
     servers: [{ key: 'global', label: '国际服', steamId: '4025700' }],
   },
 };
@@ -60,8 +104,6 @@ const HEATMAP_RANGES = [
   { from: 91, to: 100, name: 'top100', color: '#5F6F5E' },
 ];
 
-/** 【全平台】在线人数趋势配色（与系列顺序一致：TapPC国服 / Steam国际服 / Steam国服，取自色库） */
-const PLATFORM_TREND_COLORS = ['#C4A4A4', '#7A8B99', '#9CAF9F'];
 /** 峰值/平均趋势配色（柱=峰值，线=平均；取自色库） */
 const PEAK_TREND_COLORS = ['#7A8B99', '#C4A4A4'];
 
@@ -148,17 +190,21 @@ function transformHeatmap(rows) {
  * 【全平台】在线人数趋势（最近24小时，堆叠柱；x=小时，y=在线人数）。
  * 数据源为游戏级小时表，crawled_at 格式为 'YYYY-MM-DD HH'。
  */
-function PlatformOnlineTrend({ table, appName }) {
+function PlatformOnlineTrend({ table, appName, seriesDefs }) {
   const where = useMemo(
-    () => [...recentHoursWhere(24, false), { col: 'app_name', op: '=', value: appName }],
+    () => [...recentHoursWhere(24, false), ...(appName ? [{ col: 'app_name', op: '=', value: appName }] : [])],
     [appName]
+  );
+  const fields = useMemo(
+    () => ['crawled_at', ...(seriesDefs || []).map((d) => d.field)].join(','),
+    [seriesDefs]
   );
 
   const trendQuery = useChartData(
-    `games-online-trend-${appName}`,
+    `games-online-trend-${table}`,
     (p) => query(table, p),
     {
-      fields: 'crawled_at,steam_1974050_online_players,steam_2315040_online_players,tappc_online_players',
+      fields,
       where,
       order_by: 'crawled_at ASC',
       limit: 9999,
@@ -168,14 +214,12 @@ function PlatformOnlineTrend({ table, appName }) {
         if (!rows || rows.length === 0) return { series: [], categories: [] };
         const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
         const categories = sorted.map((r) => r.crawled_at);
-        const toData = (field) => sorted.map((r) => Number(r[field] || 0));
         return {
           categories,
-          series: [
-            { name: 'TapPC国服', data: toData('tappc_online_players') },
-            { name: 'Steam国际服', data: toData('steam_1974050_online_players') },
-            { name: 'Steam国服', data: toData('steam_2315040_online_players') },
-          ],
+          series: (seriesDefs || []).map((d) => ({
+            name: d.name,
+            data: sorted.map((r) => Number(r[d.field] || 0)),
+          })),
         };
       },
     }
@@ -195,7 +239,7 @@ function PlatformOnlineTrend({ table, appName }) {
           stacked
           totalLabels
           shared
-          colors={PLATFORM_TREND_COLORS}
+          colors={(seriesDefs || []).map((d, i) => d.color || AD_MATERIAL_COLORS[i % AD_MATERIAL_COLORS.length])}
           toolbar={false}
           xaxisOverrides={trendQuery.data?.categories ? { categories: trendQuery.data.categories, labels: { rotate: -45 } } : {}}
           yaxisOverrides={{ title: { text: '在线人数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
@@ -258,39 +302,30 @@ function PeakTrendCard({ title, table, days = null, height = 240 }) {
   );
 }
 
-/** 赛季表「历史最高」KPI 定义（顺序即展示顺序） */
-const SEASON_KPI_FIELDS = [
-  { key: 'peak', label: '历史最高在线人数', field: 'peak_players', icon: 'bi-people', color: 'primary' },
-  { key: 'steam', label: '历史Steam最高在线人数', field: 'steam_peak_players', icon: 'bi-steam', color: 'info' },
-  { key: 'steamGlobal', label: '历史Steam国际服最高在线人数', field: 'steam_1974050_peak_players', icon: 'bi-globe', color: 'success' },
-  { key: 'steamCn', label: '历史Steam国服最高在线人数', field: 'steam_2315040_peak_players', icon: 'bi-globe2', color: 'warning' },
-  { key: 'tappc', label: '历史TapPC最高在线人数', field: 'tappc_peak_players', icon: 'bi-pc-display', color: 'secondary' },
-];
-
 /**
- * 【全平台】在线人数趋势上方的 KPI：赛季表各指标的历史最高值及其发生的时间节点。
- * 时间节点取自赛季表本身的定位（第 ss 赛季第 ss_day 天）。
+ * 通用「历史最高」KPI 行：从指定表里取各字段的最大值及其发生的那一行。
+ * @param {string} table 数据表
+ * @param {Array} fields [{ key, label, field, icon, color }]
+ * @param {Array<string>} [extraFields] 除字段外额外需要取回的列（供 subtitle 使用）
+ * @param {(row) => string} [subtitle] 用命中的那一行生成「统计时间」副标题
  */
-function SeasonKpiRow({ table }) {
+function MaxKpiRow({ table, fields, extraFields = [], subtitle = null }) {
   const kpiQuery = useChartData(
-    `games-season-kpi-${table}`,
+    `games-max-kpi-${table}`,
     (p) => query(table, p),
     {
-      fields: 'ss,ss_day,crawled_at,peak_players,steam_peak_players,steam_1974050_peak_players,steam_2315040_peak_players,tappc_peak_players',
-      order_by: 'ss ASC, ss_day ASC',
+      fields: ['crawled_at', ...extraFields, ...fields.map((f) => f.field)].join(','),
       limit: 9999,
     },
     {
       transform: (rows) => {
         if (!rows || rows.length === 0) return [];
-        return SEASON_KPI_FIELDS.map((f) => {
+        return fields.map((f) => {
           let best = null;
           for (const r of rows) {
             const v = r[f.field] == null ? null : Number(r[f.field]);
             if (v == null || Number.isNaN(v)) continue;
-            if (!best || v > best.value) {
-              best = { value: v, ss: r.ss, ssDay: r.ss_day, crawledAt: r.crawled_at };
-            }
+            if (!best || v > best.value) best = { value: v, row: r };
           }
           return {
             key: f.key,
@@ -298,8 +333,7 @@ function SeasonKpiRow({ table }) {
             icon: f.icon,
             color: f.color,
             value: best ? best.value : null,
-            ss: best ? best.ss : null,
-            ssDay: best ? best.ssDay : null,
+            subtitle: best && subtitle ? subtitle(best.row) : '',
           };
         });
       },
@@ -310,14 +344,17 @@ function SeasonKpiRow({ table }) {
     return null;
   }
 
+  const items = (kpiQuery.data || []).filter((k) => k.value != null);
+  if (!items.length) return null;
+
   return (
     <div className="row g-3 mb-4">
-      {(kpiQuery.data || []).map((k) => (
+      {items.map((k) => (
         <div className="col-12 col-sm-6 col-lg" key={k.key}>
           <DashboardCard
             title={k.label}
-            value={k.value != null ? formatNumber(k.value) : '-'}
-            subtitle={k.ss != null ? `第${k.ss}赛季第${k.ssDay}天` : ''}
+            value={formatNumber(k.value)}
+            subtitle={k.subtitle || ''}
             icon={k.icon}
             color={k.color}
           />
@@ -332,7 +369,7 @@ function OnlineSection({ config }) {
   return (
     <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
       <div style={{ flex: '65 1 0', minWidth: 0 }}>
-        <PlatformOnlineTrend table={config.hourlyTable} appName={config.appName} />
+        <PlatformOnlineTrend table={config.hourlyTable} appName={config.appName} seriesDefs={config.series} />
       </div>
       <div className="d-flex flex-column gap-3" style={{ flex: '35 1 0', minWidth: 0 }}>
         <div style={{ flex: '1 1 0', minHeight: 0 }}>
@@ -634,8 +671,8 @@ export default function BusinessReport() {
       </div>
 
       {/* 【全平台】在线人数趋势（仅配置了数据源的游戏） */}
-      {/* 【全平台】在线人数趋势上方的历史最高 KPI（仅配置了赛季数据源的游戏） */}
-      {game.seasonCompare && <SeasonKpiRow table={game.seasonCompare.table} />}
+      {/* 在线人数趋势上方的「历史最高」KPI */}
+      {game.kpi && <MaxKpiRow {...game.kpi} />}
 
       {game.onlineTrend && <OnlineSection config={game.onlineTrend} />}
 
