@@ -5,6 +5,7 @@ import LineChart from '../../components/charts/LineChart';
 import HeatmapChart from '../../components/charts/HeatmapChart';
 import BarChart from '../../components/charts/BarChart';
 import MixedChart from '../../components/charts/MixedChart';
+import BrushLineChart from '../../components/charts/BrushLineChart';
 import DashboardCard from '../../components/layout/DashboardCard';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 import { AD_MATERIAL_COLORS } from '../../utils/chart-theme';
@@ -60,7 +61,8 @@ const STEAM_GAMES = {
     },
     /** 【全平台】游戏下载日趋势（堆叠柱，最近 N 天） */
     downloadTrend: {
-      table: 'dws_games_torchlight_season_download',
+      table: 'dws_xd_games_all_download_daily',
+      appName: '火炬之光：无限',
       days: 7,
       series: [
         { name: 'TapPC', field: 'tap_pc_download_count', color: '#7A8B99' },
@@ -94,6 +96,20 @@ const STEAM_GAMES = {
       fields: HEARTOPIA_KPI_FIELDS,
       subtitle: (r) => r.crawled_at,
     },
+    /** 【全平台】游戏下载日趋势（与火炬之光同源表，按 app_name 区分） */
+    downloadTrend: {
+      table: 'dws_xd_games_all_download_daily',
+      appName: '心动小镇',
+      days: 7,
+      series: [
+        { name: 'TapPC', field: 'tap_pc_download_count', color: '#7A8B99' },
+        { name: 'TapApp', field: 'tap_app_download_count', color: '#9CAF9F' },
+        { name: 'iPhone', field: 'iphone_cn_download_count', color: '#C4A4A4' },
+        { name: 'iPad', field: 'ipad_cn_download_count', color: '#D6C9B0' },
+      ],
+    },
+    /** 【iOS】畅销榜排名趋势 */
+    bestSeller: { table: 'ios_xd_games_best_sellers_daily', appName: '心动小镇' },
     servers: [{ key: 'global', label: '国际服', steamId: '4025700' }],
   },
 };
@@ -380,15 +396,18 @@ function MaxKpiRow({ table, fields, extraFields = [], subtitle = null }) {
 /**
  * 【全平台】游戏下载日趋势（堆叠柱；x=日期，y=下载量）。
  */
-function DownloadTrendCard({ table, series: seriesDefs, days = 7, height = 600 }) {
-  const where = useMemo(() => recentDaysWhere(days), [days]);
+function DownloadTrendCard({ table, appName = null, series: seriesDefs, days = 7, height = 600 }) {
+  const where = useMemo(
+    () => [...recentDaysWhere(days), ...(appName ? [{ col: 'app_name', op: '=', value: appName }] : [])],
+    [days, appName]
+  );
   const fields = useMemo(
     () => ['crawled_at', ...(seriesDefs || []).map((d) => d.field)].join(','),
     [seriesDefs]
   );
 
   const trendQuery = useChartData(
-    `games-download-trend-${table}-${days}`,
+    `games-download-trend-${table}-${days}-${appName || 'all'}`,
     (p) => query(table, p),
     { fields, where, order_by: 'crawled_at ASC', limit: 9999 },
     {
@@ -491,7 +510,7 @@ function useSeasonDownloadData(table, minSs = null) {
 }
 
 /** 单张赛季下载数对比卡（双轴折线；每个赛季生成一条左轴均值注解） */
-function SeasonDownloadCard({ title, field, seasons, height = 450, annotationAxis = 1 }) {
+function SeasonDownloadCard({ title, field, seasons, height = 450, annotationAxis = 1, xMin = 1, xMax = 91 }) {
   const series = buildSeasonSeries(seasons || [], field);
   const currentSs = seasons && seasons.length ? seasons[seasons.length - 1].ss : null;
 
@@ -551,7 +570,7 @@ function SeasonDownloadCard({ title, field, seasons, height = 450, annotationAxi
           tooltipCustom={seasonTooltip}
           toolbar={false}
           legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
-          xaxisOverrides={{ type: 'numeric', min: 1, max: 91, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
+          xaxisOverrides={{ type: 'numeric', min: xMin, max: xMax, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
           yaxisOverrides={{ seriesName: series.map((s) => s.name), title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
           yaxisRight={{ min: 0, ...(rightMax != null ? { max: rightMax } : {}), ...(needAnchor ? { seriesName: [''] } : {}), labels: { formatter: (v) => formatCompactNumber(v) } }}
           yaxisAnnotations={annotations}
@@ -571,10 +590,10 @@ function SeasonDownloadSection({ table, minSs }) {
   return (
     <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
       <div style={{ flex: '1 1 0', minWidth: 0 }}>
-        <SeasonDownloadCard title="【TapTap】赛季日下载数对比" field="tap_download_count" seasons={seasons} />
+        <SeasonDownloadCard title="【TapTap】赛季日下载数对比" field="tap_download_count" seasons={seasons} xMin={0} xMax={90} />
       </div>
       <div style={{ flex: '1 1 0', minWidth: 0 }}>
-        <SeasonDownloadCard title="【iOS】赛季日下载数对比" field="ios_cn_download_count" seasons={seasons} />
+        <SeasonDownloadCard title="【iOS】赛季日下载数对比" field="ios_cn_download_count" seasons={seasons} xMin={0} xMax={90} />
       </div>
     </div>
   );
@@ -588,7 +607,7 @@ function DownloadSection({ trendConfig, seasonConfig }) {
   return (
     <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
       <div style={{ flex: '35 1 0', minWidth: 0 }}>
-        <DownloadTrendCard table={trendConfig.table} series={trendConfig.series} days={trendConfig.days} />
+        <DownloadTrendCard table={trendConfig.table} appName={trendConfig.appName} series={trendConfig.series} days={trendConfig.days} />
       </div>
       <div style={{ flex: '65 1 0', minWidth: 0 }}>
         <SeasonDownloadCard
@@ -596,6 +615,65 @@ function DownloadSection({ trendConfig, seasonConfig }) {
           field="all_download_count"
           seasons={seasons}
           height={600}
+          xMin={0}
+          xMax={90}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 【iOS】畅销榜排名趋势（Brush 折线：总榜 overall_rank / 游戏榜 games_rank）。
+ */
+function BestSellerCard({ table, appName }) {
+  const where = useMemo(() => [{ col: 'app_name', op: '=', value: appName }], [appName]);
+
+  const rankQuery = useChartData(
+    `ios-best-seller-${table}-${appName}`,
+    (p) => query(table, p),
+    { fields: 'stat_date,overall_rank,games_rank', where, order_by: 'stat_date ASC', limit: 9999 },
+    {
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return { series: [], selection: null };
+        const num = (v) => (v === '' || v == null ? null : Number(v));
+        const toX = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00`).getTime();
+        const sorted = [...rows].sort((a, b) => (a.stat_date < b.stat_date ? -1 : 1));
+        // 刷选条默认只选中「最近 30 天」的数据（以数据里最后一天为基准，不依赖今天）
+        const lastX = toX(sorted[sorted.length - 1].stat_date);
+        const firstX = toX(sorted[0].stat_date);
+        const selMin = Math.max(firstX, lastX - 30 * 86400000);
+        return {
+          series: [
+            { name: '总榜', data: sorted.map((r) => ({ x: toX(r.stat_date), y: num(r.overall_rank) })) },
+            { name: '游戏榜', data: sorted.map((r) => ({ x: toX(r.stat_date), y: num(r.games_rank) })) },
+          ],
+          selection: { min: selMin, max: lastX },
+        };
+      },
+    }
+  );
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-header bg-white border-0 fw-semibold">
+        【iOS】畅销榜排名趋势
+        <div className="text-muted small fw-normal">拖动下方刷选条可缩放时间范围</div>
+      </div>
+      <div className="card-body">
+        <BrushLineChart
+          id={`best-seller-${appName}`}
+          series={rankQuery.data?.series || []}
+          brushSelection={rankQuery.data?.selection || null}
+          loading={rankQuery.isLoading}
+          error={rankQuery.error?.message}
+          height={500}
+          brushHeight={80}
+          colors={['#7A8B99', '#C4A4A4']}
+          strokeWidth={2}
+          xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+          yaxisOverrides={{ title: { text: '排名' }, reversed: true, labels: { formatter: (v) => Math.round(v) } }}
+          legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
         />
       </div>
     </div>
@@ -921,9 +999,25 @@ export default function BusinessReport() {
       {game.downloadTrend && game.seasonDownload && (
         <DownloadSection trendConfig={game.downloadTrend} seasonConfig={game.seasonDownload} />
       )}
-      {game.downloadTrend && !game.seasonDownload && (
+      {game.downloadTrend && !game.seasonDownload && !game.bestSeller && (
         <div className="mb-4">
-          <DownloadTrendCard {...game.downloadTrend} />
+          <DownloadTrendCard {...game.downloadTrend} height={450} />
+        </div>
+      )}
+      {game.downloadTrend && game.bestSeller && (
+        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+          <div style={{ flex: '35 1 0', minWidth: 0 }}>
+            <DownloadTrendCard
+              table={game.downloadTrend.table}
+              appName={game.downloadTrend.appName}
+              series={game.downloadTrend.series}
+              days={game.downloadTrend.days}
+              height={500}
+            />
+          </div>
+          <div style={{ flex: '65 1 0', minWidth: 0 }}>
+            <BestSellerCard {...game.bestSeller} />
+          </div>
         </div>
       )}
 
