@@ -72,7 +72,8 @@ const STEAM_GAMES = {
       ],
     },
     /** 【TapTap】/【iOS】赛季日下载数对比 */
-    seasonDownload: { table: 'dws_games_torchlight_season_download', minSs: 11 },
+    /** 【iOS】畅销榜排名趋势（与心动小镇同源表，按 app_name 区分） */
+    bestSeller: { table: 'ios_xd_games_best_sellers_daily', appName: '火炬之光：无限' },
     servers: [
       { key: 'global', label: '国际服', steamId: '1974050' },
       { key: 'cn', label: '国服', steamId: '2315040' },
@@ -462,168 +463,6 @@ function DownloadTrendCard({ table, appName = null, series: seriesDefs, days = 7
 }
 
 /**
- * 赛季日下载数对比的数据（一次查询，两张图共用）。
- * 输出 { seasons: [{ ss, points: [{ ssDay, tap_download_count, ios_cn_download_count }] }] }
- */
-function useSeasonDownloadData(table, minSs = null) {
-  // ss 下限（用于排除不完整的历史赛季）
-  const where = useMemo(() => (minSs != null ? [{ col: 'ss', op: '>=', value: minSs }] : []), [minSs]);
-
-  return useChartData(
-    `games-season-download-${table}-ss${minSs ?? 'all'}`,
-    (p) => query(table, p),
-    {
-      fields: 'ss,ss_day,tap_download_count,ios_cn_download_count',
-      ...(where.length ? { where } : {}),
-      order_by: 'ss ASC, ss_day ASC',
-      limit: 9999,
-    },
-    {
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return { seasons: [] };
-        const num = (v) => (v == null ? null : Number(v));
-        const sorted = [...rows].sort((a, b) => (Number(a.ss) - Number(b.ss)) || (Number(a.ss_day) - Number(b.ss_day)));
-        const groups = {};
-        for (const r of sorted) {
-          const ss = Number(r.ss);
-          if (!groups[ss]) groups[ss] = [];
-          groups[ss].push({
-            ssDay: Number(r.ss_day),
-            tap_download_count: num(r.tap_download_count),
-            ios_cn_download_count: num(r.ios_cn_download_count),
-            // 全渠道 = TapTap + iOS（两者都无数据时为 null）
-            all_download_count:
-              num(r.tap_download_count) == null && num(r.ios_cn_download_count) == null
-                ? null
-                : (num(r.tap_download_count) || 0) + (num(r.ios_cn_download_count) || 0),
-          });
-        }
-        return {
-          seasons: Object.keys(groups)
-            .map(Number)
-            .sort((a, b) => a - b)
-            .map((ss) => ({ ss, points: groups[ss] })),
-        };
-      },
-    }
-  );
-}
-
-/** 单张赛季下载数对比卡（双轴折线；每个赛季生成一条左轴均值注解） */
-function SeasonDownloadCard({ title, field, seasons, height = 450, annotationAxis = 1, xMin = 1, xMax = 91 }) {
-  const series = buildSeasonSeries(seasons || [], field);
-  const currentSs = seasons && seasons.length ? seasons[seasons.length - 1].ss : null;
-
-  const seasonMeans = series
-    .map((s, i) => {
-      const vals = s.data.map((d) => d.y).filter((v) => v != null && Number.isFinite(v));
-      if (!vals.length) return null;
-      return { name: s.name, mean: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), colorIndex: i };
-    })
-    .filter(Boolean);
-
-  // 右 Y 轴：0 ~ 赛季下载均数最大值的 1.5 倍
-  const rightMax = seasonMeans.length ? Math.round(Math.max(...seasonMeans.map((m) => m.mean)) * 1.5) : null;
-
-  // 每个赛季一条均值注解，标签居中；annotationAxis=1 绑右轴，0 绑左轴
-  const annotations = seasonMeans.map((m) => ({
-    y: m.mean,
-    yAxisIndex: annotationAxis,
-    color: AD_MATERIAL_COLORS[m.colorIndex % AD_MATERIAL_COLORS.length],
-    dash: 2,
-    position: 'center',
-    label: `${m.name}均值：${formatCompactNumber(m.mean)}`,
-  }));
-
-  // 注解绑右轴时，ApexCharts 需要右轴上有 series 才能定位 → 挂一个透明、零线宽、无名称的锚点系列
-  // （左轴本身有真实系列，无需锚点）
-  const needAnchor = annotationAxis === 1;
-  const chartSeries = needAnchor
-    ? [...series, { name: '', type: 'line', data: [{ x: 1, y: 0 }, { x: 91, y: 0 }] }]
-    : series;
-  const chartColors = needAnchor
-    ? [...series.map((_, i) => AD_MATERIAL_COLORS[i % AD_MATERIAL_COLORS.length]), 'transparent']
-    : AD_MATERIAL_COLORS;
-  const chartStrokeWidths = series.length
-    ? [...series.map((s) => (s.isCurrent ? 4 : 2)), ...(needAnchor ? [0] : [])]
-    : 2;
-  const chartDashArrays = series.length
-    ? [...series.map((s) => (s.isCurrent ? 0 : 5)), ...(needAnchor ? [0] : [])]
-    : null;
-
-  return (
-    <div className="card border-0 shadow-sm h-100">
-      <div className="card-header bg-white border-0 fw-semibold">
-        {title}
-        <div className="text-muted small fw-normal">
-          当赛季{currentSs != null ? `（第${currentSs}赛季）` : ''}实线加粗，其余赛季虚线
-        </div>
-      </div>
-      <div className="card-body">
-        <LineChart
-          series={chartSeries}
-          height={height}
-          colors={chartColors}
-          strokeWidth={series.length ? chartStrokeWidths : 2}
-          strokeDashArray={series.length ? chartDashArrays : null}
-          shared
-          tooltipCustom={seasonTooltip}
-          toolbar={false}
-          legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
-          xaxisOverrides={{ type: 'numeric', min: xMin, max: xMax, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
-          yaxisOverrides={{ seriesName: series.map((s) => s.name), title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-          yaxisRight={{ min: 0, ...(rightMax != null ? { max: rightMax } : {}), ...(needAnchor ? { seriesName: [''] } : {}), labels: { formatter: (v) => formatCompactNumber(v) } }}
-          yaxisAnnotations={annotations}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** 赛季下载区域：【TapTap】/【iOS】并排各 50% */
-function SeasonDownloadSection({ table, minSs }) {
-  const seasonQuery = useSeasonDownloadData(table, minSs);
-  const seasons = seasonQuery.data?.seasons || [];
-
-  if (seasonQuery.isLoading || seasonQuery.error) return null;
-
-  return (
-    <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-      <div style={{ flex: '1 1 0', minWidth: 0 }}>
-        <SeasonDownloadCard title="【TapTap】赛季日下载数对比" field="tap_download_count" seasons={seasons} xMin={0} xMax={90} />
-      </div>
-      <div style={{ flex: '1 1 0', minWidth: 0 }}>
-        <SeasonDownloadCard title="【iOS】赛季日下载数对比" field="ios_cn_download_count" seasons={seasons} xMin={0} xMax={90} />
-      </div>
-    </div>
-  );
-}
-
-/** 下载区：游戏下载日趋势 35% + 全渠道赛季日下载数对比 65% */
-function DownloadSection({ trendConfig, seasonConfig }) {
-  const seasonQuery = useSeasonDownloadData(seasonConfig.table, seasonConfig.minSs);
-  const seasons = seasonQuery.data?.seasons || [];
-
-  return (
-    <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-      <div style={{ flex: '35 1 0', minWidth: 0 }}>
-        <DownloadTrendCard table={trendConfig.table} appName={trendConfig.appName} series={trendConfig.series} days={trendConfig.days} />
-      </div>
-      <div style={{ flex: '65 1 0', minWidth: 0 }}>
-        <SeasonDownloadCard
-          title="【全渠道】赛季日下载数对比"
-          field="all_download_count"
-          seasons={seasons}
-          height={600}
-          xMin={0}
-          xMax={90}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
  * 【iOS】畅销榜排名趋势（Brush 折线：总榜 overall_rank / 游戏榜 games_rank）。
  */
 function BestSellerCard({ table, appName }) {
@@ -996,14 +835,6 @@ export default function BusinessReport() {
       {game.seasonCompare && <SeasonSection table={game.seasonCompare.table} />}
 
       {/* 下载区：日趋势(35%) + 全渠道赛季对比(65%) */}
-      {game.downloadTrend && game.seasonDownload && (
-        <DownloadSection trendConfig={game.downloadTrend} seasonConfig={game.seasonDownload} />
-      )}
-      {game.downloadTrend && !game.seasonDownload && !game.bestSeller && (
-        <div className="mb-4">
-          <DownloadTrendCard {...game.downloadTrend} height={450} />
-        </div>
-      )}
       {game.downloadTrend && game.bestSeller && (
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
           <div style={{ flex: '35 1 0', minWidth: 0 }}>
@@ -1020,9 +851,6 @@ export default function BusinessReport() {
           </div>
         </div>
       )}
-
-      {/* TapTap / iOS 赛季日下载数对比 */}
-      {game.seasonDownload && <SeasonDownloadSection {...game.seasonDownload} />}
 
       {/* 每个服一组：国际服在上、国服在下 */}
       {game.servers.map((server) => (

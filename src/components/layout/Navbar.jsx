@@ -25,6 +25,17 @@ export default function Navbar() {
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
               <NavLink
+                to="/one-search"
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <i className="bi bi-search me-1"></i>
+                One Search
+              </NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink
                 to="/business"
                 className={({ isActive }) =>
                   `nav-link ${isActive ? 'active' : ''}`

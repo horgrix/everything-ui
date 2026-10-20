@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import BusinessReport from './pages/BusinessReport';
+import OneSearch from './pages/OneSearch';
+import SearchView from './pages/OneSearch/SearchView';
 import FinanceInfo from './pages/FinanceInfo';
 import QuantInfo from './pages/QuantInfo';
 import TapTapReport from './pages/TapTapReport';
@@ -16,6 +18,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/business" replace />} />
               <Route path="/business" element={<BusinessReport />} />
+              <Route path="/one-search" element={<OneSearch />} />
+              <Route path="/one-search/report" element={<SearchView />} />
               <Route path="/taptap" element={<TapTapReport />} />
               <Route path="/finance" element={<FinanceInfo />} />
               <Route path="/quant" element={<QuantInfo />} />

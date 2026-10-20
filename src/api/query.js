@@ -1,3 +1,4 @@
+import axios from 'axios';
 import apiClient from './client';
 
 /**
@@ -33,4 +34,30 @@ export default function query(tableName, params = {}) {
  */
 export function querySql(sql) {
   return apiClient.post('/sql', { sql });
+}
+/** v09 数据服务（后端为 MySQL，接口 https://api.horgrix.com/api/v09/data） */
+const v09Client = axios.create({
+  baseURL: 'https://api.horgrix.com/api/v09/data',
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+v09Client.interceptors.response.use(
+  (response) => {
+    const body = response.data;
+    if (body && body.code !== undefined && body.code !== 0) {
+      return Promise.reject(new Error(body.message || `API Error (code: ${body.code})`));
+    }
+    return { data: body?.data, total: body?.total };
+  },
+  (error) => Promise.reject(new Error(error.response?.data?.message || error.message || '请求失败'))
+);
+
+/**
+ * v09 原生 SQL 查询 — 对应 https://api.horgrix.com/api/v09/data/sql (POST, MySQL 语法)
+ * @param {string} sql - 完整 SQL 语句
+ * @returns {Promise<{data: Array<Object>, total: number}>}
+ */
+export function querySqlV09(sql) {
+  return v09Client.post('/sql', { sql });
 }
