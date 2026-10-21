@@ -252,10 +252,30 @@ export const AD_GAME_LIST_COLUMNS = [
   },
   { header: '曝光次数', align: 'end', accessor: (r) => r.showCnt, render: (r) => <span>{formatNumber(r.showCnt)}</span> },
   { header: '广告投放次数', align: 'end', accessor: (r) => r.adCnt, render: (r) => <span>{formatNumber(r.adCnt)}</span> },
-  { header: '投放趋势', align: 'center', render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} /> },
+  { header: '投放趋势', align: 'center', render: (r) => <Sparkline data={r.trend || []} prevData={r.prevTrend || null} labels={r.trendLabels || []} currentLabel="本周" prevLabel="上周" width={120} height={32} /> },
   { header: '广告投放比', align: 'center', width: 140, accessor: (r) => r.adDeliveryRate, render: (r) => <RateBar rate={r.adDeliveryRate} /> },
   { header: '广告贡献比例', align: 'center', width: 140, accessor: (r) => r.adContributionRate, render: (r) => <RateBar rate={r.adContributionRate} /> },
   { header: '广告加载率', align: 'center', width: 140, accessor: (r) => r.adLoadingRate, render: (r) => <RateBar rate={r.adLoadingRate} /> },
+];
+
+/** TapPC【Top推荐】曝光游戏明细列表（在曝光次数之后追加 焦点次数 / 编辑推荐次数） */
+export const TOP_GAME_LIST_COLUMNS = [
+  ...AD_GAME_LIST_COLUMNS.slice(0, 4),
+  {
+    header: '焦点次数',
+    align: 'end',
+    help: 'is_editor_rec=False（关注焦点）的次数',
+    accessor: (r) => r.focusCnt,
+    render: (r) => <span>{formatNumber(r.focusCnt ?? 0)}</span>,
+  },
+  {
+    header: '编辑推荐次数',
+    align: 'end',
+    help: 'is_editor_rec=True（编辑推荐）的次数',
+    accessor: (r) => r.editorCnt,
+    render: (r) => <span>{formatNumber(r.editorCnt ?? 0)}</span>,
+  },
+  ...AD_GAME_LIST_COLUMNS.slice(4),
 ];
 
 /** TapApp首页找游戏曝光游戏明细列表列配置（在游戏名称后加标签列，tag1/tag2/tag3 分级突出显示） */

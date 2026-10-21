@@ -11,6 +11,9 @@ import {
   buildAdGameListSql,
   buildAdGameDailyTrendSql,
   buildAdLoadingRateTrendSql,
+  buildAdTopPositionFocusRateSql,
+  buildAdTopGameListSql,
+  PC_AD_TOP_TABLE,
 } from './sql';
 import {
   transformAdNewPositionStats,
@@ -23,7 +26,7 @@ import {
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
-import { AD_MATERIAL_COLORS, AD_GAME_LIST_COLUMNS } from './shared';
+import { AD_MATERIAL_COLORS, AD_GAME_LIST_COLUMNS, TOP_GAME_LIST_COLUMNS } from './shared';
 
 export default function TapPcAdStats() {
   const adNewPositionStatsQuery = useSqlQuery('taptap-ad-new-position-stats', buildAdNewPositionStatsSql, [], transformAdNewPositionStats, { enabled: true });
@@ -35,11 +38,60 @@ export default function TapPcAdStats() {
   const adGameListRows = useMemo(() => {
     const list = adGameListQuery.data?.rows || [];
     const trendData = adGameDailyTrendQuery.data;
-    const days = trendData?.days || [];
-    const byApp = trendData?.byApp || {};
-    return list.map((r) => ({ ...r, trend: days.map((d) => byApp[r.appId]?.[d] ?? 0), trendLabels: days }));
+    const weekLabels = trendData?.labels || [];
+    const thisWeek = trendData?.thisWeek || {};
+    const lastWeek = trendData?.lastWeek || {};
+    return list.map((r) => ({
+      ...r,
+      trend: thisWeek[r.appId] || [],
+      prevTrend: lastWeek[r.appId] || [],
+      trendLabels: weekLabels,
+    }));
   }, [adGameListQuery.data, adGameDailyTrendQuery.data]);
   const adLoadingRateTrendQuery = useSqlQuery('taptap-ad-loading-rate-trend', buildAdLoadingRateTrendSql, [], transformAdLoadingRateTrend, { enabled: true });
+
+  /* ===== 【Top推荐】(位置图=关注焦点占比，明细表=全部数据 + 焦点/编辑推荐次数) ===== */
+  const adTopPositionStatsQuery = useSqlQuery(
+    'taptap-ad-top-position-focus-rate',
+    buildAdTopPositionFocusRateSql,
+    [],
+    transformAdNewPositionStats,
+    { enabled: true },
+  );
+  const adTopTotalStatsQuery = useSqlQuery(
+    'taptap-ad-top-total-stats',
+    () => buildAdTotalStatsSql(PC_AD_TOP_TABLE, ''),
+    [],
+    transformAdTotalStats,
+    { enabled: true },
+  );
+  const adTopGameListQuery = useSqlQuery(
+    'taptap-ad-top-game-list',
+    buildAdTopGameListSql,
+    [],
+    (rows) => transformAdGameList(rows, adTopTotalStatsQuery.data),
+    { enabled: !!adTopTotalStatsQuery.data },
+  );
+  const adTopGameDailyTrendQuery = useSqlQuery(
+    'taptap-ad-top-game-daily-trend',
+    () => buildAdGameDailyTrendSql(PC_AD_TOP_TABLE, ''),
+    [],
+    transformTapAppAdGameDailyTrend,
+    { enabled: true },
+  );
+  const adTopGameListRows = useMemo(() => {
+    const list = adTopGameListQuery.data?.rows || [];
+    const trendData = adTopGameDailyTrendQuery.data;
+    const weekLabels = trendData?.labels || [];
+    const thisWeek = trendData?.thisWeek || {};
+    const lastWeek = trendData?.lastWeek || {};
+    return list.map((r) => ({
+      ...r,
+      trend: thisWeek[r.appId] || [],
+      prevTrend: lastWeek[r.appId] || [],
+      trendLabels: weekLabels,
+    }));
+  }, [adTopGameListQuery.data, adTopGameDailyTrendQuery.data]);
 
   return (
     <>
@@ -139,7 +191,7 @@ export default function TapPcAdStats() {
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-          <div className="card-header bg-white border-0 fw-semibold">【每日新发现】曝光游戏明细列表 — 最近7天</div>
+          <div className="card-header bg-white border-0 fw-semibold">【每日新发现】曝光游戏明细列表 — 本周</div>
           <DataTable rows={adGameListRows} columns={AD_GAME_LIST_COLUMNS} pageSize={10} />
           </div>
           </div>
@@ -150,6 +202,44 @@ export default function TapPcAdStats() {
           <div className="flex-grow-1" style={{ borderTop: '1px dashed #adb5bd' }}></div>
           <span className="text-muted small fw-semibold">每日新发现  End</span>
           <div className="flex-grow-1" style={{ borderTop: '1px dashed #adb5bd' }}></div>
+        </div>
+
+        {/* 【Top推荐】系列：仅统计关注焦点 is_editor_rec = False */}
+        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+          <div style={{ flex: '25 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+          <div className="card-header bg-white border-0">
+            <div className="fw-semibold">【Top推荐】位置每日追踪 — 最近7天</div>
+            <div className="text-muted small">行=全部广告位(position)，列=日期，值=关注焦点占比(is_editor_rec=False 次数 / 该位置总次数)</div>
+          </div>
+          <div className="card-body">
+            <HeatmapChart
+              series={adTopPositionStatsQuery.data?.series || []}
+              loading={adTopPositionStatsQuery.isLoading}
+              error={adTopPositionStatsQuery.error?.message}
+              height={500}
+              colorScale={[
+                { from: 0, to: 0.01, name: '0%', color: '#D8D0E4' },
+                { from: 0.01, to: 0.34, name: '1-33%', color: '#B39BC8' },
+                { from: 0.34, to: 0.68, name: '34-67%', color: '#8B6FAD' },
+                { from: 0.68, to: 1.01, name: '68-100%', color: '#421243' },
+              ]}
+              valueFormatter={(val) => (val > 0 ? `${Math.round(val * 100)}%` : '')}
+              xaxisOverrides={adTopPositionStatsQuery.data?.categories ? { categories: adTopPositionStatsQuery.data.categories } : {}}
+              yaxisReversed
+            />
+          </div>
+          </div>
+          </div>
+          <div style={{ flex: '75 1 0', minWidth: 0 }}>
+          <div className="card border-0 shadow-sm h-100">
+          <div className="card-header bg-white border-0">
+            <div className="fw-semibold">【Top推荐】曝光游戏明细列表 — 本周</div>
+            <div className="text-muted small">全部数据(关注焦点 + 编辑推荐)；焦点次数=is_editor_rec=False，编辑推荐次数=is_editor_rec=True</div>
+          </div>
+          <DataTable rows={adTopGameListRows} columns={TOP_GAME_LIST_COLUMNS} pageSize={10} />
+          </div>
+          </div>
         </div>
     </>
   );

@@ -418,8 +418,12 @@ export function buildPcOnlineTop20TrendSql() {
   `;
 }
 
-/** 构建TapPC广告每日新发现广告位统计 SQL（最近7天，按日+position 聚合广告加载率，只看前20个固定位置） */
-export function buildAdNewPositionStatsSql() {
+/** TapPC「Top推荐」数据表与过滤条件：is_editor_rec=False 为关注焦点（True 为编辑推荐） */
+export const PC_AD_TOP_TABLE = 'taptap_pc_ad_top_hourly';
+export const PC_AD_TOP_FOCUS_FILTER = "AND is_editor_rec = 'False'";
+
+/** 构建TapPC广告广告位统计 SQL（最近7天，按日+position 聚合加载率，只看前20个位置；table/extraWhere 可复用） */
+export function buildAdNewPositionStatsSql(table = 'taptap_pc_ad_discovery_hourly', extraWhere = '') {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
@@ -434,9 +438,9 @@ export function buildAdNewPositionStatsSql() {
         position,
         COUNT(*) AS show_cnt,
         SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-      FROM taptap_ad_loading_hourly
+      FROM ${table}
       WHERE crawled_at > '${dateStr}'
-        AND ad_type = 'tappc_2671'
+        ${extraWhere}
         AND position <= 20
       GROUP BY substr(crawled_at, 1, 10), position
     ) t
@@ -462,9 +466,8 @@ export function buildAdMaterialTagsSql() {
           tag_1 AS tag,
           COUNT(*) AS show_cnt,
           SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM taptap_ad_loading_hourly
+        FROM taptap_pc_ad_discovery_hourly
         WHERE crawled_at > '${dateStr}'
-          AND ad_type = 'tappc_2671'
           AND position <= 20
           AND tag_1 IS NOT NULL
         GROUP BY tag_1
@@ -473,9 +476,8 @@ export function buildAdMaterialTagsSql() {
           tag_2 AS tag,
           COUNT(*) AS show_cnt,
           SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM taptap_ad_loading_hourly
+        FROM taptap_pc_ad_discovery_hourly
         WHERE crawled_at > '${dateStr}'
-          AND ad_type = 'tappc_2671'
           AND position <= 20
           AND tag_2 IS NOT NULL
         GROUP BY tag_2
@@ -484,9 +486,8 @@ export function buildAdMaterialTagsSql() {
           tag_3 AS tag,
           COUNT(*) AS show_cnt,
           SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-        FROM taptap_ad_loading_hourly
+        FROM taptap_pc_ad_discovery_hourly
         WHERE crawled_at > '${dateStr}'
-          AND ad_type = 'tappc_2671'
           AND position <= 20
           AND tag_3 IS NOT NULL
         GROUP BY tag_3
@@ -511,9 +512,8 @@ export function buildAdMaterialGamesSql() {
         app_id,
         app_name,
         COUNT(*) AS loaded_cnt
-      FROM taptap_ad_loading_hourly
+      FROM taptap_pc_ad_discovery_hourly
       WHERE crawled_at > '${dateStr}'
-        AND ad_type = 'tappc_2671'
         AND is_ad = 'True'
         AND tag_1 IS NOT NULL
         AND position <= 20
@@ -524,9 +524,8 @@ export function buildAdMaterialGamesSql() {
         app_id,
         app_name,
         COUNT(*) AS loaded_cnt
-      FROM taptap_ad_loading_hourly
+      FROM taptap_pc_ad_discovery_hourly
       WHERE crawled_at > '${dateStr}'
-        AND ad_type = 'tappc_2671'
         AND is_ad = 'True'
         AND tag_2 IS NOT NULL
         AND position <= 20
@@ -537,9 +536,8 @@ export function buildAdMaterialGamesSql() {
         app_id,
         app_name,
         COUNT(*) AS loaded_cnt
-      FROM taptap_ad_loading_hourly
+      FROM taptap_pc_ad_discovery_hourly
       WHERE crawled_at > '${dateStr}'
-        AND ad_type = 'tappc_2671'
         AND is_ad = 'True'
         AND tag_3 IS NOT NULL
         AND position <= 20
@@ -549,9 +547,53 @@ export function buildAdMaterialGamesSql() {
   `;
 }
 
-/** 构建TapPC广告游戏列表 SQL（最近7天，按app_id聚合曝光/广告次数，合并重复的app_name） */
-export function buildAdGameListSql() {
+/** 构建TapPC「Top推荐」位置每日追踪 SQL（最近7天，全部位置；值=该位置 is_editor_rec=False 次数 / 该位置总次数） */
+export function buildAdTopPositionFocusRateSql() {
   const dateStr = recentDaysWhere(7);
+  return `
+    SELECT
+      crawled_at,
+      position,
+      total_cnt,
+      focus_cnt,
+      ROUND(focus_cnt * 1.0 / total_cnt, 4) AS ad_loading_rate
+    FROM (
+      SELECT
+        substr(crawled_at, 1, 10) AS crawled_at,
+        position,
+        COUNT(*) AS total_cnt,
+        SUM(CASE WHEN is_editor_rec = 'False' THEN 1 ELSE 0 END) AS focus_cnt
+      FROM taptap_pc_ad_top_hourly
+      WHERE crawled_at > '${dateStr}'
+      GROUP BY substr(crawled_at, 1, 10), position
+    ) t
+  `;
+}
+
+/** 构建TapPC「Top推荐」曝光游戏明细 SQL（本周，全部数据；额外统计关注焦点/编辑推荐次数） */
+export function buildAdTopGameListSql() {
+  const dateStr = thisWeekWhere();
+  return `
+    SELECT
+      app_id,
+      MAX(app_name) AS app_name,
+      MAX(tag_1) AS tag_1,
+      MAX(tag_2) AS tag_2,
+      MAX(tag_3) AS tag_3,
+      COUNT(*) AS show_cnt,
+      SUM(CASE WHEN is_editor_rec = 'False' THEN 1 ELSE 0 END) AS focus_cnt,
+      SUM(CASE WHEN is_editor_rec = 'True' THEN 1 ELSE 0 END) AS editor_cnt,
+      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
+    FROM taptap_pc_ad_top_hourly
+    WHERE crawled_at >= '${dateStr}'
+    GROUP BY app_id
+    ORDER BY show_cnt DESC, app_id
+  `;
+}
+
+/** 构建TapPC广告游戏列表 SQL（本周，按app_id聚合；table/extraWhere 可复用） */
+export function buildAdGameListSql(table = 'taptap_pc_ad_discovery_hourly', extraWhere = '') {
+  const dateStr = thisWeekWhere();
   return `
     SELECT
       app_id,
@@ -561,40 +603,42 @@ export function buildAdGameListSql() {
       MAX(tag_3) AS tag_3,
       COUNT(*) AS show_cnt,
       SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-    FROM taptap_ad_loading_hourly
-    WHERE crawled_at > '${dateStr}'
-      AND ad_type = 'tappc_2671'
+    FROM ${table}
+    WHERE crawled_at >= '${dateStr}'
+      ${extraWhere}
     GROUP BY app_id
     ORDER BY ad_cnt DESC, show_cnt DESC
   `;
 }
 
-/** 构建TapPC广告每日投放趋势 SQL（最近7天，按app_id+日聚合广告投放次数） */
-export function buildAdGameDailyTrendSql() {
-  const dateStr = recentDaysWhere(7);
+/** 构建TapPC广告每日投放趋势 SQL（上周一至今，按app_id+日聚合；table/extraWhere 可复用） */
+export function buildAdGameDailyTrendSql(table = 'taptap_pc_ad_discovery_hourly', extraWhere = '') {
+  const dateStr = thisWeekWhere(1);
   return `
     SELECT
       app_id,
       substr(crawled_at, 1, 10) AS day,
-      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-    FROM taptap_ad_loading_hourly
-    WHERE crawled_at > '${dateStr}'
-      AND ad_type = 'tappc_2671'
+      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS push_cnt
+    FROM ${table}
+    WHERE crawled_at >= '${dateStr}'
+      ${extraWhere}
     GROUP BY app_id, substr(crawled_at, 1, 10)
     ORDER BY app_id, day
   `;
 }
 
-/** 构建TapPC广告总曝光/总广告次数 SQL（最近7天） */
-export function buildAdTotalStatsSql() {
-  const dateStr = recentDaysWhere(7);
+/** 构建TapPC广告总曝光/总广告次数 SQL（本周，作为贡献比例/加载率的分母；table/extraWhere 可复用） */
+export function buildAdTotalStatsSql(table = 'taptap_pc_ad_discovery_hourly', extraWhere = '') {
+  const dateStr = thisWeekWhere();
   return `
     SELECT
       COUNT(*) AS total_show_cnt,
-      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS total_ad_cnt
-    FROM taptap_ad_loading_hourly
-    WHERE crawled_at > '${dateStr}'
-      AND ad_type = 'tappc_2671'
+      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS total_ad_cnt,
+      0 AS total_pcebid_cnt,
+      SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS total_push_cnt
+    FROM ${table}
+    WHERE crawled_at >= '${dateStr}'
+      ${extraWhere}
   `;
 }
 
@@ -612,9 +656,8 @@ export function buildAdLoadingRateTrendSql() {
         substr(crawled_at, 1, 10) AS crawled_at,
         COUNT(*) AS show_cnt,
         SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
-      FROM taptap_ad_loading_hourly
+      FROM taptap_pc_ad_discovery_hourly
       WHERE crawled_at > '${dateStr}'
-        AND ad_type = 'tappc_2671'
       GROUP BY substr(crawled_at, 1, 10)
     ) t
   `;

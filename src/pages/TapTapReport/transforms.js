@@ -445,6 +445,8 @@ export function transformAdGameList(rows, totalStats) {
       tag3: r.tag_3 != null ? String(r.tag_3) : null,
       distributionType: r.distribution_type != null ? Number(r.distribution_type) : null,
       showCnt,
+      focusCnt: r.focus_cnt != null ? Number(r.focus_cnt) : null,
+      editorCnt: r.editor_cnt != null ? Number(r.editor_cnt) : null,
       iosShowCnt: r.ios_show_cnt != null ? Number(r.ios_show_cnt) : null,
       androidShowCnt: r.android_show_cnt != null ? Number(r.android_show_cnt) : null,
       adCnt,
