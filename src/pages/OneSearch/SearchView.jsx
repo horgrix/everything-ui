@@ -411,7 +411,7 @@ export default function SearchView() {
           total,
           ad,
           pcebid,
-          // 首页广告比例 = （首页广告次数 + 资源互换次数）/ 首页广告总统计次数
+          // 首页广告比例 = （首页广告次数 + 资源互换次数）/ 首页资源曝光次数
           ratio: total > 0 ? Math.round(((ad + pcebid) / total) * 10000) / 100 : null,
           days: rows.length,
           firstAt: rows[0].crawled_at,
@@ -433,7 +433,8 @@ export default function SearchView() {
     `one-search-keyword-ad-${appName}-${month}`,
     () =>
       querySqlV09(
-        `SELECT crawled_at, total_views, discover_views, hot_search_views, hot_spot_views, ad_views
+        `SELECT crawled_at, total_views, discover_views, hot_search_views, hot_spot_views,
+                ad_views, discover_ad_views, hot_search_ad_views, hot_spot_ad_views
          FROM dws_taptap_app_keywords_ad_daily
          WHERE keyword = '${String(appName).replace(/'/g, "''")}'
            AND crawled_at >= '${range.startDate}' AND crawled_at < '${range.endDate}'
@@ -452,9 +453,9 @@ export default function SearchView() {
         let ads = 0;
         for (const r of rows) {
           total += n(r.total_views);
-          discover += n(r.discover_views);
-          hotSearch += n(r.hot_search_views);
-          hotSpot += n(r.hot_spot_views);
+          discover += n(r.discover_ad_views);
+          hotSearch += n(r.hot_search_ad_views);
+          hotSpot += n(r.hot_spot_ad_views);
           ads += n(r.ad_views);
         }
         return {
@@ -462,8 +463,9 @@ export default function SearchView() {
           discover,
           hotSearch,
           hotSpot,
-          // 关键词广告比例 = 广告曝光 / 总曝光
-          ratio: total > 0 ? Math.round((ads / total) * 10000) / 100 : null,
+          // 关键词广告比例 = (搜索发现广告统计次数 + 热搜广告统计次数 + 搜点广告统计次数) / 关键词曝光次数
+          ratio: total > 0 ? Math.round(((discover + hotSearch + hotSpot) / total) * 10000) / 100 : null,
+          adRatio: total > 0 ? Math.round((ads / total) * 10000) / 100 : null,
           days: rows.length,
           firstAt: rows[0].crawled_at,
           lastAt: rows[rows.length - 1].crawled_at,
@@ -813,7 +815,7 @@ export default function SearchView() {
       {appId && (
         <div className="row g-3 mb-4">
           <div className="col-12 col-sm-6 col-xl-3">
-            <DashboardCard title="首页广告总统计次数" value={ad ? formatNumber(ad.total) : '-'} subtitle={adSubtitle} icon="bi-eye" color="primary" />
+            <DashboardCard title="首页资源曝光次数" value={ad ? formatNumber(ad.total) : '-'} subtitle={adSubtitle} icon="bi-eye" color="primary" />
           </div>
           <div className="col-12 col-sm-6 col-xl-3">
             <RankedStatCard
@@ -859,7 +861,7 @@ export default function SearchView() {
       {appName && (
         <div className="row g-3 mb-4">
           <div className="col-12 col-sm-6 col-xl">
-            <DashboardCard title="关键词广告总统计次数" value={kwAd ? formatNumber(kwAd.total) : '-'} subtitle={kwAdSubtitle} icon="bi-key" color="primary" />
+            <DashboardCard title="关键词曝光次数" value={kwAd ? formatNumber(kwAd.total) : '-'} subtitle={kwAdSubtitle} icon="bi-key" color="primary" />
           </div>
           <div className="col-12 col-sm-6 col-xl">
             <RankedStatCard
