@@ -3,6 +3,8 @@ import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
+import UpdateTag from './UpdateTag';
+import { nextUpdateTime, formatNextUpdate } from './updateTime';
 import {
   buildAggregateSql,
   buildDetailSql,
@@ -126,6 +128,19 @@ export default function DownloadStats() {
   const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
   const validAppId = /^\d+$/.test(appId);
 
+  // 提示性文案，仅在渲染时计算一次（不轮询、不额外请求）
+  const nowRef = new Date();
+  // 热门游戏TopN下载趋势：cron 分钟=5，每 2 小时一次
+  const nextUpdateLabelMin5 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(5, nowRef))}`;
+  // 月趋势三图：cron 分钟=7，每 2 小时一次
+  const nextUpdateLabelMin7 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(7, nowRef))}`;
+  // 热门游戏TopN下载日趋势：cron 分钟=6，每 2 小时一次
+  const nextUpdateLabelMin6 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(6, nowRef))}`;
+  // 下载Top25明细查询条件（小时/日/月）→ 关联图表使用的更新频率：5 / 6 / 7 分钟
+  const windowGranularity = WINDOW_TYPES.find((w) => w.table === selectedTable)?.granularity || 'hour';
+  const windowUpdateLabel =
+    windowGranularity === 'day' ? nextUpdateLabelMin6 : windowGranularity === 'month' ? nextUpdateLabelMin7 : nextUpdateLabelMin5;
+
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
   const detailQuery = useSqlQuery('taptap-game-detail', () => buildDetailSql(appId, days), [appId, days], transformDetail, { enabled: validAppId });
   const summaryQuery = useSqlQuery('taptap-game-summary', () => buildSummarySql(appId, days), [appId, days], transformKpiSnapshot, { enabled: validAppId });
@@ -156,7 +171,12 @@ export default function DownloadStats() {
     <>
       {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载趋势 — 近24小时（增量）</div>
+        <div className="card-header bg-white border-0">
+          <div className="fw-semibold">热门游戏TopN下载趋势 — 近24小时（增量）</div>
+          <div className="mt-1">
+            <UpdateTag text={nextUpdateLabelMin5} />
+          </div>
+        </div>
         <div className="card-body">
           <BarChart
             series={hotListQuery.data?.series || []}
@@ -181,7 +201,12 @@ export default function DownloadStats() {
         {MONTHLY_BREAKDOWN_CHARTS.map((c) => (
           <div className="col-12 col-md-4" key={c.key}>
             <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0 fw-semibold">{c.title}</div>
+              <div className="card-header bg-white border-0">
+                <div className="fw-semibold">{c.title}</div>
+                <div className="mt-1">
+                  <UpdateTag text={nextUpdateLabelMin7} />
+                </div>
+              </div>
               <div className="card-body">
                 <BarChart
                   series={monthlyBreakdownQuery.data?.[c.key] || []}
@@ -202,7 +227,12 @@ export default function DownloadStats() {
 
       {/* 热门游戏TopN下载日趋势 */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">热门游戏TopN下载日趋势 — 最近30天</div>
+        <div className="card-header bg-white border-0">
+          <div className="fw-semibold">热门游戏TopN下载日趋势 — 最近30天</div>
+          <div className="mt-1">
+            <UpdateTag text={nextUpdateLabelMin6} />
+          </div>
+        </div>
         <div className="card-body">
           <LineChart
             series={dailyTrendQuery.data?.series || []}
@@ -255,7 +285,12 @@ export default function DownloadStats() {
         {DISTRIBUTION_CHARTS.map((c) => (
           <div className="col-12 col-md-4" key={c.key}>
             <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0 fw-semibold">{c.title}</div>
+              <div className="card-header bg-white border-0">
+                <div className="fw-semibold">{c.title}</div>
+                <div className="mt-1">
+                  <UpdateTag text={windowUpdateLabel} />
+                </div>
+              </div>
               <div className="card-body d-flex flex-column align-items-center justify-content-center">
                 <PieChart
                   series={distributionByWindowQuery.data?.[c.key]?.series || []}
@@ -279,7 +314,12 @@ export default function DownloadStats() {
         {['app', 'pc'].map((key) => (
           <div className="col-12 col-md-6" key={key}>
             <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0 fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+              <div className="card-header bg-white border-0">
+                <div className="fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+                <div className="mt-1">
+                  <UpdateTag text={windowUpdateLabel} />
+                </div>
+              </div>
               <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
             </div>
           </div>
@@ -291,7 +331,12 @@ export default function DownloadStats() {
         {['ai', 'noneMaker', 'maker'].map((key) => (
           <div className="col-12 col-md-4" key={key}>
             <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0 fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+              <div className="card-header bg-white border-0">
+                <div className="fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
+                <div className="mt-1">
+                  <UpdateTag text={windowUpdateLabel} />
+                </div>
+              </div>
               <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
             </div>
           </div>

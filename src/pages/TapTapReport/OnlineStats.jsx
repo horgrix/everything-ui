@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import TreemapChart from '../../components/charts/TreemapChart';
 import DashboardCard from '../../components/layout/DashboardCard';
+import UpdateTag from './UpdateTag';
+import { nextUpdateLabel } from './updateTime';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 import {
   buildOnlinePlayersTrendSql,
@@ -87,10 +89,17 @@ export default function OnlineStats() {
   const trendCategories = onlinePlayersTrendQuery.data?.categories || [];
   const trendRangeStart = trendCategories[0] || '';
   const trendRangeEnd = trendCategories[trendCategories.length - 1] || '';
+  // TapPC 在线人数 KPI 与趋势/分布图：每 2 小时第 15 分钟更新
+  const pcUpdateLabel = nextUpdateLabel(15);
+  // 在线人数Top20游戏列表：每 2 小时第 14 分钟更新
+  const pcUpdateTop20Label = nextUpdateLabel(14);
 
   return (
     <>
       {/* TapPC峰值在线 KPI */}
+      <div className="mb-2">
+        <UpdateTag text={pcUpdateLabel} />
+      </div>
       <div className="row g-3 mb-4">
         {(pcOnlinePeakKpisQuery.data || []).map((k) => {
           const meta = PC_KPI_META[k.key] || {};
@@ -115,7 +124,10 @@ export default function OnlineStats() {
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC热玩游戏榜在线人数趋势</div>
-              <div className="text-muted small">统计时间范围为最近24小时【{trendRangeStart} - {trendRangeEnd}】，每组左边Bar表示峰值在线玩家数、右边Bar表示记录统计的游戏数</div>
+              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+                <span className="text-muted small">统计时间范围为最近24小时【{trendRangeStart} - {trendRangeEnd}】，每组左边Bar表示峰值在线玩家数、右边Bar表示记录统计的游戏数</span>
+                <UpdateTag text={pcUpdateLabel} />
+              </div>
             </div>
             <div className="card-body">
               <BarChart
@@ -150,7 +162,10 @@ export default function OnlineStats() {
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC游戏在线人数来源分布图</div>
-              <div className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}</div>
+              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+                <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}</span>
+                <UpdateTag text={pcUpdateLabel} />
+              </div>
             </div>
             <div className="card-body">
               <TreemapChart
@@ -185,7 +200,10 @@ export default function OnlineStats() {
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC游戏在线人数分布图</div>
-              <div className="text-muted small">最新统计窗口为 - {onlinePlayersSourceNewestQuery.data || ''}</div>
+              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+                <span className="text-muted small">最新统计窗口为 - {onlinePlayersSourceNewestQuery.data || ''}</span>
+                <UpdateTag text={pcUpdateLabel} />
+              </div>
             </div>
             <div className="card-body">
               <TreemapChart
@@ -218,7 +236,10 @@ export default function OnlineStats() {
         <div className="card border-0 shadow-sm">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">在线人数Top20游戏列表</div>
-            <div className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（每个来源取 list_type_rk ≤ 20）</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（每个来源取 list_type_rk ≤ 20）</span>
+              <UpdateTag text={pcUpdateTop20Label} />
+            </div>
           </div>
           <DataTable rows={pcOnlineTop20Rows} columns={PC_ONLINE_TOP20_COLUMNS} pageSize={10} fixedLayout rankColWidth="3%" />
         </div>

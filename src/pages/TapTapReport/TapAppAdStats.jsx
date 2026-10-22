@@ -4,6 +4,8 @@ import LineChart from '../../components/charts/LineChart';
 import TreemapChart from '../../components/charts/TreemapChart';
 import MixedChart from '../../components/charts/MixedChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
+import UpdateTag from './UpdateTag';
+import { nextUpdateLabel } from './updateTime';
 import {
   buildTapAppAdNewPositionStatsSql,
   buildTapAppAdMaterialTagsSql,
@@ -52,6 +54,8 @@ import DashboardCard from '../../components/layout/DashboardCard';
 import { AD_MATERIAL_COLORS, TAPAPP_AD_GAME_LIST_COLUMNS, TAPAPP_SEARCH_KEYWORD_COLUMNS, SEARCH_SOURCES } from './shared';
 
 export default function TapAppAdStats() {
+  // 广告数据源：每小时第 15 分钟更新
+  const adUpdateLabel = nextUpdateLabel(15, new Date(), 1);
   const tapAppAdNewPositionStatsQuery = useSqlQuery('taptap-app-ad-new-position-stats', buildTapAppAdNewPositionStatsSql, [], transformTapAppAdNewPositionStats, { enabled: true });
   const tapAppAdMaterialTagsQuery = useSqlQuery('taptap-app-ad-material-tags', buildTapAppAdMaterialTagsSql, [], transformAdMaterialTags, { enabled: true });
   const tapAppAdMaterialGamesQuery = useSqlQuery('taptap-app-ad-material-games', buildTapAppAdMaterialGamesSql, [], transformAdMaterialGames, { enabled: true });
@@ -175,7 +179,10 @@ export default function TapAppAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【首页找游戏】广告位每日追踪 — 当天</div>
-            <div className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <div className="card-body">
             <HeatmapChart
@@ -206,7 +213,12 @@ export default function TapAppAdStats() {
           </div>
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】广告加载率趋势 — 最近24小时</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">【首页找游戏】广告加载率趋势 — 最近24小时</div>
+              <div className="mt-1">
+                <UpdateTag text={adUpdateLabel} />
+              </div>
+            </div>
             <div className="card-body">
               <LineChart
                 series={tapAppAdOverviewHourlyTrendQuery.data?.series || []}
@@ -232,7 +244,10 @@ export default function TapAppAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【首页找游戏】素材标签追踪 — 最近7天</div>
-            <div className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <div className="card-body">
             <TreemapChart
@@ -269,7 +284,12 @@ export default function TapAppAdStats() {
           </div>
           <div style={{ flex: '35 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【首页找游戏】每日广告加载率 — 最近7天</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">【首页找游戏】每日广告加载率 — 最近7天</div>
+              <div className="mt-1">
+                <UpdateTag text={adUpdateLabel} />
+              </div>
+            </div>
             <div className="card-body">
               <MixedChart
                 series={tapAppAdLoadingRateTrendQuery.data?.series || []}
@@ -302,7 +322,10 @@ export default function TapAppAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【首页找游戏】曝光游戏明细列表 — 本周</div>
-            <div className="text-muted small">记录了TapTap App(IOS+Android2个平台)首页找游戏前20个位置素材广告曝光情况，每2小时自动由系统采集一次。</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">记录了TapTap App(IOS+Android2个平台)首页找游戏前20个位置素材广告曝光情况，每2小时自动由系统采集一次。</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <DataTable rows={tapAppAdGameRows} columns={TAPAPP_AD_GAME_LIST_COLUMNS} pageSize={10} totalRow={tapAppAdTotalRow} fixedLayout rankColWidth="3%" />
           </div>
@@ -320,7 +343,12 @@ export default function TapAppAdStats() {
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【搜索页】每日广告加载率 — 最近30天</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">【搜索页】每日广告加载率 — 最近30天</div>
+              <div className="mt-1">
+                <UpdateTag text={adUpdateLabel} />
+              </div>
+            </div>
             <div className="card-body">
               <MixedChart
                 series={tapAppSearchLoadingRateTrendQuery.data?.series || []}
@@ -365,7 +393,10 @@ export default function TapAppAdStats() {
             <div className="card border-0 shadow-sm flex-grow-1 d-flex flex-column">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">【搜索页】广告位追踪({src.label}) — 当天</div>
-              <div className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</div>
+              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+                <span className="text-muted small">行=广告位(position)，列=ios/android，值=广告加载率(ad_loading_rate)</span>
+                <UpdateTag text={adUpdateLabel} />
+              </div>
             </div>
             <div className="card-body flex-grow-1 d-flex flex-column">
               <HeatmapChart
@@ -388,7 +419,12 @@ export default function TapAppAdStats() {
             </div>
             <div style={{ flex: '1 1 0', minWidth: 0 }}>
             <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【搜索页】搜索关键词广告统计({src.label}) — 最近7天</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">【搜索页】搜索关键词广告统计({src.label}) — 最近7天</div>
+              <div className="mt-1">
+                <UpdateTag text={adUpdateLabel} />
+              </div>
+            </div>
             <DataTable rows={tapAppSearchKeywordRows[src.key] || []} columns={TAPAPP_SEARCH_KEYWORD_COLUMNS} pageSize={10} totalRow={tapAppSearchKeywordTotalRows[src.key] || null} />
           </div>
             </div>

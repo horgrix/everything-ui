@@ -547,22 +547,22 @@ export function buildAdMaterialGamesSql() {
   `;
 }
 
-/** 构建TapPC「Top推荐」位置每日追踪 SQL（最近7天，全部位置；值=该位置 is_editor_rec=False 次数 / 该位置总次数） */
-export function buildAdTopPositionFocusRateSql() {
+/** 构建TapPC「Top推荐」位置每日追踪 SQL（最近7天，全部位置；值=该位置广告投放次数 / 该位置曝光次数） */
+export function buildAdTopPositionAdRateSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT
       crawled_at,
       position,
       total_cnt,
-      focus_cnt,
-      ROUND(focus_cnt * 1.0 / total_cnt, 4) AS ad_loading_rate
+      ad_cnt,
+      ROUND(ad_cnt * 1.0 / total_cnt, 4) AS ad_loading_rate
     FROM (
       SELECT
         substr(crawled_at, 1, 10) AS crawled_at,
         position,
         COUNT(*) AS total_cnt,
-        SUM(CASE WHEN is_editor_rec = 'False' THEN 1 ELSE 0 END) AS focus_cnt
+        SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_cnt
       FROM taptap_pc_ad_top_hourly
       WHERE crawled_at > '${dateStr}'
       GROUP BY substr(crawled_at, 1, 10), position

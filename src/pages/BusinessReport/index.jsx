@@ -8,6 +8,14 @@ import MixedChart from '../../components/charts/MixedChart';
 import BrushLineChart from '../../components/charts/BrushLineChart';
 import DashboardCard from '../../components/layout/DashboardCard';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
+import UpdateTag from '../TapTapReport/UpdateTag';
+import { nextUpdateLabel, nextDailyUpdateLabel } from '../TapTapReport/updateTime';
+
+/** Games 全平台在线/峰值数据源：每 2 小时第 41 分钟更新 */
+const GAMES_UPDATE_LABEL = nextUpdateLabel(41);
+
+/** 赛季日在线人数对比数据源：每天 23:07 更新 */
+const SEASON_UPDATE_LABEL = nextDailyUpdateLabel(7, 23);
 import { AD_MATERIAL_COLORS } from '../../utils/chart-theme';
 
 const TABLE_NAME = 'steam_best_seller_list_hourly';
@@ -257,8 +265,11 @@ function PlatformOnlineTrend({ table, appName, series: seriesDefs }) {
 
   return (
     <div className="card border-0 shadow-sm h-100">
-      <div className="card-header bg-white border-0 fw-semibold">
-        【全平台】在线人数趋势 — 最近24小时
+      <div className="card-header bg-white border-0">
+        <div className="fw-semibold">【全平台】在线人数趋势 — 最近24小时</div>
+        <div className="mt-1">
+          <UpdateTag text={GAMES_UPDATE_LABEL} />
+        </div>
       </div>
       <div className="card-body">
         <BarChart
@@ -312,7 +323,12 @@ function PeakTrendCard({ title, table, days = null, height = 240 }) {
 
   return (
     <div className="card border-0 shadow-sm h-100">
-      <div className="card-header bg-white border-0 fw-semibold">{title}</div>
+      <div className="card-header bg-white border-0">
+        <div className="fw-semibold">{title}</div>
+        <div className="mt-1">
+          <UpdateTag text={GAMES_UPDATE_LABEL} />
+        </div>
+      </div>
       <div className="card-body">
         <MixedChart
           series={trendQuery.data?.series || []}
@@ -440,8 +456,11 @@ function DownloadTrendCard({ table, appName = null, series: seriesDefs, days = 7
 
   return (
     <div className="card border-0 shadow-sm h-100">
-      <div className="card-header bg-white border-0 fw-semibold">
-        【全平台】游戏下载日趋势 — 最近{days}天
+      <div className="card-header bg-white border-0">
+        <div className="fw-semibold">【全平台】游戏下载日趋势 — 最近{days}天</div>
+        <div className="mt-1">
+          <UpdateTag text={nextDailyUpdateLabel(45, 8)} />
+        </div>
       </div>
       <div className="card-body">
         <BarChart
@@ -497,7 +516,10 @@ function BestSellerCard({ table, appName }) {
     <div className="card border-0 shadow-sm h-100">
       <div className="card-header bg-white border-0 fw-semibold">
         【iOS】畅销榜排名趋势
-        <div className="text-muted small fw-normal">拖动下方刷选条可缩放时间范围</div>
+        <div className="d-flex align-items-center flex-wrap gap-2 fw-normal mt-1">
+          <span className="text-muted small">拖动下方刷选条可缩放时间范围</span>
+          <UpdateTag text={nextDailyUpdateLabel(5, 9)} />
+        </div>
       </div>
       <div className="card-body">
         <BrushLineChart
@@ -647,8 +669,11 @@ function SeasonCompareCard({ title, field, seasons, loading, error }) {
     <div className="card border-0 shadow-sm h-100">
       <div className="card-header bg-white border-0 fw-semibold">
         {title}
-        <div className="text-muted small fw-normal">
-          当赛季{currentSs != null ? `（第${currentSs}赛季）` : ''}实线加粗，其余赛季虚线
+        <div className="d-flex align-items-center flex-wrap gap-2 fw-normal mt-1">
+          <span className="text-muted small">
+            当赛季{currentSs != null ? `（第${currentSs}赛季）` : ''}实线加粗，其余赛季虚线
+          </span>
+          <UpdateTag text={SEASON_UPDATE_LABEL} />
         </div>
       </div>
       <div className="card-body">
@@ -741,8 +766,11 @@ function ServerCharts({ server }) {
       {/* 实时热销榜（60%） */}
       <div style={{ flex: '60 1 0', minWidth: 0 }}>
         <div className="card border-0 shadow-sm h-100">
-          <div className="card-header bg-white border-0 fw-semibold">
-            <span>【Steam】{server.label}-实时热销榜 — 最近24小时（Y轴倒序: 排名1=顶部）</span>
+          <div className="card-header bg-white border-0">
+            <div className="fw-semibold">【Steam】{server.label}-实时热销榜 — 最近24小时（Y轴倒序: 排名1=顶部）</div>
+            <div className="mt-1">
+              <UpdateTag text={nextUpdateLabel(20, new Date(), 4)} />
+            </div>
           </div>
           <div className="card-body">
             <LineChart

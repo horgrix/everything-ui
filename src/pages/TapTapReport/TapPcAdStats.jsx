@@ -11,7 +11,7 @@ import {
   buildAdGameListSql,
   buildAdGameDailyTrendSql,
   buildAdLoadingRateTrendSql,
-  buildAdTopPositionFocusRateSql,
+  buildAdTopPositionAdRateSql,
   buildAdTopGameListSql,
   PC_AD_TOP_TABLE,
 } from './sql';
@@ -26,9 +26,13 @@ import {
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
+import UpdateTag from './UpdateTag';
+import { nextUpdateLabel } from './updateTime';
 import { AD_MATERIAL_COLORS, AD_GAME_LIST_COLUMNS, TOP_GAME_LIST_COLUMNS } from './shared';
 
 export default function TapPcAdStats() {
+  // 广告数据源：每小时第 15 分钟更新
+  const adUpdateLabel = nextUpdateLabel(15, new Date(), 1);
   const adNewPositionStatsQuery = useSqlQuery('taptap-ad-new-position-stats', buildAdNewPositionStatsSql, [], transformAdNewPositionStats, { enabled: true });
   const adMaterialTagsQuery = useSqlQuery('taptap-ad-material-tags', buildAdMaterialTagsSql, [], transformAdMaterialTags, { enabled: true });
   const adMaterialGamesQuery = useSqlQuery('taptap-ad-material-games', buildAdMaterialGamesSql, [], transformAdMaterialGames, { enabled: true });
@@ -50,10 +54,10 @@ export default function TapPcAdStats() {
   }, [adGameListQuery.data, adGameDailyTrendQuery.data]);
   const adLoadingRateTrendQuery = useSqlQuery('taptap-ad-loading-rate-trend', buildAdLoadingRateTrendSql, [], transformAdLoadingRateTrend, { enabled: true });
 
-  /* ===== 【Top推荐】(位置图=关注焦点占比，明细表=全部数据 + 焦点/编辑推荐次数) ===== */
+  /* ===== 【Top推荐】(位置图=广告投放次数/该位置曝光次数，明细表=全部数据 + 焦点/编辑推荐次数) ===== */
   const adTopPositionStatsQuery = useSqlQuery(
-    'taptap-ad-top-position-focus-rate',
-    buildAdTopPositionFocusRateSql,
+    'taptap-ad-top-position-ad-rate',
+    buildAdTopPositionAdRateSql,
     [],
     transformAdNewPositionStats,
     { enabled: true },
@@ -100,7 +104,10 @@ export default function TapPcAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【每日新发现】广告位每日追踪 — 最近7天</div>
-            <div className="text-muted small">行=广告位(position)，列=日期(crawled_at)，值=广告加载率(ad_loading_rate)</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">行=广告位(position)，列=日期(crawled_at)，值=广告加载率(ad_loading_rate)</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <div className="card-body">
             <HeatmapChart
@@ -125,7 +132,10 @@ export default function TapPcAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【每日新发现】素材标签追踪 — 最近7天</div>
-            <div className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">第一层=大类(tag_1/tag_2/tag_3 合并)，值=广告加载率；点击下钻查看具体游戏(app_id)</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <div className="card-body">
             <TreemapChart
@@ -162,7 +172,12 @@ export default function TapPcAdStats() {
           </div>
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0 fw-semibold">【每日新发现】每日广告加载率 — 最近7天</div>
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">【每日新发现】每日广告加载率 — 最近7天</div>
+              <div className="mt-1">
+                <UpdateTag text={adUpdateLabel} />
+              </div>
+            </div>
             <div className="card-body">
               <MixedChart
                 series={adLoadingRateTrendQuery.data?.series || []}
@@ -191,7 +206,12 @@ export default function TapPcAdStats() {
         <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
           <div style={{ flex: '1 1 0', minWidth: 0 }}>
           <div className="card border-0 shadow-sm h-100">
-          <div className="card-header bg-white border-0 fw-semibold">【每日新发现】曝光游戏明细列表 — 本周</div>
+          <div className="card-header bg-white border-0">
+            <div className="fw-semibold">【每日新发现】曝光游戏明细列表 — 本周</div>
+            <div className="mt-1">
+              <UpdateTag text={adUpdateLabel} />
+            </div>
+          </div>
           <DataTable rows={adGameListRows} columns={AD_GAME_LIST_COLUMNS} pageSize={10} />
           </div>
           </div>
@@ -210,7 +230,10 @@ export default function TapPcAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【Top推荐】位置每日追踪 — 最近7天</div>
-            <div className="text-muted small">行=全部广告位(position)，列=日期，值=关注焦点占比(is_editor_rec=False 次数 / 该位置总次数)</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">行=全部广告位(position)，列=日期，值=广告投放次数 / 该位置曝光次数</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <div className="card-body">
             <HeatmapChart
@@ -235,7 +258,10 @@ export default function TapPcAdStats() {
           <div className="card border-0 shadow-sm h-100">
           <div className="card-header bg-white border-0">
             <div className="fw-semibold">【Top推荐】曝光游戏明细列表 — 本周</div>
-            <div className="text-muted small">全部数据(关注焦点 + 编辑推荐)；焦点次数=is_editor_rec=False，编辑推荐次数=is_editor_rec=True</div>
+            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+              <span className="text-muted small">全部数据(关注焦点 + 编辑推荐)；焦点次数=is_editor_rec=False，编辑推荐次数=is_editor_rec=True</span>
+              <UpdateTag text={adUpdateLabel} />
+            </div>
           </div>
           <DataTable rows={adTopGameListRows} columns={TOP_GAME_LIST_COLUMNS} pageSize={10} />
           </div>
