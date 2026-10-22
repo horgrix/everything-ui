@@ -570,7 +570,7 @@ export function buildAdTopPositionFocusRateSql() {
   `;
 }
 
-/** 构建TapPC「Top推荐」曝光游戏明细 SQL（本周，全部数据；额外统计关注焦点/编辑推荐次数） */
+/** 构建TapPC「Top推荐」曝光游戏明细 SQL（本周，全部数据；额外统计关注焦点/编辑推荐次数；按广告投放次数→曝光次数排序取前 100） */
 export function buildAdTopGameListSql() {
   const dateStr = thisWeekWhere();
   return `
@@ -587,7 +587,8 @@ export function buildAdTopGameListSql() {
     FROM taptap_pc_ad_top_hourly
     WHERE crawled_at >= '${dateStr}'
     GROUP BY app_id
-    ORDER BY show_cnt DESC, app_id
+    ORDER BY ad_cnt DESC, show_cnt DESC
+    LIMIT 100
   `;
 }
 
