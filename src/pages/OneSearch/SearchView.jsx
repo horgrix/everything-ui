@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useChartData from '../../hooks/useChartData';
 import { querySqlV09 } from '../../api/query';
@@ -44,6 +45,21 @@ const KEYWORD_AD_SERIES = [
   { name: '搜索发现', field: 'discover_views', color: '#9CAF9F' },
   { name: '热搜', field: 'hot_search_views', color: '#D0B4B4' },
   { name: '搜点', field: 'hot_spot_views', color: '#C9B79C' },
+];
+
+/** PC首页广告投放趋势系列 */
+const PC_AD_SERIES = [
+  { name: '总曝光', field: 'total_views', color: '#7A8B99' },
+  { name: '广告总数', field: 'ad_views', color: '#8FA3B0' },
+  { name: 'Top广告', field: 'top_ad_views', color: '#C4A4A4' },
+  { name: '每日发现广告', field: 'discovery_ad_views', color: '#9CAF9F' },
+];
+
+/** 广告投放趋势 Tab 配置 */
+const AD_TREND_TABS = [
+  { key: 'landing', label: '首页广告投放趋势' },
+  { key: 'keyword', label: '关键词广告投放趋势' },
+  { key: 'pc', label: 'PC广告投放趋势' },
 ];
 
 /** 日期字符串 → 毫秒（日期级） */
@@ -199,7 +215,7 @@ function RankCard({ title, rank, count, color, month }) {
 }
 
 /** 带排名图标块的统计卡：排名块（数字 + 底色） + 数值 + 统计时间 */
-function RankedStatCard({ title, value, subtitle, rank, rankLabel, color = '#8FA3B0' }) {
+function RankedStatCard({ title, value, subtitle, rank, rankLabel, color = '#8FA3B0', extra = null }) {
   return (
     <div className="card border-0 shadow-sm h-100">
       <div className="card-body">
@@ -218,6 +234,7 @@ function RankedStatCard({ title, value, subtitle, rank, rankLabel, color = '#8FA
             {value}
           </div>
         </div>
+        {extra ? <div className="mb-2">{extra}</div> : null}
         {subtitle && <small className="text-muted">{subtitle}</small>}
       </div>
     </div>
@@ -268,6 +285,7 @@ function FootprintTrail({ count = 6 }) {
 export default function SearchView() {
   const [params] = useSearchParams();
   const keyword = (params.get('q') || '').trim();
+  const [adTrendTab, setAdTrendTab] = useState('landing');
   const isAppId = /^\d+$/.test(keyword);
   const appId = isAppId ? Number(keyword) : null;
   const month = currentMonth();
@@ -538,6 +556,79 @@ export default function SearchView() {
   );
   const onlineRank = onlineRankQuery.data;
 
+  // 【PC首页广告】本月曝光/每日发现/Top广告/广告比例（dws_taptap_pc_ad_landing_daily，按 app_id）
+  const pcAdLandingQuery = useChartData(
+    `one-search-pc-ad-landing-${appId ?? 'none'}-${month}`,
+    () =>
+      querySqlV09(
+        `SELECT SUM(total_views) AS total_views,
+                SUM(discovery_ad_views) AS discovery_ad_views,
+                SUM(top_ad_views) AS top_ad_views,
+                SUM(ad_views) AS ad_views,
+                COUNT(*) AS days,
+                MIN(crawled_at) AS first_at,
+                MAX(crawled_at) AS last_at
+         FROM dws_taptap_pc_ad_landing_daily
+         WHERE app_id = ${appId}
+           AND crawled_at >= '${range.startDate}' AND crawled_at < '${range.endDate}'`
+      ),
+    {},
+    {
+      enabled: !!appId,
+      transform: (rows) => {
+        const r = rows && rows[0];
+        if (!r || !r.days) return null;
+        const n = (v) => Number(v || 0);
+        const total = n(r.total_views);
+        const ad = n(r.ad_views);
+        return {
+          total,
+          discovery: n(r.discovery_ad_views),
+          top: n(r.top_ad_views),
+          ad,
+          // PC广告比例 = ad_views / total_views
+          ratio: total > 0 ? Math.round((ad / total) * 10000) / 100 : null,
+          days: n(r.days),
+          firstAt: r.first_at,
+          lastAt: r.last_at,
+        };
+      },
+    }
+  );
+  const pcAd = pcAdLandingQuery.data;
+  const pcAdSubtitle = pcAd
+    ? `统计时间 ${pcAd.firstAt} ~ ${pcAd.lastAt}（${pcAd.days} 天）`
+    : pcAdLandingQuery.isLoading
+      ? '加载中…'
+      : '本月暂无数据';
+
+  // 【PC首页广告】本月广告排名（dws_taptap_pc_ad_landing_rank_monthly，按 app_id）
+  const pcAdRuleRankQuery = useChartData(
+    `one-search-pc-ad-landing-rank-${appId ?? 'none'}-${month}`,
+    () =>
+      querySqlV09(
+        `SELECT ad_views_rank, top_ad_views_rank, discovery_ad_views_rank, crawled_at
+         FROM dws_taptap_pc_ad_landing_rank_monthly
+         WHERE app_id = ${appId} AND crawled_at = '${month}'`
+      ),
+    {},
+    {
+      enabled: !!appId,
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return null;
+        const n = (v) => (v == null ? null : Number(v));
+        const r = rows[0];
+        return {
+          adRank: n(r.ad_views_rank),
+          topRank: n(r.top_ad_views_rank),
+          discoveryRank: n(r.discovery_ad_views_rank),
+          month: r.crawled_at,
+        };
+      },
+    }
+  );
+  const pcAdRank = pcAdRuleRankQuery.data;
+
   // 【首页广告投放排名】本月总/广告/资源互换排名
   const adRankQuery = useChartData(
     `one-search-ad-rank-${appId ?? 'none'}-${month}`,
@@ -625,6 +716,21 @@ export default function SearchView() {
       ),
     {},
     { enabled: !!appName, transform: (rows) => buildBrushSeries(rows, KEYWORD_AD_SERIES, 7) }
+  );
+
+  // 【PC首页广告投放趋势】本年，按 app_id
+  const pcAdTrendQuery = useChartData(
+    `one-search-pc-ad-trend-${appId ?? 'none'}-${thisYear.start}`,
+    () =>
+      querySqlV09(
+        `SELECT crawled_at, total_views, ad_views, top_ad_views, discovery_ad_views
+         FROM dws_taptap_pc_ad_landing_daily
+         WHERE app_id = ${appId}
+           AND crawled_at >= '${thisYear.start}' AND crawled_at < '${thisYear.end}'
+         ORDER BY crawled_at ASC`
+      ),
+    {},
+    { enabled: !!appId, transform: (rows) => buildBrushSeries(rows, PC_AD_SERIES, 7) }
   );
 
   const downloadQuery = useChartData(
@@ -913,6 +1019,52 @@ export default function SearchView() {
         </div>
       )}
 
+      {/* 【PC首页广告】曝光次数 / 每日发现广告统计次数 / Top广告统计次数 / PC广告比例 */}
+      {targetApp && (
+        <div className="row g-3 mb-4">
+          <div className="col-12 col-sm-6 col-xl-3">
+            <DashboardCard
+              title="PC首页曝光次数"
+              value={pcAd ? formatNumber(pcAd.total) : '-'}
+              subtitle={pcAdSubtitle}
+              icon="bi-eye"
+              color="primary"
+            />
+          </div>
+          <div className="col-12 col-sm-6 col-xl-3">
+            <RankedStatCard
+              title="每日发现广告统计次数"
+              value={pcAd ? formatNumber(pcAd.discovery) : '-'}
+              subtitle={pcAdSubtitle}
+              rank={pcAdRank ? pcAdRank.discoveryRank : null}
+              rankLabel="每日发现广告排名"
+              color="#9CAF9F"
+            />
+          </div>
+          <div className="col-12 col-sm-6 col-xl-3">
+            <RankedStatCard
+              title="Top广告统计次数"
+              value={pcAd ? formatNumber(pcAd.top) : '-'}
+              subtitle={pcAdSubtitle}
+              rank={pcAdRank ? pcAdRank.topRank : null}
+              rankLabel="Top广告排名"
+              color="#C4A4A4"
+            />
+          </div>
+          <div className="col-12 col-sm-6 col-xl-3">
+            <RankedStatCard
+              title="PC广告比例"
+              value={pcAd && pcAd.ratio != null ? `${pcAd.ratio}%` : '-'}
+              subtitle={pcAdSubtitle}
+              rank={pcAdRank ? pcAdRank.adRank : null}
+              rankLabel="广告排名"
+              color="#8FA3B0"
+              extra={pcAd && pcAd.ratio != null ? <PercentBar value={pcAd.ratio} color="#8FA3B0" /> : null}
+            />
+          </div>
+        </div>
+      )}
+
       {/* 【游戏下载趋势】 */}
       {targetApp && (
         <div className="card border-0 shadow-sm mb-4">
@@ -948,78 +1100,104 @@ export default function SearchView() {
         </div>
       )}
 
-      {/* 【首页广告投放趋势】 + 【关键词广告投放趋势】并排各 50% */}
-      {(targetApp || appName) && (
-        <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-          {/* 首页广告投放趋势（按 app_id） */}
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0">
-                <div className="fw-semibold">【首页广告投放趋势】</div>
-                <div className="text-muted small">本年 · 拖动下方刷选条可缩放时间范围</div>
+      {/* 广告投放趋势（Tab 切换：首页广告 / 关键词广告 / PC广告），三者 Brush 均默认最近7条 */}
+      {appId && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-header bg-white border-0">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div className="btn-group btn-group-sm" role="group" aria-label="广告投放趋势切换">
+                {AD_TREND_TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    className={`btn ${adTrendTab === t.key ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setAdTrendTab(t.key)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
               </div>
-              <div className="card-body">
-                {(landingTrendQuery.data?.series || []).some((s) => (s.data || []).length > 0) ? (
-                  <BrushLineChart
-                    id={`one-search-landing-trend-${appId}`}
-                    series={landingTrendQuery.data?.series || []}
-                    brushSelection={landingTrendQuery.data?.selection || null}
-                    loading={landingTrendQuery.isLoading}
-                    error={landingTrendQuery.error?.message}
-                    height={340}
-                    brushHeight={70}
-                    colors={LANDING_AD_SERIES.map((s) => s.color)}
-                    strokeWidth={2}
-                    xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
-                    yaxisOverrides={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                    legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
-                  />
-                ) : (
-                  <div className="text-center text-muted py-5">
-                    <i className="bi bi-inbox fs-1 d-block mb-2"></i>
-                    {landingTrendQuery.isLoading ? '加载中…' : '该游戏在本年内没有首页广告数据'}
-                  </div>
-                )}
-              </div>
+              <span className="text-muted small">本年 · 拖动下方刷选条可缩放时间范围</span>
             </div>
           </div>
+          <div className="card-body">
+            {/* 首页广告投放趋势（按 app_id） */}
+            {adTrendTab === 'landing' && (
+              (landingTrendQuery.data?.series || []).some((s) => (s.data || []).length > 0) ? (
+                <BrushLineChart
+                  id={`one-search-landing-trend-${appId}`}
+                  series={landingTrendQuery.data?.series || []}
+                  brushSelection={landingTrendQuery.data?.selection || null}
+                  loading={landingTrendQuery.isLoading}
+                  error={landingTrendQuery.error?.message}
+                  height={380}
+                  brushHeight={80}
+                  colors={LANDING_AD_SERIES.map((s) => s.color)}
+                  strokeWidth={2}
+                  xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+                  yaxisOverrides={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                  legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '11px', offsetY: 6 }}
+                />
+              ) : (
+                <div className="text-center text-muted py-5">
+                  <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+                  {landingTrendQuery.isLoading ? '加载中…' : '该游戏在本年内没有首页广告数据'}
+                </div>
+              )
+            )}
 
-          {/* 关键词广告投放趋势（按 app_name） */}
-          <div style={{ flex: '1 1 0', minWidth: 0 }}>
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0">
-                <div className="fw-semibold">【关键词广告投放趋势】</div>
-                <div className="text-muted small">本年 · 拖动下方刷选条可缩放时间范围</div>
-              </div>
-              <div className="card-body">
-                {(keywordTrendQuery.data?.series || []).some((s) => (s.data || []).length > 0) ? (
-                  <BrushLineChart
-                    id={`one-search-keyword-trend-${appName}`}
-                    series={keywordTrendQuery.data?.series || []}
-                    brushSelection={keywordTrendQuery.data?.selection || null}
-                    loading={keywordTrendQuery.isLoading}
-                    error={keywordTrendQuery.error?.message}
-                    height={340}
-                    brushHeight={70}
-                    colors={KEYWORD_AD_SERIES.map((s) => s.color)}
-                    strokeWidth={2}
-                    xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
-                    yaxisOverrides={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                    legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
-                  />
-                ) : (
-                  <div className="text-center text-muted py-5">
-                    <i className="bi bi-inbox fs-1 d-block mb-2"></i>
-                    {keywordTrendQuery.isLoading ? '加载中…' : '该关键词在本年内没有广告数据'}
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* 关键词广告投放趋势（按 app_name） */}
+            {adTrendTab === 'keyword' && (
+              (keywordTrendQuery.data?.series || []).some((s) => (s.data || []).length > 0) ? (
+                <BrushLineChart
+                  id={`one-search-keyword-trend-${appName}`}
+                  series={keywordTrendQuery.data?.series || []}
+                  brushSelection={keywordTrendQuery.data?.selection || null}
+                  loading={keywordTrendQuery.isLoading}
+                  error={keywordTrendQuery.error?.message}
+                  height={380}
+                  brushHeight={80}
+                  colors={KEYWORD_AD_SERIES.map((s) => s.color)}
+                  strokeWidth={2}
+                  xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+                  yaxisOverrides={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                  legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '11px', offsetY: 6 }}
+                />
+              ) : (
+                <div className="text-center text-muted py-5">
+                  <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+                  {keywordTrendQuery.isLoading ? '加载中…' : '该关键词在本年内没有广告数据'}
+                </div>
+              )
+            )}
+
+            {/* PC首页广告投放趋势（按 app_id） */}
+            {adTrendTab === 'pc' && (
+              (pcAdTrendQuery.data?.series || []).some((s) => (s.data || []).length > 0) ? (
+                <BrushLineChart
+                  id={`one-search-pc-ad-trend-${appId}`}
+                  series={pcAdTrendQuery.data?.series || []}
+                  brushSelection={pcAdTrendQuery.data?.selection || null}
+                  loading={pcAdTrendQuery.isLoading}
+                  error={pcAdTrendQuery.error?.message}
+                  height={380}
+                  brushHeight={80}
+                  colors={PC_AD_SERIES.map((s) => s.color)}
+                  strokeWidth={2}
+                  xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+                  yaxisOverrides={{ title: { text: '曝光次数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                  legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '11px', offsetY: 6 }}
+                />
+              ) : (
+                <div className="text-center text-muted py-5">
+                  <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+                  {pcAdTrendQuery.isLoading ? '加载中…' : '该游戏在本年内没有 PC 首页广告数据'}
+                </div>
+              )
+            )}
           </div>
         </div>
       )}
-
-      {/* 【峰值人数在线趋势】本月，Brush 默认选中最近 24 条（小时） */}
       {appId && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-white border-0">

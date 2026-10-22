@@ -28,10 +28,16 @@ export default function BrushLineChart({
   tooltipCustom = null,
   legendOverrides = {},
   brushSelection = null,
+  categories = null,
 }) {
   const mainId = `${id}-main`;
   const brushId = `${id}-brush`;
-  const hasSelection = brushSelection && Number.isFinite(brushSelection.min) && Number.isFinite(brushSelection.max);
+  // 类别轴下刷选区间是下标（可能是 0），不能用 Number.isFinite 之外的假值判断
+  const hasSelection = categories
+    ? !!(brushSelection && brushSelection.min != null && brushSelection.max != null)
+    : !!(brushSelection && Number.isFinite(brushSelection.min) && Number.isFinite(brushSelection.max));
+  // 类别轴：每个数据点一个刻度，专用于日/月级离散数据，避免标签重复
+  const axisBase = categories ? { type: 'category', categories } : { type: 'datetime' };
 
   const mainOptions = {
     chart: {
@@ -44,9 +50,9 @@ export default function BrushLineChart({
     markers: { size: markers, hover: { size: markers + 2 || 4 } },
     dataLabels: { enabled: false },
     xaxis: {
-      type: 'datetime',
+      ...axisBase,
       ...xaxisOverrides,
-      // 初始视图即刷选区间（最近 30 天）；之后拖动刷选条会由 ApexCharts 覆写 min/max
+      // 初始视图即刷选区间（默认最近 N 条）；之后拖动刷选条会由 ApexCharts 覆写 min/max
       ...(hasSelection ? { min: brushSelection.min, max: brushSelection.max } : {}),
     },
     yaxis: { ...yaxisOverrides },
@@ -67,7 +73,7 @@ export default function BrushLineChart({
     fill: { type: 'gradient', gradient: { opacityFrom: 0.4, opacityTo: 0.05 } },
     dataLabels: { enabled: false },
     xaxis: {
-      type: 'datetime',
+      ...axisBase,
       ...xaxisOverrides,
       labels: {
         ...(xaxisOverrides.labels || {}),
