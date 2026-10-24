@@ -7,6 +7,7 @@ import SearchView from './pages/OneSearch/SearchView';
 import FinanceInfo from './pages/FinanceInfo';
 import QuantInfo from './pages/QuantInfo';
 import TapTapReport from './pages/TapTapReport';
+import TapRepMonthly from './pages/TapRepMonthly';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
               <Route path="/one-search" element={<OneSearch />} />
               <Route path="/one-search/report" element={<SearchView />} />
               <Route path="/taptap" element={<TapTapReport />} />
+              <Route path="/taprep-monthly" element={<TapRepMonthly />} />
               <Route path="/finance" element={<FinanceInfo />} />
               <Route path="/quant" element={<QuantInfo />} />
             </Routes>

@@ -31,6 +31,8 @@ export default function BarChart({
   colors = null,
   /** 是否显示每个柱段的数据标签 */
   dataLabelsEnabled = false,
+  /** ApexCharts 事件回调（mounted / updated / resized 等） */
+  events = {},
   /** 是否显示工具栏 */
   toolbar = true,
   /** 柱体填充配置（如 { opacity: 1 }） */
@@ -121,6 +123,7 @@ export default function BarChart({
       height={height}
       loading={loading}
       error={error}
+      events={events}
     />
   );
 }

@@ -57,6 +57,17 @@ export default function Navbar() {
               </NavLink>
             </li>
             <li className="nav-item">
+              <NavLink
+                to="/taprep-monthly"
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <i className="bi bi-calendar3 me-1"></i>
+                TapREP月报
+              </NavLink>
+            </li>
+            <li className="nav-item">
               <a
                 className="nav-link"
                 href="https://file.horgrix.com/downloads/"
