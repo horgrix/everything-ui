@@ -507,6 +507,213 @@ export function transformTapAppAdGameDailyTrend(rows) {
   return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
 }
 
+/**
+ * TapTap 广告大盘日趋势：指标按周几对齐，拆成本周 / 上周两条序列。
+ * 指标口径（广告数含 pcebid，已在 SQL 里 SUM 好）：ad_views / app_ad_views / pc_ad_views / kw_ad_views。
+ * 某天缺失或为 NULL 则留 null，让折线断开，而不是伪装成 0。
+ */
+export function transformAdAggrDailyTrend(rows) {
+  const METRIC_FIELDS = {
+    adViews: 'ad_views',
+    appAdViews: 'app_ad_views',
+    pcAdViews: 'pc_ad_views',
+    kwAdViews: 'kw_ad_views',
+  };
+  const keys = Object.keys(METRIC_FIELDS);
+  const blankBucket = () => {
+    const bucket = {};
+    keys.forEach((k) => { bucket[k] = new Array(7).fill(null); });
+    return bucket;
+  };
+
+  const result = {
+    labels: WEEKDAY_LABELS,
+    thisWeek: blankBucket(),
+    lastWeek: blankBucket(),
+    hasLastWeek: false,
+  };
+
+  const toNum = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const mondayDate = mondayOfThisWeek();
+  const monday = mondayDate.getTime();
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  result.range = {
+    thisWeekStart: fmt(mondayDate),
+    lastWeekStart: fmt(new Date(monday - 7 * 86400000)),
+  };
+
+  (rows || []).forEach((r) => {
+    const dayStr = String(r.day || r.crawled_at || '').slice(0, 10);
+    const d = new Date(`${dayStr}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    const idx = (d.getDay() + 6) % 7;
+    const isThisWeek = d.getTime() >= monday;
+    const bucket = isThisWeek ? result.thisWeek : result.lastWeek;
+    let hasValue = false;
+    keys.forEach((k) => {
+      const v = toNum(r[METRIC_FIELDS[k]]);
+      bucket[k][idx] = v;
+      if (v != null) hasValue = true;
+    });
+    if (!isThisWeek && hasValue) result.hasLastWeek = true;
+  });
+
+  return result;
+}
+
+/**
+ * TapTap 广告占比（本周 vs 上周）：把周汇总拆成 APP / PC / KW 三段，并算好占比。
+ * 返回 { categories: ['本周','上周'], weeks: [{ label, app, pc, kw, total, pcts: {app,pc,kw} }, ...] }
+ * 本周在前；某周无数据时值为 null（图上就是空柱，不补 0 伪装成“确实是 0”）。
+ */
+export function transformAdShareByWeek(rows) {
+  const numOrNull = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const pct = (v, total) => (v == null || !total ? null : parseFloat(((v / total) * 100).toFixed(1)));
+
+  const build = (row) => {
+    if (!row) return { app: null, pc: null, kw: null, total: null, pcts: { app: null, pc: null, kw: null } };
+    const app = numOrNull(row.app_ad_views);
+    const pc = numOrNull(row.pc_ad_views);
+    const kw = numOrNull(row.kw_ad_views);
+    const hasAny = app != null || pc != null || kw != null;
+    const total = hasAny ? (app || 0) + (pc || 0) + (kw || 0) : null;
+    return {
+      app,
+      pc,
+      kw,
+      total,
+      pcts: { app: pct(app, total), pc: pct(pc, total), kw: pct(kw, total) },
+    };
+  };
+
+  const thisRow = (rows || []).find((r) => r.week_key === 'this');
+  const lastRow = (rows || []).find((r) => r.week_key === 'last');
+  return {
+    categories: ['本周', '上周'],
+    weeks: [
+      { label: '本周', ...build(thisRow) },
+      { label: '上周', ...build(lastRow) },
+    ],
+  };
+}
+
+/**
+ * TapTap 广告本周游戏明细（TopN）：数字字段转 number，标签合并成数组，并算好总投放。
+ * 行顺序由 SQL 保证（总投放倒序 → 总曝光倒序）。
+ */
+export function transformAdGameWeeklyTop(rows) {
+  const num = (v) => (v === null || v === undefined ? 0 : Number(v) || 0);
+  return (rows || []).map((r) => {
+    const adViews = num(r.ad_views);
+    const pcebidViews = num(r.pcebid_views);
+    return {
+      appId: r.app_id,
+      appName: r.app_name,
+      tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
+      totalViews: num(r.total_views),
+      appViews: num(r.app_views),
+      pcViews: num(r.pc_views),
+      kwViews: num(r.kw_views),
+      adViews,
+      appAdViews: num(r.app_ad_views),
+      pcAdViews: num(r.pc_ad_views),
+      kwAdViews: num(r.kw_ad_views),
+      pcebidViews,
+      appPcebidViews: num(r.app_pcebid_views),
+      pcPcebidViews: num(r.pc_pcebid_views),
+      kwPcebidViews: num(r.kw_pcebid_views),
+      totalPush: adViews + pcebidViews,
+    };
+  });
+}
+
+/** TapTap 广告大盘：按 app 的每日总投放趋势，按周几对齐成本周 / 上周两条 7 长度序列 */
+export function transformAdGameDailyTrend(rows) {
+  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: {}, lastWeek: {} };
+  const { thisWeek, lastWeek } = splitDailyByWeek(rows, (r) => r.app_id);
+  return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
+}
+
+/** 全站周汇总 → 与游戏明细行同形状（供 DataTable totalRow 使用；无趋势，趋势在组件里合并） */
+export function transformAdOverviewWeek(rows) {
+  const r = (rows || [])[0];
+  if (!r) return null;
+  const num = (v) => (v === null || v === undefined ? 0 : Number(v) || 0);
+  const adViews = num(r.ad_views);
+  const pcebidViews = num(r.pcebid_views);
+  return {
+    appId: '-',
+    appName: '汇总（全站）',
+    tags: [],
+    totalViews: num(r.total_views),
+    appViews: num(r.app_views),
+    pcViews: num(r.pc_views),
+    kwViews: num(r.kw_views),
+    adViews,
+    appAdViews: num(r.app_ad_views),
+    pcAdViews: num(r.pc_ad_views),
+    kwAdViews: num(r.kw_ad_views),
+    pcebidViews,
+    appPcebidViews: num(r.app_pcebid_views),
+    pcPcebidViews: num(r.pc_pcebid_views),
+    kwPcebidViews: num(r.kw_pcebid_views),
+    totalPush: num(r.total_push) || adViews + pcebidViews,
+  };
+}
+
+/** 全站每日总投放趋势：本周 / 上周按周几对齐（汇总行的 sparkline 用） */
+export function transformAdOverviewDailyTrend(rows) {
+  const empty = new Array(7).fill(null);
+  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: empty, lastWeek: empty };
+  const { thisWeek, lastWeek } = splitDailyByWeek(rows, () => '_all');
+  return {
+    labels: WEEKDAY_LABELS,
+    thisWeek: thisWeek._all || empty,
+    lastWeek: lastWeek._all || empty,
+  };
+}
+
+/** 上周投放排名 → { byAppId: { appId: rank }, count }（未命中的 app 由调用方显示「未上榜」） */
+export function transformAdRankWeek(rows) {
+  const byAppId = {};
+  (rows || []).forEach((r) => {
+    if (r.ad_rank == null) return;
+    byAppId[r.app_id] = Number(r.ad_rank);
+  });
+  return { byAppId, count: Object.keys(byAppId).length };
+}
+
+/** 上周投放排名「推算」结果 → { byAppId, count }：按 SQL 已排好的顺序依次编号 1..N */
+export function transformAdRankDerivedWeek(rows) {
+  const byAppId = {};
+  (rows || []).forEach((r, i) => {
+    byAppId[r.app_id] = i + 1;
+  });
+  return { byAppId, count: (rows || []).length };
+}
+
+/** 投放 TopN 排名 → { snapshot, rows: [{ appId, appName, totalAdViews, rank }] }（已按 ad_rank 升序） */
+export function transformAdRankTop(rows) {
+  return {
+    snapshot: rows?.[0]?.crawled_at || '',
+    rows: (rows || []).map((r) => ({
+      appId: r.app_id,
+      appName: r.app_name || String(r.app_id),
+      totalAdViews: Number(r.total_ad_veiws) || 0,
+      rank: Number(r.ad_rank) || 0,
+    })),
+  };
+}
+
 /** TapApp首页找游戏广告总计（overview总览表汇总） */
 export function transformTapAppAdOverviewStats(rows) {
   if (!rows || !rows.length) return null;

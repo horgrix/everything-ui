@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import DownloadStats from './DownloadStats';
 import OnlineStats from './OnlineStats';
+import TapTapAdStats from './TapTapAdStats';
 import TapPcAdStats from './TapPcAdStats';
 import TapAppAdStats from './TapAppAdStats';
 
@@ -8,6 +9,7 @@ import TapAppAdStats from './TapAppAdStats';
 const CHART_GROUPS = [
   { key: 'download', label: 'TapTap下载统计' },
   { key: 'online', label: 'TapPC在线人数统计' },
+  { key: 'tapAd', label: 'TapTap广告统计' },
   { key: 'ad', label: 'TapPC广告统计' },
   { key: 'appAd', label: 'TapApp广告统计' },
 ];
@@ -43,6 +45,7 @@ export default function TapTapReport() {
 
       {chartGroup === 'download' && <DownloadStats />}
       {chartGroup === 'online' && <OnlineStats />}
+      {chartGroup === 'tapAd' && <TapTapAdStats />}
       {chartGroup === 'ad' && <TapPcAdStats />}
       {chartGroup === 'appAd' && <TapAppAdStats />}
     </div>

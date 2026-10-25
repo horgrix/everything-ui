@@ -31,6 +31,10 @@ export default function BarChart({
   colors = null,
   /** 是否显示每个柱段的数据标签 */
   dataLabelsEnabled = false,
+  /** 自定义 dataLabels 覆盖（formatter / style / offsetY 等），展开时会覆盖 dataLabelsEnabled */
+  dataLabels = null,
+  /** 柱段数据标签位置：不传则横向图 center、竖向图 top；堆叠柱常用 center */
+  dataLabelPosition = null,
   /** ApexCharts 事件回调（mounted / updated / resized 等） */
   events = {},
   /** 是否显示工具栏 */
@@ -56,7 +60,7 @@ export default function BarChart({
         borderRadius: 4,
         columnWidth: horizontal ? '70%' : '60%',
         dataLabels: {
-          position: horizontal ? 'center' : 'top',
+          position: dataLabelPosition || (horizontal ? 'center' : 'top'),
           ...(totalLabels
             ? {
                 total: {
@@ -96,6 +100,7 @@ export default function BarChart({
     tooltip: { shared, intersect: !shared },
     dataLabels: {
       enabled: dataLabelsEnabled,
+      ...(dataLabels || {}),
     },
     ...(annotations && annotations.length
       ? {

@@ -664,6 +664,191 @@ export function buildAdLoadingRateTrendSql() {
   `;
 }
 
+/** 构建 TapTap 广告大盘日趋势 SQL（上周一至今，按日汇总各口径广告数）
+ *  表：dws_taptap_ad_aggr_v4_daily（按 app_id + 日 的广告曝光汇总）
+ *  口径：广告数 = ad_views + pcebid_views；APP / PC / KW 同口径（*_ad_views + *_pcebid_views）
+ */
+export function buildAdAggrDailyTrendSql() {
+  const dateStr = thisWeekWhere(1);
+  const adExpr = (ad, pcebid) => `SUM(COALESCE(${ad}, 0)) + SUM(COALESCE(${pcebid}, 0))`;
+  return `
+    SELECT
+      substr(crawled_at, 1, 10) AS day,
+      ${adExpr('ad_views', 'pcebid_views')} AS ad_views,
+      ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
+      ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
+      ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
+    FROM dws_taptap_ad_aggr_v4_daily
+    WHERE crawled_at >= '${dateStr}'
+    GROUP BY substr(crawled_at, 1, 10)
+    ORDER BY day
+  `;
+}
+
+/** 构建 TapTap 广告大盘周汇总 SQL（上周一 ~ 本周末，按 本周/上周 分组）
+ *  用于「广告占比」堆叠柱：口径同趋势图，广告数 = *_ad_views + *_pcebid_views
+ */
+export function buildAdShareByWeekSql() {
+  const lastMonday = thisWeekWhere(1);
+  const thisMonday = thisWeekWhere(0);
+  const nextMonday = thisWeekWhere(-1);
+  const adExpr = (ad, pcebid) => `SUM(COALESCE(${ad}, 0)) + SUM(COALESCE(${pcebid}, 0))`;
+  return `
+    SELECT
+      CASE WHEN substr(crawled_at, 1, 10) >= '${thisMonday}' THEN 'this' ELSE 'last' END AS week_key,
+      ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
+      ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
+      ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
+    FROM dws_taptap_ad_aggr_v4_daily
+    WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${nextMonday}'
+    GROUP BY week_key
+  `;
+}
+
+/** 构建 TapTap 广告本周游戏 TopN SQL（本周一 ~ 下周一，按 app 聚合，按总投放→总曝光倒序）
+ *  口径：商业AD=ad_views、资源互换AD=pcebid_views、总投放=ad_views+pcebid_views
+ */
+export function buildAdGameWeeklyTopSql(limit = 20) {
+  const thisMonday = thisWeekWhere(0);
+  const nextMonday = thisWeekWhere(-1);
+  return `
+    SELECT
+      app_id, app_name, tag_1, tag_2, tag_3,
+      SUM(total_views) AS total_views,
+      SUM(app_views) AS app_views,
+      SUM(pc_views) AS pc_views,
+      SUM(kw_views) AS kw_views,
+      SUM(ad_views) AS ad_views,
+      SUM(app_ad_views) AS app_ad_views,
+      SUM(pc_ad_views) AS pc_ad_views,
+      SUM(kw_ad_views) AS kw_ad_views,
+      SUM(pcebid_views) AS pcebid_views,
+      SUM(app_pcebid_views) AS app_pcebid_views,
+      SUM(pc_pcebid_views) AS pc_pcebid_views,
+      SUM(kw_pcebid_views) AS kw_pcebid_views
+    FROM dws_taptap_ad_aggr_v4_daily
+    WHERE crawled_at >= '${thisMonday}' AND crawled_at < '${nextMonday}'
+    GROUP BY app_id, app_name, tag_1, tag_2, tag_3
+    ORDER BY SUM(ad_views) + SUM(pcebid_views) DESC, SUM(total_views) DESC
+    LIMIT ${limit}
+  `;
+}
+
+/** 构建 TapTap 广告按游戏的每日总投放趋势 SQL（上周一至今，供 Top20 表格的趋势 sparkline 用）
+ *  push_cnt = 商业AD(ad_views) + 资源互换AD(pcebid_views)
+ *  注：与 TapPC 的 buildAdGameDailyTrendSql 区分命名
+ */
+export function buildAdAggrGameDailyTrendSql() {
+  const dateStr = thisWeekWhere(1);
+  return `
+    SELECT
+      app_id,
+      substr(crawled_at, 1, 10) AS day,
+      SUM(COALESCE(ad_views, 0)) + SUM(COALESCE(pcebid_views, 0)) AS push_cnt
+    FROM dws_taptap_ad_aggr_v4_daily
+    WHERE crawled_at >= '${dateStr}'
+    GROUP BY app_id, substr(crawled_at, 1, 10)
+    ORDER BY app_id, day
+  `;
+}
+
+/** 构建 TapTap 广告全站周汇总 SQL（本周一 ~ 下周一，overview 表；供 Top20 表格的汇总行与贡献度分母） */
+export function buildAdOverviewWeekSql() {
+  const thisMonday = thisWeekWhere(0);
+  const nextMonday = thisWeekWhere(-1);
+  return `
+    SELECT
+      SUM(total_views) AS total_views,
+      SUM(app_views) AS app_views,
+      SUM(pc_views) AS pc_views,
+      SUM(kw_views) AS kw_views,
+      SUM(ad_views) AS ad_views,
+      SUM(app_ad_views) AS app_ad_views,
+      SUM(pc_ad_views) AS pc_ad_views,
+      SUM(kw_ad_views) AS kw_ad_views,
+      SUM(pcebid_views) AS pcebid_views,
+      SUM(app_pcebid_views) AS app_pcebid_views,
+      SUM(pc_pcebid_views) AS pc_pcebid_views,
+      SUM(kw_pcebid_views) AS kw_pcebid_views,
+      SUM(COALESCE(ad_views, 0)) + SUM(COALESCE(pcebid_views, 0)) AS total_push
+    FROM dws_taptap_ad_overview_v4_daily
+    WHERE crawled_at >= '${thisMonday}' AND crawled_at < '${nextMonday}'
+  `;
+}
+
+/** 构建 TapTap 广告全站每日总投放趋势 SQL（上周一至今，用于汇总行的趋势 sparkline） */
+export function buildAdOverviewDailyTrendSql() {
+  const dateStr = thisWeekWhere(1);
+  return `
+    SELECT
+      substr(crawled_at, 1, 10) AS day,
+      SUM(COALESCE(ad_views, 0)) + SUM(COALESCE(pcebid_views, 0)) AS push_cnt
+    FROM dws_taptap_ad_overview_v4_daily
+    WHERE crawled_at >= '${dateStr}'
+    GROUP BY substr(crawled_at, 1, 10)
+    ORDER BY day
+  `;
+}
+
+/**
+ * 周键（YYYY-WW）：与爬虫口径一致 —— 周一为一周起点，按「当年第几周」计数（同 strftime('%W')）。
+ * 注意：这不是 ISO 周（ISO 里 2026-10-19 是第 43 周，爬虫标签是 2026-42）。
+ */
+function weekOfYearLabel(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const yday = Math.round((d - jan1) / 86400000); // 0-based 年内第几天
+  const weekday = (d.getDay() + 6) % 7; // 周一=0
+  const week = Math.floor((yday + 7 - weekday) / 7);
+  return `${d.getFullYear()}-${String(week).padStart(2, '0')}`;
+}
+
+/** 上周（上一自然周）的周键，用于查 dws_taptap_ad_rank_v4_daily 的 weekly 快照 */
+export function lastWeekRankKey() {
+  return weekOfYearLabel(new Date(`${thisWeekWhere(1)}T00:00:00`));
+}
+
+/** 构建 TapTap 广告上周投放排名 SQL（rank_type=weekly，取上一自然周的官方快照） */
+export function buildAdRankWeekSql() {
+  const weekKey = lastWeekRankKey();
+  return `
+    SELECT app_id, ad_rank
+    FROM dws_taptap_ad_rank_v4_daily
+    WHERE rank_type = 'weekly' AND crawled_at = '${weekKey}'
+  `;
+}
+
+/** 构建 TapTap 广告上周投放排名「推算」SQL：官方快照未入库时，按上周总投放倒序现算（口径与官方一致） */
+export function buildAdRankDerivedWeekSql(limit = 20) {
+  const lastMonday = thisWeekWhere(1);
+  const thisMonday = thisWeekWhere(0);
+  const push = 'SUM(COALESCE(ad_views, 0)) + SUM(COALESCE(pcebid_views, 0))';
+  return `
+    SELECT
+      app_id,
+      ${push} AS push_cnt
+    FROM dws_taptap_ad_aggr_v4_daily
+    WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${thisMonday}'
+    GROUP BY app_id
+    ORDER BY ${push} DESC
+    LIMIT ${limit}
+  `;
+}
+
+/** 构建 TapTap 广告投放 TopN 排名 SQL（rank_type=daily / monthly，取该类型最新快照） */
+export function buildAdRankTopSql(rankType = 'daily', limit = 10) {
+  return `
+    SELECT app_id, app_name, total_ad_veiws, ad_rank, crawled_at
+    FROM dws_taptap_ad_rank_v4_daily
+    WHERE rank_type = '${rankType}'
+      AND crawled_at = (
+        SELECT MAX(crawled_at) FROM dws_taptap_ad_rank_v4_daily WHERE rank_type = '${rankType}'
+      )
+    ORDER BY ad_rank
+    LIMIT ${limit}
+  `;
+}
+
 /* ===== TapApp 首页找游戏广告（landing）===== */
 
 /** 首页找游戏广告 iOS+Android UNION ALL 基础子查询（仅公共字段，is_ad 判定用 'True'，position<=20） */
