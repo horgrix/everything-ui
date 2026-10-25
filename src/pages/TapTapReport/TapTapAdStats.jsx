@@ -19,6 +19,7 @@ import {
   buildAdRankWeekSql,
   buildAdRankDerivedWeekSql,
   buildAdRankTopSql,
+  lastMonthLabel,
   lastWeekRankKey,
   thisWeekWhere,
 } from './sql';
@@ -35,6 +36,7 @@ import {
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
+import RankTopCard from './components/RankTopCard';
 import { APP_AD_TAG_COLORS, truncateName, PercentBar } from './shared';
 
 /**
@@ -167,20 +169,86 @@ const GAME_TOP_COLUMNS = [
   },
 ];
 
-/** 由 transform 结果生成 series / colors / strokeWidths / dashArray（四组一一对应） */
+/** 周几（与 x 轴数值 0~6 对应） */
+const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+/**
+ * 由 transform 结果生成 series / colors / strokeWidths / dashArray（四组一一对应）。
+ * 数据点是 [x=0~6, y] 的数值对而不是纯 y 数组：Apex 在 category 轴 + 含 null 的序列下
+ * 会把「折线几何」和「x 轴标签」算成两套间距（标签按 7 段、折线按 6 段），导致图像右偏、
+ * 与坐标轴对不齐。改用数值轴后，点和标签都由同一套坐标算，缺数据的日期直接不画点。
+ */
 function buildChartSeries(data) {
   const series = [];
   const colors = [];
   const widths = [];
   const dashArray = [];
+  const toPairs = (arr) => (arr || []).map((v, i) => (v == null ? null : [i, v])).filter(Boolean);
   METRIC_DEFS.forEach((def) => {
-    series.push({ name: `${def.label} 本周`, type: 'line', data: data.thisWeek[def.key] });
-    series.push({ name: `${def.label} 上周`, type: 'line', data: data.lastWeek[def.key] });
+    series.push({ name: `${def.label} 本周`, type: 'line', data: toPairs(data.thisWeek[def.key]) });
+    series.push({ name: `${def.label} 上周`, type: 'line', data: toPairs(data.lastWeek[def.key]) });
     colors.push(def.color, def.lastColor);
     widths.push(3, 1.6);
     dashArray.push(0, 6);
   });
   return { series, colors, widths, dashArray };
+}
+
+/**
+ * 大盘指标说明（资源位 / 采集频率 / 命中含义）
+ * 展示在【广告大盘】日趋势之上，说明曝光与广告数是怎么来的。
+ */
+function AdMetricHint() {
+  const PLATFORM_TAGS = [
+    { platform: 'IOS & Android', items: ['首页推荐', '搜索发现', '热搜', '热点'] },
+    { platform: 'PC', items: ['每日发现', 'Top橱窗'] },
+  ];
+
+  const Row = ({ label, children }) => (
+    <div className="d-flex flex-wrap gap-2" style={{ lineHeight: 1.9 }}>
+      <span style={{ minWidth: 72, flexShrink: 0, color: '#495057', fontWeight: 600 }}>
+        {label}
+      </span>
+      <div className="flex-grow-1" style={{ minWidth: 0 }}>
+        {children}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className="d-flex gap-2 mb-3 px-3 py-2 rounded-3"
+      style={{ backgroundColor: '#F7F9FC', border: '1px solid #E5EAF0', borderLeft: '3px solid #4361ee' }}
+    >
+      <i className="bi bi-info-circle text-primary" style={{ fontSize: 15, lineHeight: '28px' }}></i>
+      <div className="small text-body flex-grow-1" style={{ minWidth: 0 }}>
+        <Row label="资源位">
+          <div className="d-flex flex-column" style={{ gap: 2 }}>
+            {PLATFORM_TAGS.map((group) => (
+              <div key={group.platform} className="d-flex flex-wrap align-items-center" style={{ gap: '4px 6px' }}>
+                <span className="fw-semibold text-dark" style={{ minWidth: 92 }}>{group.platform}</span>
+                {group.items.map((item) => (
+                  <span
+                    key={item}
+                    className="badge fw-normal"
+                    style={{ backgroundColor: '#E7EDF5', color: '#33415C', fontSize: 11, padding: '3px 7px' }}
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Row>
+        <Row label="采集频率">
+          <span>1 小时 1 次</span>
+        </Row>
+        <Row label="命中的含义">
+          <span>该小时广告出现在资源位；所以每个资源位每天最大值为 24</span>
+        </Row>
+      </div>
+    </div>
+  );
 }
 
 export default function TapTapAdStats() {
@@ -262,6 +330,21 @@ export default function TapTapAdStats() {
     { enabled: true },
   );
 
+  const lastWeekTopQuery = useSqlQuery(
+    'taptap-ad-rank-top-last-week',
+    () => buildAdRankTopSql('weekly', 10, lastWeekRankKey()),
+    [],
+    transformAdRankTop,
+    { enabled: true },
+  );
+  const lastMonthTopQuery = useSqlQuery(
+    'taptap-ad-rank-top-last-month',
+    () => buildAdRankTopSql('monthly', 10, lastMonthLabel()),
+    [],
+    transformAdRankTop,
+    { enabled: true },
+  );
+
   const trendData = adAggrDailyTrendQuery.data;
   const chart = useMemo(() => buildChartSeries(trendData || transformAdAggrDailyTrend([])), [trendData]);
   const shareChart = useMemo(() => buildShareChart(adShareQuery.data || transformAdShareByWeek([])), [adShareQuery.data]);
@@ -300,6 +383,9 @@ export default function TapTapAdStats() {
 
   return (
     <>
+      {/* 指标说明：资源位 / 采集频率 / 命中含义 */}
+      <AdMetricHint />
+
       {/* 第一行：日趋势（75%）+ 广告占比（25%） */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
         <div style={{ flex: '75 1 0', minWidth: 0 }}>
@@ -332,10 +418,16 @@ export default function TapTapAdStats() {
                 fill={{ opacity: 1 }}
                 tooltipY={(v) => (v == null || Number.isNaN(Number(v)) ? '-' : formatNumber(v))}
                 xaxisOverrides={{
-                  type: 'category',
-                  categories: trendData?.labels || ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
-                  labels: { rotate: 0 },
+                  type: 'numeric',
+                  min: 0,
+                  max: 6,
+                  tickAmount: 6,
+                  labels: {
+                    rotate: 0,
+                    formatter: (v) => WEEKDAYS[Math.round(v)] ?? '',
+                  },
                 }}
+                tooltipX={(v) => WEEKDAYS[Math.round(v)] ?? ''}
                 yaxisLeft={{
                   title: { text: '广告数' },
                   labels: { formatter: (v) => formatCompactNumber(v) },
@@ -423,61 +515,71 @@ export default function TapTapAdStats() {
 
       {/* 第三行：今日 / 本月投放 Top10（各占 50%） */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-        {[
-          {
-            key: 'today',
-            title: '【广告大盘】今日投放 Top10',
-            query: todayTopQuery,
-            subtitle: 'rank_type=daily；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）',
-            rangeLabel: '数据日期',
-          },
-          {
-            key: 'month',
-            title: '【广告大盘】本月投放 Top10',
-            query: monthTopQuery,
-            subtitle: 'rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）',
-            rangeLabel: '数据月份',
-          },
-        ].map((item) => {
-          const tops = item.query.data?.rows || [];
-          return (
-            <div key={item.key} style={{ flex: '50 1 0', minWidth: 0 }}>
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-header bg-white border-0">
-                  <div className="fw-semibold">{item.title}</div>
-                  <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-                    <span className="text-muted small">{item.subtitle}</span>
-                    {item.query.data?.snapshot && (
-                      <span className="text-muted small">{item.rangeLabel}：{item.query.data.snapshot}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="card-body">
-                  <BarChart
-                    series={[{ name: '总投放', data: tops.map((r) => r.totalAdViews) }]}
-                    loading={item.query.isLoading}
-                    error={item.query.error?.message}
-                    height={420}
-                    horizontal
-                    toolbar={false}
-                    colors={['#8FA3B0']}
-                    dataLabels={{
-                      enabled: true,
-                      style: { fontSize: '11px', fontWeight: 600, colors: ['#ffffff'] },
-                    }}
-                    /* 横向柱：xaxis.categories 是左侧分类轴，xaxis 数值刻度用紧凑格式；
-                       不要给 yaxis.labels 加 formatter —— Apex 会把分类文案也丢进 formatter，非数字会被格式化掉 */
-                    xaxisOverrides={{
-                      categories: tops.map((r) => `${r.rank}. ${truncateName(r.appName)}`),
-                      labels: { formatter: (v) => formatCompactNumber(Number(v)) },
-                    }}
-                    legendOverrides={{ show: false }}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <div style={{ flex: '50 1 0', minWidth: 0 }}>
+          <RankTopCard
+            title="【广告大盘】今日投放 Top10"
+            subtitle="rank_type=daily；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            rangeLabel="数据日期"
+            snapshot={todayTopQuery.data?.snapshot}
+            rows={todayTopQuery.data?.rows || []}
+            loading={todayTopQuery.isLoading}
+            error={todayTopQuery.error?.message}
+            emptyText="今日排名快照暂无数据"
+            height={500}
+          />
+        </div>
+        <div style={{ flex: '50 1 0', minWidth: 0 }}>
+          <RankTopCard
+            title="【广告大盘】本月投放 Top10"
+            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            rangeLabel="数据月份"
+            snapshot={monthTopQuery.data?.snapshot}
+            rows={monthTopQuery.data?.rows || []}
+            loading={monthTopQuery.isLoading}
+            error={monthTopQuery.error?.message}
+            emptyText="本月排名快照暂无数据"
+            height={500}
+          />
+        </div>
+      </div>
+
+      {/* 第四行：上周 / 上月投放 Top10（各占 50%） */}
+      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
+        <div style={{ flex: '50 1 0', minWidth: 0 }}>
+          {(() => {
+            const official = lastWeekTopQuery.data;
+            const derived = rankDerivedQuery.data;
+            const fromOfficial = (official?.rows || []).length > 0;
+            const rows = fromOfficial ? official.rows.slice(0, 10) : (derived?.rows || []).slice(0, 10);
+            return (
+              <RankTopCard
+                title="【广告大盘】上周投放 Top10"
+                subtitle="rank_type=weekly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+                rangeLabel="数据周"
+                snapshot={fromOfficial ? official.snapshot : lastWeekRankKey()}
+                sourceNote={fromOfficial ? '' : '官方快照未入库，按明细表上周总投放推算'}
+                rows={rows}
+                loading={lastWeekTopQuery.isLoading || (!fromOfficial && rankDerivedQuery.isLoading)}
+                error={lastWeekTopQuery.error?.message}
+                emptyText={`上周（${lastWeekRankKey()}）排名快照暂无数据`}
+                height={500}
+              />
+            );
+          })()}
+        </div>
+        <div style={{ flex: '50 1 0', minWidth: 0 }}>
+          <RankTopCard
+            title="【广告大盘】上月投放 Top10"
+            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            rangeLabel="数据月份"
+            snapshot={lastMonthTopQuery.data?.snapshot || lastMonthLabel()}
+            rows={lastMonthTopQuery.data?.rows || []}
+            loading={lastMonthTopQuery.isLoading}
+            error={lastMonthTopQuery.error?.message}
+            emptyText={`上月（${lastMonthLabel()}）排名快照尚未入库`}
+            height={500}
+          />
+        </div>
       </div>
     </>
   );

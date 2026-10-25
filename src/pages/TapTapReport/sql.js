@@ -826,27 +826,40 @@ export function buildAdRankDerivedWeekSql(limit = 20) {
   return `
     SELECT
       app_id,
+      app_name,
       ${push} AS push_cnt
     FROM dws_taptap_ad_aggr_v4_daily
     WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${thisMonday}'
-    GROUP BY app_id
+    GROUP BY app_id, app_name
     ORDER BY ${push} DESC
     LIMIT ${limit}
   `;
 }
 
-/** 构建 TapTap 广告投放 TopN 排名 SQL（rank_type=daily / monthly，取该类型最新快照） */
-export function buildAdRankTopSql(rankType = 'daily', limit = 10) {
+/**
+ * 构建 TapTap 广告投放 TopN 排名 SQL
+ * @param {string} rankType daily / weekly / monthly
+ * @param {number} limit 取前 N 名
+ * @param {string|null} label 指定快照标签（如 '2026-41'、'2026-09'）；不传则取该类型最新快照
+ */
+export function buildAdRankTopSql(rankType = 'daily', limit = 10, label = null) {
+  const snapshot = label
+    ? `crawled_at = '${label}'`
+    : `crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_ad_rank_v4_daily WHERE rank_type = '${rankType}')`;
   return `
     SELECT app_id, app_name, total_ad_veiws, ad_rank, crawled_at
     FROM dws_taptap_ad_rank_v4_daily
-    WHERE rank_type = '${rankType}'
-      AND crawled_at = (
-        SELECT MAX(crawled_at) FROM dws_taptap_ad_rank_v4_daily WHERE rank_type = '${rankType}'
-      )
+    WHERE rank_type = '${rankType}' AND ${snapshot}
     ORDER BY ad_rank
     LIMIT ${limit}
   `;
+}
+
+/** 上个月份键（YYYY-MM），用于查 rank 表的 monthly 上月快照 */
+export function lastMonthLabel() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 /* ===== TapApp 首页找游戏广告（landing）===== */

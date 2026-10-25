@@ -692,13 +692,26 @@ export function transformAdRankWeek(rows) {
   return { byAppId, count: Object.keys(byAppId).length };
 }
 
-/** 上周投放排名「推算」结果 → { byAppId, count }：按 SQL 已排好的顺序依次编号 1..N */
+/**
+ * 上周投放排名「推算」结果 → { byAppId, count, rows }
+ * byAppId 供「上周投放排名」列查名次；rows 供「上周投放 Top10」图表用（已按 SQL 顺序编号 1..N）
+ */
 export function transformAdRankDerivedWeek(rows) {
   const byAppId = {};
-  (rows || []).forEach((r, i) => {
+  const list = rows || [];
+  list.forEach((r, i) => {
     byAppId[r.app_id] = i + 1;
   });
-  return { byAppId, count: (rows || []).length };
+  return {
+    byAppId,
+    count: list.length,
+    rows: list.map((r, i) => ({
+      appId: r.app_id,
+      appName: r.app_name || String(r.app_id),
+      totalAdViews: Number(r.push_cnt) || 0,
+      rank: i + 1,
+    })),
+  };
 }
 
 /** 投放 TopN 排名 → { snapshot, rows: [{ appId, appName, totalAdViews, rank }] }（已按 ad_rank 升序） */

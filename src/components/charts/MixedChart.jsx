@@ -21,6 +21,8 @@ export default function MixedChart({
   strokeWidths = null,
   /** 自定义虚线样式数组（Apex dashArray，0=实线）；与 strokeWidths 按下标一一对应 */
   strokeDashArray = null,
+  /** tooltip X（标题）格式化函数 */
+  tooltipX = null,
   /** tooltip Y 值格式化函数，根据 yAxisIndex 返回字符串 */
   tooltipY = null,
   /** 是否显示工具栏，默认 true */
@@ -82,6 +84,7 @@ export default function MixedChart({
     tooltip: {
       shared: true,
       intersect: false,
+      ...(tooltipX ? { x: { formatter: tooltipX } } : {}),
       ...(tooltipY
         ? {
             y: {
