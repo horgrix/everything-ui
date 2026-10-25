@@ -4,6 +4,7 @@
  * - 其余指标待接入（数据表与口径确认后替换占位）
  */
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import MixedChart from '../../components/charts/MixedChart';
 import BarChart from '../../components/charts/BarChart';
 import SparkStackBar from '../../components/common/SparkStackBar';
@@ -485,7 +486,26 @@ export default function TapTapAdStats() {
       {/* 第二行：本周游戏明细 Top20 */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0">
-          <div className="fw-semibold">【广告大盘】本周游戏明细 — Top20</div>
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div className="fw-semibold">【广告大盘】本周游戏明细 — Top20</div>
+            {/* 相关报表快捷入口：切到同页其它广告统计标签（标签由 URL ?tab= 控制） */}
+            <div className="d-flex align-items-center" style={{ gap: '1rem' }}>
+              {[
+                { to: '/taptap?tab=ad', label: 'TapPC广告统计' },
+                { to: '/taptap?tab=appAd', label: 'TapApp广告统计' },
+              ].map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="small text-decoration-none d-inline-flex align-items-center gap-1 fw-semibold"
+                  style={{ color: '#4361ee' }}
+                >
+                  {link.label}
+                  <i className="bi bi-arrow-right" style={{ fontSize: 11 }}></i>
+                </Link>
+              ))}
+            </div>
+          </div>
           <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
             <span className="text-muted small">
               按「总投放」倒序 → 「总曝光」倒序取前 20；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)

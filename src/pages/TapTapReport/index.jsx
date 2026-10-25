@@ -1,21 +1,38 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DownloadStats from './DownloadStats';
 import OnlineStats from './OnlineStats';
 import TapTapAdStats from './TapTapAdStats';
 import TapPcAdStats from './TapPcAdStats';
 import TapAppAdStats from './TapAppAdStats';
 
-/** 数据图表选择 */
+/**
+ * 数据图表选择
+ * hidden: 不在「数据图表选择」里显示按钮，但仍可通过 URL ?tab= 或页内快捷入口进入
+ */
 const CHART_GROUPS = [
   { key: 'download', label: 'TapTap下载统计' },
   { key: 'online', label: 'TapPC在线人数统计' },
   { key: 'tapAd', label: 'TapTap广告统计' },
-  { key: 'ad', label: 'TapPC广告统计' },
-  { key: 'appAd', label: 'TapApp广告统计' },
+  { key: 'ad', label: 'TapPC广告统计', hidden: true },
+  { key: 'appAd', label: 'TapApp广告统计', hidden: true },
 ];
 
+const DEFAULT_GROUP = 'download';
+const GROUP_KEYS = CHART_GROUPS.map((g) => g.key);
+/** 只渲染未隐藏的标签按钮 */
+const VISIBLE_GROUPS = CHART_GROUPS.filter((g) => !g.hidden);
+
 export default function TapTapReport() {
-  const [chartGroup, setChartGroup] = useState('download');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const param = searchParams.get('tab');
+  const chartGroup = GROUP_KEYS.includes(param) ? param : DEFAULT_GROUP;
+
+  const setChartGroup = (key) => {
+    const next = new URLSearchParams(searchParams);
+    if (key === DEFAULT_GROUP) next.delete('tab');
+    else next.set('tab', key);
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <div className="container-fluid p-4">
@@ -29,7 +46,7 @@ export default function TapTapReport() {
         <div className="card-header bg-white border-0 fw-semibold">数据图表选择</div>
         <div className="card-body">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            {CHART_GROUPS.map((g) => (
+            {VISIBLE_GROUPS.map((g) => (
               <button
                 key={g.key}
                 type="button"
@@ -39,6 +56,12 @@ export default function TapTapReport() {
                 {g.label}
               </button>
             ))}
+            {/* 通过快捷入口进入隐藏标签时，提示当前所在统计 */}
+            {CHART_GROUPS.find((g) => g.key === chartGroup)?.hidden && (
+              <span className="small text-muted">
+                当前：<span className="fw-semibold">{CHART_GROUPS.find((g) => g.key === chartGroup).label}</span>
+              </span>
+            )}
           </div>
         </div>
       </div>
