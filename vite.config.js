@@ -11,6 +11,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      '/api/stats': {
+        target: 'https://horgrix.com',
+        changeOrigin: true,
+        secure: true,
+      },
       '/api/v2': {
         target: 'https://api.horgrix.com',
         changeOrigin: true,

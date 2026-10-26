@@ -1,13 +1,21 @@
 import { NavLink } from 'react-router-dom';
+import VisitStats from './VisitStats';
+import usePageviewTracking from '../../hooks/usePageviewTracking';
 
 export default function Navbar() {
+  usePageviewTracking();
+
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
       <div className="container-fluid">
-        <NavLink className="navbar-brand fw-bold" to="/">
-          <i className="bi bi-graph-up me-2"></i>
-          数据可视化平台
-        </NavLink>
+        <div className="d-flex align-items-center gap-lg-3 gap-2">
+          <NavLink className="navbar-brand fw-bold mb-0 me-0" to="/">
+            <i className="bi bi-graph-up me-2"></i>
+            数据可视化平台
+          </NavLink>
+          {/* 本周 PV / UV —— 接口未就绪时自动不渲染 */}
+          <VisitStats />
+        </div>
 
         <button
           className="navbar-toggler"
