@@ -827,7 +827,10 @@ export function buildAdRankDerivedWeekSql(limit = 20) {
     SELECT
       app_id,
       app_name,
-      ${push} AS push_cnt
+      ${push} AS push_cnt,
+      SUM(COALESCE(app_ad_views, 0)) + SUM(COALESCE(app_pcebid_views, 0)) AS app_ad_views,
+      SUM(COALESCE(pc_ad_views, 0)) + SUM(COALESCE(pc_pcebid_views, 0)) AS pc_ad_views,
+      SUM(COALESCE(kw_ad_views, 0)) + SUM(COALESCE(kw_pcebid_views, 0)) AS kv_ad_views
     FROM dws_taptap_ad_aggr_v4_daily
     WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${thisMonday}'
     GROUP BY app_id, app_name
@@ -847,7 +850,9 @@ export function buildAdRankTopSql(rankType = 'daily', limit = 10, label = null) 
     ? `crawled_at = '${label}'`
     : `crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_ad_rank_v4_daily WHERE rank_type = '${rankType}')`;
   return `
-    SELECT app_id, app_name, total_ad_veiws, ad_rank, crawled_at
+    SELECT
+      app_id, app_name, total_ad_veiws, ad_rank, crawled_at,
+      total_app_ad_views, total_pc_ad_views, total_kv_ad_views
     FROM dws_taptap_ad_rank_v4_daily
     WHERE rank_type = '${rankType}' AND ${snapshot}
     ORDER BY ad_rank

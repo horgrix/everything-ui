@@ -538,7 +538,7 @@ export default function TapTapAdStats() {
         <div style={{ flex: '50 1 0', minWidth: 0 }}>
           <RankTopCard
             title="【广告大盘】今日投放 Top10"
-            subtitle="rank_type=daily；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            subtitle="rank_type=daily；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
             rangeLabel="数据日期"
             snapshot={todayTopQuery.data?.snapshot}
             rows={todayTopQuery.data?.rows || []}
@@ -551,7 +551,7 @@ export default function TapTapAdStats() {
         <div style={{ flex: '50 1 0', minWidth: 0 }}>
           <RankTopCard
             title="【广告大盘】本月投放 Top10"
-            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
             rangeLabel="数据月份"
             snapshot={monthTopQuery.data?.snapshot}
             rows={monthTopQuery.data?.rows || []}
@@ -574,7 +574,7 @@ export default function TapTapAdStats() {
             return (
               <RankTopCard
                 title="【广告大盘】上周投放 Top10"
-                subtitle="rank_type=weekly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+                subtitle="rank_type=weekly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
                 rangeLabel="数据周"
                 snapshot={fromOfficial ? official.snapshot : lastWeekRankKey()}
                 sourceNote={fromOfficial ? '' : '官方快照未入库，按明细表上周总投放推算'}
@@ -590,7 +590,7 @@ export default function TapTapAdStats() {
         <div style={{ flex: '50 1 0', minWidth: 0 }}>
           <RankTopCard
             title="【广告大盘】上月投放 Top10"
-            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（total_ad_veiws）"
+            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
             rangeLabel="数据月份"
             snapshot={lastMonthTopQuery.data?.snapshot || lastMonthLabel()}
             rows={lastMonthTopQuery.data?.rows || []}

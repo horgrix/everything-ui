@@ -705,25 +705,48 @@ export function transformAdRankDerivedWeek(rows) {
   return {
     byAppId,
     count: list.length,
-    rows: list.map((r, i) => ({
-      appId: r.app_id,
-      appName: r.app_name || String(r.app_id),
-      totalAdViews: Number(r.push_cnt) || 0,
-      rank: i + 1,
-    })),
+    rows: list.map((r, i) => {
+      // 与 rank 表同口径：各端广告数 = *_ad_views + *_pcebid_views
+      const appAdViews = Number(r.app_ad_views) || 0;
+      const pcAdViews = Number(r.pc_ad_views) || 0;
+      const kvAdViews = Number(r.kv_ad_views) || 0;
+      const splitSum = appAdViews + pcAdViews + kvAdViews;
+      return {
+        appId: r.app_id,
+        appName: r.app_name || String(r.app_id),
+        rank: i + 1,
+        appAdViews,
+        pcAdViews,
+        kvAdViews,
+        totalAdViews: splitSum > 0 ? splitSum : Number(r.push_cnt) || 0,
+      };
+    }),
   };
 }
 
-/** 投放 TopN 排名 → { snapshot, rows: [{ appId, appName, totalAdViews, rank }] }（已按 ad_rank 升序） */
+/**
+ * 投放 TopN 排名 → { snapshot, rows: [{ appId, appName, rank, appAdViews, pcAdViews, kvAdViews, totalAdViews }] }
+ * 总投放拆成 APP / PC / KV 三段（rank 表 total_app_ad_views / total_pc_ad_views / total_kv_ad_views），
+ * 总投放取三段之和；若某行缺这三列（历史数据），退回用 total_ad_veiws 作为标签值。
+ */
 export function transformAdRankTop(rows) {
   return {
     snapshot: rows?.[0]?.crawled_at || '',
-    rows: (rows || []).map((r) => ({
-      appId: r.app_id,
-      appName: r.app_name || String(r.app_id),
-      totalAdViews: Number(r.total_ad_veiws) || 0,
-      rank: Number(r.ad_rank) || 0,
-    })),
+    rows: (rows || []).map((r) => {
+      const appAdViews = Number(r.total_app_ad_views) || 0;
+      const pcAdViews = Number(r.total_pc_ad_views) || 0;
+      const kvAdViews = Number(r.total_kv_ad_views) || 0;
+      const splitSum = appAdViews + pcAdViews + kvAdViews;
+      return {
+        appId: r.app_id,
+        appName: r.app_name || String(r.app_id),
+        rank: Number(r.ad_rank) || 0,
+        appAdViews,
+        pcAdViews,
+        kvAdViews,
+        totalAdViews: splitSum > 0 ? splitSum : Number(r.total_ad_veiws) || 0,
+      };
+    }),
   };
 }
 
