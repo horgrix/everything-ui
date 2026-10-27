@@ -714,6 +714,7 @@ export function buildAdGameWeeklyTopSql(limit = 20) {
   return `
     SELECT
       app_id, app_name, tag_1, tag_2, tag_3,
+      MAX(icon) AS icon,
       SUM(total_views) AS total_views,
       SUM(app_views) AS app_views,
       SUM(pc_views) AS pc_views,

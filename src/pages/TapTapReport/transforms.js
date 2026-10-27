@@ -618,6 +618,7 @@ export function transformAdGameWeeklyTop(rows) {
     return {
       appId: r.app_id,
       appName: r.app_name,
+      icon: r.icon || '',
       tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
       totalViews: num(r.total_views),
       appViews: num(r.app_views),

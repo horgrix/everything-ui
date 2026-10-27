@@ -38,7 +38,7 @@ import {
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import RankTopCard from './components/RankTopCard';
-import { APP_AD_TAG_COLORS, truncateName, PercentBar } from './shared';
+import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl } from './shared';
 
 /**
  * 指标定义：本周实线加粗（深色）、上周虚线细线（浅色），全部走左 Y 轴。
@@ -108,12 +108,36 @@ const SPARK_COLUMNS = [
 
 /** 本周游戏明细 Top20 列配置 */
 const GAME_TOP_COLUMNS = [
-  { header: 'APPID', width: '5%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+  {
+    header: 'APPID',
+    width: '6%',
+    accessor: (r) => r.appId,
+    render: (r) =>
+      r.appId === '-' ? (
+        <span className="text-muted">-</span> // 汇总行不发链接
+      ) : (
+        <a
+          href={taptapAppUrl(r.appId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-decoration-none"
+          style={{ color: '#4361ee' }}
+          title={`在 TapTap 打开 ${r.appName || ''}（APPID ${r.appId}）`}
+        >
+          {r.appId}
+        </a>
+      ),
+  },
   {
     header: '游戏名称',
-    width: '10%',
+    width: '12%',
     accessor: (r) => r.appName,
-    render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span>,
+    render: (r) => (
+      <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>
+        {r.appId !== '-' && <GameIcon src={r.icon} size={20} alt={r.appName ? `${r.appName} 图标` : ''} />}
+        <span className="fw-semibold">{truncateName(r.appName)}</span>
+      </span>
+    ),
   },
   {
     header: '标签',

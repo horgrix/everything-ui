@@ -14,6 +14,46 @@ export const truncateName = (name) => {
   return s.length > 10 ? s.slice(0, 10) + '...' : (s || '-');
 };
 
+/**
+ * 默认游戏图标（icon 为空或加载失败时兜底）：灰底 + 手柄轮廓的内联 SVG，不依赖外网资源
+ */
+export const DEFAULT_GAME_ICON =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+      '<rect width="32" height="32" rx="7" fill="#dee2e6"/>' +
+      '<path d="M11.4 12h9.2a4.8 4.8 0 0 1 4.6 3.4l1.3 4.5a2.8 2.8 0 0 1-5 2.6L19.9 20h-7.8l-1.6 2.5a2.8 2.8 0 0 1-5-2.6l1.3-4.5A4.8 4.8 0 0 1 11.4 12Z" fill="#868e96"/>' +
+      '<path d="M12.9 15.4v3.4M11.2 17.1h3.4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>' +
+      '<circle cx="19.4" cy="16.2" r="1.05" fill="#fff"/>' +
+      '<circle cx="21.1" cy="17.9" r="1.05" fill="#fff"/>' +
+    '</svg>'
+  );
+
+/** TapTap 游戏详情页地址（用 APPID 拼接） */
+export const taptapAppUrl = (appId) => `https://www.taptap.cn/app/${appId}`;
+
+/**
+ * 游戏图标：优先用传入的 icon 地址，空值或加载失败时回落到默认图标。
+ * @param {Object} props
+ * @param {string} [props.src] 图标地址（数据表 icon 字段）
+ * @param {number} [props.size] 边长（px）
+ * @param {string} [props.alt] 无障碍文本
+ */
+export const GameIcon = ({ src, size = 20, alt = '' }) => {
+  const [failedSrc, setFailedSrc] = useState(null);
+  const useFallback = !src || failedSrc === src;
+  return (
+    <img
+      src={useFallback ? DEFAULT_GAME_ICON : src}
+      alt={alt}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailedSrc(src)}
+      style={{ width: size, height: size, objectFit: 'cover', borderRadius: 4, flex: '0 0 auto', backgroundColor: '#e9ecef' }}
+    />
+  );
+};
+
 /** 广告投放比进度条颜色（分段：<25 / 25-50 / 50-75 / >=75） */
 export const adDeliveryRateColor = (rate) => {
   if (rate == null) return '#dee2e6';
