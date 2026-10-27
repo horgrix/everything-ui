@@ -35,6 +35,10 @@ export default function MixedChart({
   legend = null,
   /** 自定义 grid 覆盖（padding 等） */
   grid = null,
+  /** 自定义 markers 覆盖（size / hover.size 等） */
+  markers = null,
+  /** 自定义 tooltip 内容 (args) => HTML 字符串；传入后忽略 tooltipX/tooltipY，且始终按同一 x 列出所有系列 */
+  tooltipCustom = null,
 }) {
   const options = {
     chart: {
@@ -56,6 +60,7 @@ export default function MixedChart({
     ...(dataLabels ? { dataLabels } : {}),
     ...(legend ? { legend } : {}),
     ...(grid ? { grid } : {}),
+    ...(markers ? { markers } : {}),
     xaxis: {
       ...datetimeAxis,
       ...xaxisOverrides,
@@ -81,35 +86,22 @@ export default function MixedChart({
           ]
         : []),
     ],
-    tooltip: {
-      shared: true,
-      intersect: false,
-      ...(tooltipX ? { x: { formatter: tooltipX } } : {}),
-      ...(tooltipY
-        ? {
-            y: {
-              formatter: function (val, { seriesIndex, w }) {
-                const si = seriesIndex !== undefined ? seriesIndex : 0;
-                const seriesConf = w.config.series[si] || {};
-                const yAxisIdx = seriesConf.yAxisIndex !== undefined ? seriesConf.yAxisIndex : 0;
-                return tooltipY(val, yAxisIdx);
-              },
+    tooltip: tooltipCustom
+      ? { custom: tooltipCustom, shared: true, intersect: false }
+      : {
+          shared: true,
+          intersect: false,
+          ...(tooltipX ? { x: { formatter: tooltipX } } : {}),
+          y: {
+            formatter: (val, { seriesIndex, w }) => {
+              const si = seriesIndex !== undefined ? seriesIndex : 0;
+              const seriesConf = w.config.series[si] || {};
+              const yAxisIdx = seriesConf.yAxisIndex !== undefined ? seriesConf.yAxisIndex : 0;
+              if (tooltipY) return tooltipY(val, yAxisIdx);
+              return yAxisIdx === 1 ? `${Number(val).toFixed(1)}%` : Math.round(val);
             },
-          }
-        : {
-            y: {
-              formatter: function (val, { seriesIndex, w }) {
-                const si = seriesIndex !== undefined ? seriesIndex : 0;
-                const seriesConf = w.config.series[si] || {};
-                const yAxisIdx = seriesConf.yAxisIndex !== undefined ? seriesConf.yAxisIndex : 0;
-                if (yAxisIdx === 1) {
-                  return val.toFixed(1) + '%';
-                }
-                return Math.round(val);
-              },
-            },
-          }),
-    },
+          },
+        },
   };
 
   return (

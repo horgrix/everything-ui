@@ -45,7 +45,6 @@ import { APP_AD_TAG_COLORS, truncateName, PercentBar } from './shared';
  * 口径：广告数 = ad_views + pcebid_views；APP / PC / KW 广告数同口径（已在 SQL 里加好）。
  */
 const METRIC_DEFS = [
-  { label: '广告数', key: 'adViews', color: '#0f9d8a', lastColor: '#8ed6cb' },
   { label: 'APP广告数', key: 'appAdViews', color: '#f08c00', lastColor: '#f7c98b' },
   { label: 'PC广告数', key: 'pcAdViews', color: '#7209b7', lastColor: '#c396e0' },
   { label: 'KW广告数', key: 'kwAdViews', color: '#d6336c', lastColor: '#eda2bb' },
@@ -346,6 +345,30 @@ export default function TapTapAdStats() {
     { enabled: true },
   );
 
+  /**
+   * 日趋势 tooltip：按「同一个 x（周几）」列出全部 6 条线的 y 值。
+   * Apex 默认在鼠标压到 marker 上时只显示当前系列，用自定义 tooltip 统一成整列读数。
+   */
+  const trendTooltip = ({ series, dataPointIndex }) => {
+    const rows = chart.series
+      .map((s, i) => {
+        const raw = series?.[i]?.[dataPointIndex];
+        const value = raw == null || Number.isNaN(Number(raw)) ? '-' : formatNumber(raw);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <span style="display:inline-flex;align-items:center;gap:6px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:${chart.colors[i]};display:inline-block;"></span>
+            <span>${s.name}</span>
+          </span>
+          <span style="font-weight:600;">${value}</span>
+        </div>`;
+      })
+      .join('');
+    return `<div style="padding:6px 4px;font-size:12px;line-height:1.7;min-width:190px;">
+      <div style="font-weight:600;margin-bottom:4px;">${WEEKDAYS[dataPointIndex] ?? ''}</div>
+      ${rows}
+    </div>`;
+  };
+
   const trendData = adAggrDailyTrendQuery.data;
   const chart = useMemo(() => buildChartSeries(trendData || transformAdAggrDailyTrend([])), [trendData]);
   const shareChart = useMemo(() => buildShareChart(adShareQuery.data || transformAdShareByWeek([])), [adShareQuery.data]);
@@ -396,7 +419,7 @@ export default function TapTapAdStats() {
               <div className="fw-semibold">【广告大盘】日趋势 — 本周 vs 上周</div>
               <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
                 <span className="text-muted small">
-                  x=星期几；广告数 = ad_views + pcebid_views（APP / PC / KW 广告数同口径）；本周实线加粗，上周虚线
+                  x=星期几；APP / PC / KW 广告数（各端 = *_ad_views + *_pcebid_views）；本周实线加粗，上周虚线
                 </span>
                 {trendData?.range && (
                   <span className="text-muted small">
@@ -415,9 +438,9 @@ export default function TapTapAdStats() {
                 colors={chart.colors}
                 strokeWidths={chart.widths}
                 strokeDashArray={chart.dashArray}
+                markers={{ size: 6, hover: { size: 12 } }}
                 /* 折线图不需要面积填充；不显式拉满时 Apex 6 会把 fill.opacity 数组带到 stroke 上，折线变半透明 */
                 fill={{ opacity: 1 }}
-                tooltipY={(v) => (v == null || Number.isNaN(Number(v)) ? '-' : formatNumber(v))}
                 xaxisOverrides={{
                   type: 'numeric',
                   min: 0,
@@ -428,7 +451,7 @@ export default function TapTapAdStats() {
                     formatter: (v) => WEEKDAYS[Math.round(v)] ?? '',
                   },
                 }}
-                tooltipX={(v) => WEEKDAYS[Math.round(v)] ?? ''}
+                tooltipCustom={trendTooltip}
                 yaxisLeft={{
                   title: { text: '广告数' },
                   labels: { formatter: (v) => formatCompactNumber(v) },
