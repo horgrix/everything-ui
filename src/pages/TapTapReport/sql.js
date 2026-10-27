@@ -17,6 +17,62 @@ export function recentHoursWhere(hours) {
   return `${y}-${m}-${d} ${h}`;
 }
 
+/** 当前小时键（与抓取表 crawled_at 的 'YYYY-MM-DD HH' 格式一致） */
+export function currentHourKey() {
+  const now = new Date();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const h = String(now.getHours()).padStart(2, '0');
+  return `${now.getFullYear()}-${m}-${d} ${h}`;
+}
+
+/**
+ * 构建「本时段抓取到的广告」快照 SQL：[广告大盘] 本周游戏明细卡片用
+ * 取当前小时（crawled_at = 'YYYY-MM-DD HH'）三个渠道去重后的游戏（app_id + 名称 + 图标）：
+ *   home    APP首页广告：taptap_app_{ios,android}_landing_ad_hourly，仅 is_ad='True' 或 pcebid='pcebid'
+ * 行带 platform（ios / android；PC 为空），供前端在行尾标平台图标。
+ *   keyword 关键词广告：taptap_app_{ios,android}_search_{discovery,hot_search,hot_spot}_ad_hourly，仅 is_ad='ad'
+ *   pc      PC广告：taptap_pc_ad_top_hourly + taptap_pc_ad_discovery_hourly，仅 is_ad='True'
+ * 名称/图标统一走 dim（各抓取表 + dws_taptap_game + 广告聚合表），弥补关键词表只有 app_id 没有名称。
+ */
+export function buildCurrentHourAdSnapshotSql(hour = currentHourKey()) {
+  const h = hour;
+  const at = `crawled_at = '${h}'`;
+  const homeWhere = `${at} AND (is_ad = 'True' OR pcebid = 'pcebid')`;
+  const pcWhere = `${at} AND is_ad = 'True'`;
+  return `
+    WITH dim AS (
+      SELECT app_id, MAX(app_name) AS app_name, MAX(icon) AS icon
+      FROM (
+        SELECT app_id, app_name, icon FROM taptap_app_ios_landing_ad_hourly
+        UNION ALL SELECT app_id, app_name, icon FROM taptap_app_android_landing_ad_hourly
+        UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_top_hourly
+        UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_discovery_hourly
+        UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_game
+        UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_ad_aggr_v4_daily
+      )
+      WHERE app_id IS NOT NULL AND app_id > 0
+      GROUP BY app_id
+    ),
+    src AS (
+      SELECT 'home' AS grp, 'ios' AS platform, app_id FROM taptap_app_ios_landing_ad_hourly WHERE ${homeWhere}
+      UNION SELECT 'home', 'android', app_id FROM taptap_app_android_landing_ad_hourly WHERE ${homeWhere}
+      UNION SELECT 'keyword', 'ios', app_id FROM taptap_app_ios_search_discovery_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'keyword', 'ios', app_id FROM taptap_app_ios_search_hot_search_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'keyword', 'ios', app_id FROM taptap_app_ios_search_hot_spot_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'keyword', 'android', app_id FROM taptap_app_android_search_discovery_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'keyword', 'android', app_id FROM taptap_app_android_search_hot_search_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'keyword', 'android', app_id FROM taptap_app_android_search_hot_spot_ad_hourly WHERE ${at} AND is_ad = 'ad'
+      UNION SELECT 'pc', '', app_id FROM taptap_pc_ad_top_hourly WHERE ${pcWhere}
+      UNION SELECT 'pc', '', app_id FROM taptap_pc_ad_discovery_hourly WHERE ${pcWhere}
+    )
+    SELECT s.grp, s.platform, s.app_id, d.app_name, d.icon
+    FROM src s LEFT JOIN dim d ON d.app_id = s.app_id
+    WHERE s.app_id IS NOT NULL
+    ORDER BY s.grp, s.platform, d.app_name
+  `;
+}
+
 /** 本周第一天（周一，YYYY-MM-DD）；weeksBack=1 时为上周一 */
 export function thisWeekWhere(weeksBack = 0) {
   const now = new Date();

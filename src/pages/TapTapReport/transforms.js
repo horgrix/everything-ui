@@ -607,6 +607,19 @@ export function transformAdShareByWeek(rows) {
 }
 
 /**
+ * 「本时段抓取到的广告」快照：按 grp（home / keyword / pc）分组，供悬停弹框里的三个表格使用。
+ */
+export function transformCurrentHourAdSnapshot(rows) {
+  const out = { home: [], keyword: [], pc: [] };
+  (rows || []).forEach((r) => {
+    const bucket = out[r.grp];
+    if (!bucket) return;
+    bucket.push({ appId: r.app_id, appName: r.app_name || '', icon: r.icon || '', platform: r.platform || '' });
+  });
+  return out;
+}
+
+/**
  * TapTap 广告本周游戏明细（TopN）：数字字段转 number，标签合并成数组，并算好总投放。
  * 行顺序由 SQL 保证（总投放倒序 → 总曝光倒序）。
  */

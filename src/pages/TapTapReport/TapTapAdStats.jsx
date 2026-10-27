@@ -38,6 +38,7 @@ import {
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import RankTopCard from './components/RankTopCard';
+import CurrentHourAdTips from './components/CurrentHourAdTips';
 import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl } from './shared';
 
 /**
@@ -537,6 +538,7 @@ export default function TapTapAdStats() {
             <div className="fw-semibold">【广告大盘】本周游戏明细 — Top20</div>
             {/* 相关报表快捷入口：切到同页其它广告统计标签（标签由 URL ?tab= 控制） */}
             <div className="d-flex align-items-center" style={{ gap: '1rem' }}>
+              <CurrentHourAdTips />
               {[
                 { to: '/taptap?tab=ad', label: 'TapPC广告统计' },
                 { to: '/taptap?tab=appAd', label: 'TapApp广告统计' },
