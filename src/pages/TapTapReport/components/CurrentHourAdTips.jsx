@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSqlQuery } from '../queries';
-import { buildCurrentHourAdSnapshotSql, currentHourKey } from '../sql';
+import { buildCurrentHourAdSnapshotSql, currentHourKey, isCurrentHourReady, SNAPSHOT_GRACE_MINUTES } from '../sql';
 import { transformCurrentHourAdSnapshot } from '../transforms';
 import { GameIcon, truncateName } from '../shared';
 
@@ -70,7 +70,15 @@ function GroupTable({ label, games, loading }) {
  */
 export default function CurrentHourAdTips() {
   const [pos, setPos] = useState(null);
-  const hour = currentHourKey(); // 过整点后随重新渲染自动切到新的小时
+  // 每 30 秒触发一次重渲染，保证整点切换小时、以及过 :15 切换到当前小时
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+  // 当前小时不满 15 分钟时 currentHourKey() 会回退到上一小时，避免查到空数据
+  const hour = currentHourKey();
+  const hourReady = isCurrentHourReady();
   const { data, isLoading, error } = useSqlQuery(
     'taptap-current-hour-ad-snapshot',
     () => buildCurrentHourAdSnapshotSql(hour),
@@ -129,6 +137,11 @@ export default function CurrentHourAdTips() {
               {hour}:00:00 · 共 {total} 个游戏
             </span>
           </div>
+          {!hourReady && (
+            <div className="text-muted mb-2" style={{ fontSize: 11 }}>
+              当前小时未满 {SNAPSHOT_GRACE_MINUTES} 分钟，先展示上一小时的数据
+            </div>
+          )}
           {error ? (
             <div className="text-danger" style={{ fontSize: 12 }}>
               <i className="bi bi-exclamation-triangle me-1"></i>

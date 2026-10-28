@@ -2,8 +2,6 @@ import { useSearchParams } from 'react-router-dom';
 import DownloadStats from './DownloadStats';
 import OnlineStats from './OnlineStats';
 import TapTapAdStats from './TapTapAdStats';
-import TapPcAdStats from './TapPcAdStats';
-import TapAppAdStats from './TapAppAdStats';
 
 /**
  * 数据图表选择
@@ -13,8 +11,6 @@ const CHART_GROUPS = [
   { key: 'download', label: 'TapTap下载统计' },
   { key: 'online', label: 'TapPC在线人数统计' },
   { key: 'tapAd', label: 'TapTap广告统计' },
-  { key: 'ad', label: 'TapPC广告统计', hidden: true },
-  { key: 'appAd', label: 'TapApp广告统计', hidden: true },
 ];
 
 const DEFAULT_GROUP = 'download';
@@ -69,8 +65,6 @@ export default function TapTapReport() {
       {chartGroup === 'download' && <DownloadStats />}
       {chartGroup === 'online' && <OnlineStats />}
       {chartGroup === 'tapAd' && <TapTapAdStats />}
-      {chartGroup === 'ad' && <TapPcAdStats />}
-      {chartGroup === 'appAd' && <TapAppAdStats />}
     </div>
   );
 }

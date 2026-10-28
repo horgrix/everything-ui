@@ -4,7 +4,6 @@
  * - 其余指标待接入（数据表与口径确认后替换占位）
  */
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import MixedChart from '../../components/charts/MixedChart';
 import BarChart from '../../components/charts/BarChart';
 import SparkStackBar from '../../components/common/SparkStackBar';
@@ -39,6 +38,9 @@ import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import RankTopCard from './components/RankTopCard';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
+import PcAdWeeklyDetail from './components/PcAdWeeklyDetail';
+import TapAppLandingAdWeeklyDetail from './components/TapAppLandingAdWeeklyDetail';
+import TapAppKeywordAdWeeklyDetail from './components/TapAppKeywordAdWeeklyDetail';
 import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl } from './shared';
 
 /**
@@ -536,23 +538,12 @@ export default function TapTapAdStats() {
         <div className="card-header bg-white border-0">
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div className="fw-semibold">【广告大盘】本周游戏明细 — Top20</div>
-            {/* 相关报表快捷入口：切到同页其它广告统计标签（标签由 URL ?tab= 控制） */}
-            <div className="d-flex align-items-center" style={{ gap: '1rem' }}>
+            {/* 本周明细入口标签：悬停看各渠道广告明细 */}
+            <div className="d-flex align-items-center flex-wrap" style={{ gap: '1rem' }}>
               <CurrentHourAdTips />
-              {[
-                { to: '/taptap?tab=ad', label: 'TapPC广告统计' },
-                { to: '/taptap?tab=appAd', label: 'TapApp广告统计' },
-              ].map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className="small text-decoration-none d-inline-flex align-items-center gap-1 fw-semibold"
-                  style={{ color: '#4361ee' }}
-                >
-                  {link.label}
-                  <i className="bi bi-arrow-right" style={{ fontSize: 11 }}></i>
-                </Link>
-              ))}
+              <PcAdWeeklyDetail />
+              <TapAppLandingAdWeeklyDetail />
+              <TapAppKeywordAdWeeklyDetail />
             </div>
           </div>
           <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
