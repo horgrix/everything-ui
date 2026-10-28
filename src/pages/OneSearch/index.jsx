@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useChartData from '../../hooks/useChartData';
 import { querySqlV09 } from '../../api/query';
+import { PC_GAME_TYPE_META } from '../TapTapReport/shared';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 
 /** 加载时长（毫秒） */
@@ -9,10 +10,17 @@ const LOADING_MS = 3000;
 /** 玻璃碎裂动画时长（需与 index.scss 里 osShardFly 保持一致） */
 const SHATTER_MS = 780;
 
-/** 搜索建议 SQL：仅数字前缀匹配（该接口不支持 LIKE，用 LEFT() 前缀比较） */
+/**
+ * 搜索建议 SQL（dws_taptap_game）：仅数字前缀匹配（该接口不支持 LIKE，用 LEFT() 做前缀比较）。
+ * 取最新月份快照，按 app_id 合并，带出游戏类型、图标与三级标签。
+ */
 function suggestSql(digits, month) {
-  const t = 'dws_taptap_game_set_monthly';
-  return `SELECT app_id, MAX(app_name) AS app_name
+  const t = 'dws_taptap_game';
+  return `SELECT app_id,
+      MAX(app_name) AS app_name,
+      MAX(icon) AS icon,
+      MAX(distribution_type) AS distribution_type,
+      MAX(tag_1) AS tag_1, MAX(tag_2) AS tag_2, MAX(tag_3) AS tag_3
     FROM ${t}
     WHERE LEFT(app_id, ${digits.length}) = '${digits}'
       AND crawled_at = COALESCE(
@@ -30,11 +38,31 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** 三个 Top5 榜单：下载榜(总排名/total_count) / 在线榜(平均在线排名/avg_online_players) / 投放榜(总排名/total_count) */
-const TOP_LISTS = [
-  { key: 'download', title: '【Top5】下载榜', table: 'dws_taptap_download_rank_monthly', rankCol: 'total_count_rank', valueCol: 'total_count', valueName: '总下载', color: '#7A8B99' },
-  { key: 'online', title: '【Top5】在线榜', table: 'dws_taptap_pc_online_peak_players_rank_monthly', rankCol: 'avg_rank', valueCol: 'avg_online_players', valueName: '平均在线', color: '#9CAF9F' },
-  { key: 'ad', title: '【Top5】投放榜', table: 'dws_taptap_app_landing_ad_rank_monthly', rankCol: 'total_count_rank', valueCol: 'total_count', valueName: '总投放', color: '#C4A4A4' },
+/** 两行榜单：下载榜 / 投放榜（各自再按 昨日 / 本周 / 本月 出 Top5） */
+const RANK_SECTIONS = [
+  {
+    key: 'download',
+    title: '下载榜',
+    table: 'dws_taptap_download_rank',
+    valueExpr: 'download_count',
+    valueName: '下载',
+    color: '#7A8B99',
+  },
+  {
+    key: 'ad',
+    title: '投放榜',
+    table: 'dws_taptap_ad_aggr_v5_rank',
+    valueExpr: '(ad_views + pcebid_views)',
+    valueName: '投放',
+    color: '#C4A4A4',
+  },
+];
+
+/** 榜单周期：rank_type → 标题前缀 */
+const RANK_PERIODS = [
+  { key: 'daily', label: '昨日' },
+  { key: 'weekly', label: '本周' },
+  { key: 'monthly', label: '本月' },
 ];
 
 /** 榜内数值展示：一律取整(均值也不带小数)；万以下用千分位，万以上用中文紧凑单位 */function fmtValue(v) {
@@ -44,28 +72,39 @@ const TOP_LISTS = [
   return formatCompactNumber(n);
 }
 
-/** 榜单 SQL：优先本月，本月无数据时回退到该表最近有数据的月份 */
-function topSql(list, month) {
-  const { table, rankCol, valueCol } = list;
-  return `SELECT app_id, app_name, ${rankCol} AS rk, ${valueCol} AS val, crawled_at
-    FROM ${table}
-    WHERE crawled_at = COALESCE(
-      (SELECT MAX(crawled_at) FROM ${table} WHERE crawled_at = '${month}'),
-      (SELECT MAX(crawled_at) FROM ${table})
-    )
-    ORDER BY ${rankCol} ASC
-    LIMIT 5`;
+/**
+ * 榜单 SQL：一次取三个周期（daily/weekly/monthly）各自最新快照的 Top5。
+ * rank_type 对应的 crawled_at 精度不同：daily=YYYY-MM-DD、weekly=YYYY-WW、monthly=YYYY-MM。
+ */
+function rankSql(section) {
+  const { table, valueExpr } = section;
+  return `SELECT r.rank_type, r.crawled_at, r.app_id, r.app_name, r.icon, r.rank_no, ${valueExpr} AS val
+    FROM ${table} r
+    WHERE r.rank_type IN ('daily', 'weekly', 'monthly')
+      AND r.rank_no <= 5
+      AND r.crawled_at = (
+        SELECT MAX(x.crawled_at) FROM ${table} x WHERE x.rank_type = r.rank_type
+      )
+    ORDER BY r.rank_type, r.rank_no`;
 }
 
-/** 榜单行转换 */
-function toTopRows(rows) {
-  return (rows || []).map((r) => ({
-    appId: r.app_id,
-    name: r.app_name != null ? String(r.app_name) : '-',
-    rank: Number(r.rk),
-    value: r.val == null ? null : Number(r.val),
-    month: r.crawled_at,
-  }));
+/** 榜单行转换：按周期（daily/weekly/monthly）分组，每组带该周期的快照标签 */
+function toRankGroups(rows) {
+  const groups = { daily: { snapshot: null, rows: [] }, weekly: { snapshot: null, rows: [] }, monthly: { snapshot: null, rows: [] } };
+  (rows || []).forEach((r) => {
+    const g = groups[r.rank_type];
+    if (!g) return;
+    g.snapshot = r.crawled_at;
+    g.rows.push({
+      appId: r.app_id,
+      name: r.app_name != null ? String(r.app_name) : '-',
+      icon: r.icon || '',
+      rank: Number(r.rank_no),
+      value: r.val == null ? null : Number(r.val),
+    });
+  });
+  Object.values(groups).forEach((g) => g.rows.sort((a, b) => a.rank - b.rank));
+  return groups;
 }
 
 /** 生成铺满视口的玻璃碎片（每片带随机顶点抖动与飞散方向） */
@@ -128,27 +167,21 @@ export default function OneSearch() {
   const navigate = useNavigate();
   const shards = useShards();
 
-  /* ===== Top5 榜单（本月，v09） ===== */
+  /* ===== 榜单（下载榜 / 投放榜，各自 昨日/本周/本月 的 Top5，v09） ===== */
   const month = useMemo(currentMonth, []);
-  const downloadTopQuery = useChartData(
-    `one-search-top-download-${month}`,
-    () => querySqlV09(topSql(TOP_LISTS[0], month)),
+  const downloadRankQuery = useChartData(
+    'one-search-rank-download',
+    () => querySqlV09(rankSql(RANK_SECTIONS[0])),
     {},
-    { enabled: true, transform: toTopRows },
+    { enabled: true, transform: toRankGroups, staleTime: 5 * 60 * 1000 },
   );
-  const onlineTopQuery = useChartData(
-    `one-search-top-online-${month}`,
-    () => querySqlV09(topSql(TOP_LISTS[1], month)),
+  const adRankQuery = useChartData(
+    'one-search-rank-ad',
+    () => querySqlV09(rankSql(RANK_SECTIONS[1])),
     {},
-    { enabled: true, transform: toTopRows },
+    { enabled: true, transform: toRankGroups, staleTime: 5 * 60 * 1000 },
   );
-  const adTopQuery = useChartData(
-    `one-search-top-ad-${month}`,
-    () => querySqlV09(topSql(TOP_LISTS[2], month)),
-    {},
-    { enabled: true, transform: toTopRows },
-  );
-  const topQueries = [downloadTopQuery, onlineTopQuery, adTopQuery];
+  const rankQueries = { download: downloadRankQuery, ad: adRankQuery };
 
   /* ===== 搜索建议（仅数字，防抖 250ms） ===== */
   useEffect(() => {
@@ -167,6 +200,9 @@ export default function OneSearch() {
         (rows || []).map((r) => ({
           appId: r.app_id,
           name: r.app_name != null ? String(r.app_name) : '-',
+          icon: r.icon || '',
+          distributionType: r.distribution_type ?? null,
+          tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
         })),
     },
   );
@@ -329,10 +365,57 @@ export default function OneSearch() {
                     background: i === activeIndex ? '#F5F7F9' : 'transparent',
                   }}
                 >
-                  <span className="text-muted" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', width: 66, flex: '0 0 auto' }}>
+                  {/* 游戏类型 */}
+                  {(() => {
+                    const meta = PC_GAME_TYPE_META[s.distributionType];
+                    if (!meta) return <span style={{ width: 62, flex: '0 0 auto' }} />;
+                    return (
+                      <span
+                        className="badge"
+                        style={{ backgroundColor: meta.color, color: '#fff', fontSize: 10.5, fontWeight: 500, width: 62, flex: '0 0 auto' }}
+                      >
+                        {meta.label}
+                      </span>
+                    );
+                  })()}
+                  {/* APPID */}
+                  <span className="text-muted" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', width: 62, flex: '0 0 auto' }}>
                     {s.appId}
                   </span>
-                  <span className="text-truncate" style={{ fontSize: 14 }}>{s.name}</span>
+                  {/* 游戏图标 + 名称 */}
+                  <span className="d-flex align-items-center gap-2" style={{ minWidth: 0, flex: '1 1 auto' }}>
+                    <span
+                      className="d-flex align-items-center justify-content-center"
+                      style={{ width: 20, height: 20, borderRadius: 4, background: '#F1F3F5', overflow: 'hidden', flex: '0 0 auto' }}
+                    >
+                      {s.icon && (
+                        <img
+                          src={s.icon}
+                          alt=""
+                          width={20}
+                          height={20}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          style={{ objectFit: 'cover' }}
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      )}
+                    </span>
+                    <span className="text-truncate" style={{ fontSize: 14 }}>{s.name}</span>
+                  </span>
+                  {/* 标签 */}
+                  <span className="d-none d-md-flex align-items-center gap-1" style={{ flex: '0 0 auto' }}>
+                    {(s.tags || []).length === 0 && <span className="text-muted" style={{ fontSize: 11 }}>-</span>}
+                    {(s.tags || []).map((tag, ti) => (
+                      <span
+                        key={`${tag}-${ti}`}
+                        className="badge"
+                        style={{ backgroundColor: ['#7A8B99', '#7D8F7B', '#B08B8B'][ti] || '#8A94A0', color: '#fff', fontSize: 10, fontWeight: 500 }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
                 </div>
               ))}
             </div>
@@ -340,87 +423,105 @@ export default function OneSearch() {
           </div>
         </div>
 
-        {/* Top5 榜单：页面 60% 高度处，与搜索框同宽、三列均分 */}
+        {/* 榜单：两行（下载榜 / 投放榜），每行三列 昨日 / 本周 / 本月 Top5 */}
         <div
           className="position-absolute start-50 translate-middle-x"
-          style={{ top: '50vh', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16 }}
+          /* 紧贴 64px 高的搜索框下方（搜索框在 40vh） */
+          style={{ top: 'calc(40vh + 70px)', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16 }}
         >
-          <div className="d-flex flex-wrap gap-3 align-items-stretch">
-            {TOP_LISTS.map((list, i) => {
-              const q = topQueries[i];
-              const rows = q.data || [];
-              return (
-                <div key={list.key} className="card border-0 shadow-sm" style={{ flex: '1 1 0', minWidth: 0 }}>
-                  <div className="card-body p-3">
-                    <div className="d-flex justify-content-between align-items-baseline mb-2">
-                      <span className="fw-semibold" style={{ fontSize: 13 }}>{list.title}</span>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        {rows[0]?.month || month}
-                      </span>
-                    </div>
+          {RANK_SECTIONS.map((section) => {
+            const q = rankQueries[section.key];
+            const groups = q.data || {};
+            return (
+              <div key={section.key} className="d-flex flex-wrap gap-2 align-items-stretch mb-2">
+                {RANK_PERIODS.map((period) => {
+                  const g = groups[period.key] || { snapshot: null, rows: [] };
+                  const rows = g.rows || [];
+                  return (
+                    <div key={period.key} className="card border-0 shadow-sm" style={{ flex: '1 1 0', minWidth: 0 }}>
+                      <div className="card-body p-2 px-3">
+                        <div className="d-flex justify-content-between align-items-baseline mb-1">
+                          <span className="fw-semibold" style={{ fontSize: 13 }}>
+                            【{section.title}】{period.label}Top5
+                          </span>
+                          <span className="text-muted" style={{ fontSize: 10.5 }}>{g.snapshot || ''}</span>
+                        </div>
 
-                    {q.isLoading && (
-                      <div>
-                        {[0, 1, 2, 3, 4].map((k) => (
+                        {q.isLoading && (
+                          <div>
+                            {[0, 1, 2, 3, 4].map((k) => (
+                              <div key={k} style={{ height: 12, borderRadius: 3, background: '#F1F3F5', margin: '6px 0' }} />
+                            ))}
+                          </div>
+                        )}
+
+                        {!q.isLoading && rows.length === 0 && (
+                          <div className="text-muted" style={{ fontSize: 12, padding: '14px 0', textAlign: 'center' }}>
+                            暂无数据
+                          </div>
+                        )}
+
+                        {!q.isLoading && rows.map((r) => (
                           <div
-                            key={k}
-                            style={{ height: 12, borderRadius: 3, background: '#F1F3F5', margin: '7px 0' }}
-                          />
+                            key={`${section.key}-${period.key}-${r.appId}`}
+                            className="d-flex align-items-center gap-2"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => { setKeyword(String(r.appId)); handleSearch(r.appId); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') { setKeyword(String(r.appId)); handleSearch(r.appId); }
+                            }}
+                            title={`搜索 ${r.name}（${r.appId}）`}
+                            style={{ padding: '1px 0', cursor: busy ? 'default' : 'pointer', lineHeight: 1.5 }}
+                          >
+                            <span
+                              className="d-flex align-items-center justify-content-center fw-semibold"
+                              style={{
+                                width: 17,
+                                height: 17,
+                                borderRadius: 4,
+                                fontSize: 10.5,
+                                flex: '0 0 auto',
+                                background: r.rank <= 3 ? `${section.color}26` : '#F1F3F5',
+                                color: r.rank <= 3 ? section.color : '#8A94A0',
+                              }}
+                            >
+                              {r.rank}
+                            </span>
+                            <span
+                              className="d-flex align-items-center justify-content-center"
+                              style={{ width: 17, height: 17, borderRadius: 4, background: '#F1F3F5', overflow: 'hidden', flex: '0 0 auto' }}
+                            >
+                              {r.icon && (
+                                <img
+                                  src={r.icon}
+                                  alt=""
+                                  width={17}
+                                  height={17}
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  style={{ objectFit: 'cover' }}
+                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                />
+                              )}
+                            </span>
+                            <span className="flex-grow-1 text-truncate" style={{ fontSize: 12, minWidth: 0 }}>{r.name}</span>
+                            <span
+                              className="fw-semibold text-nowrap"
+                              style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }}
+                              title={`${section.valueName}：${formatNumber(r.value, 0)}`}
+                            >
+                              {fmtValue(r.value)}
+                            </span>
+                          </div>
                         ))}
                       </div>
-                    )}
-
-                    {!q.isLoading && rows.length === 0 && (
-                      <div className="text-muted" style={{ fontSize: 12, padding: '18px 0', textAlign: 'center' }}>
-                        本月暂无数据
-                      </div>
-                    )}
-
-                    {!q.isLoading && rows.map((r, idx) => (
-                      <div
-                        key={`${r.appId}-${idx}`}
-                        className="d-flex align-items-center gap-2"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => { setKeyword(String(r.appId)); handleSearch(r.appId); }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') { setKeyword(String(r.appId)); handleSearch(r.appId); }
-                        }}
-                        title={`搜索 ${r.name}（${r.appId}）`}
-                        style={{ padding: '4px 0', cursor: busy ? 'default' : 'pointer' }}
-                      >
-                        <span
-                          className="d-flex align-items-center justify-content-center fw-semibold"
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 4,
-                            fontSize: 11,
-                            flex: '0 0 auto',
-                            background: idx < 3 ? `${list.color}26` : '#F1F3F5',
-                            color: idx < 3 ? list.color : '#8A94A0',
-                          }}
-                        >
-                          {idx + 1}
-                        </span>
-                        <span className="flex-grow-1 d-flex flex-column" style={{ minWidth: 0 }}>
-                          <span className="text-truncate" style={{ fontSize: 13 }}>{r.name}</span>
-                          <span className="text-muted" style={{ fontSize: 10.5, lineHeight: 1.15 }}>{r.appId}</span>
-                        </span>
-                        <span
-                          className="fw-semibold text-nowrap"
-                          style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }}
-                          title={`${list.valueName}：${formatNumber(r.value, r.value != null && !Number.isInteger(r.value) ? 2 : 0)}`}
-                        >
-                          {fmtValue(r.value)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 
