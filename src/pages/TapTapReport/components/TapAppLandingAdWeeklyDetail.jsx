@@ -21,7 +21,7 @@ const SEGMENTS = [
 /**
  * 「TapApp首页广告本周明细」提示标签：悬停弹出一张表
  * （游戏名称+ICON / 标签 / 广告投放次数（Android+iOS+pcebid 堆叠）/ 广告投放趋势）。
- * 数据源 dws_taptap_app_landing_ad_daily，本周一至今逐日聚合；首次悬停才拉数据。
+ * 数据源 dws_taptap_ad_landing_app_v4_daily，本周一至今逐日聚合；首次悬停才拉数据。
  */
 export default function TapAppLandingAdWeeklyDetail() {
   const [pos, setPos] = useState(null);
@@ -85,7 +85,7 @@ export default function TapAppLandingAdWeeklyDetail() {
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: 12 }}>TapApp首页广告本周明细</span>
             <span className="text-muted" style={{ fontSize: 11 }}>
-              dws_taptap_app_landing_ad_daily · 本周一至今 · Top 10
+              dws_taptap_ad_landing_app_v4_daily · 本周一至今 · Top 10
             </span>
           </div>
           <div className="text-muted mb-2" style={{ fontSize: 11 }}>

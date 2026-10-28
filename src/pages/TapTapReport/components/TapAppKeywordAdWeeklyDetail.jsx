@@ -120,7 +120,7 @@ function ChannelTable({ label, color, rows, labels, loading }) {
 
 /**
  * 「TapApp搜索关键词广告」提示标签：悬停弹出三张表（搜索发现 / 热搜 / 热点）。
- * 数据源 dws_taptap_app_keywords_ad_v2_daily，本周一至今逐日聚合；首次悬停才拉数据。
+ * 数据源 dws_taptap_ad_keywords_app_v4_daily，本周一至今逐日聚合；首次悬停才拉数据。
  */
 export default function TapAppKeywordAdWeeklyDetail() {
   const [pos, setPos] = useState(null);
@@ -187,7 +187,7 @@ export default function TapAppKeywordAdWeeklyDetail() {
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: 12 }}>TapApp搜索关键词广告</span>
             <span className="text-muted" style={{ fontSize: 11 }}>
-              dws_taptap_app_keywords_ad_v2_daily · 本周一至今 · Top 15
+              dws_taptap_ad_keywords_app_v4_daily · 本周一至今 · Top 15
             </span>
           </div>
           <div className="text-muted mb-2" style={{ fontSize: 11 }}>

@@ -697,11 +697,8 @@ export function transformAdGameWeeklyTop(rows) {
       appId: r.app_id,
       appName: r.app_name,
       icon: r.icon || '',
+      distributionType: r.distribution_type ?? null,
       tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
-      totalViews: num(r.total_views),
-      appViews: num(r.app_views),
-      pcViews: num(r.pc_views),
-      kwViews: num(r.kw_views),
       adViews,
       appAdViews: num(r.app_ad_views),
       pcAdViews: num(r.pc_ad_views),
@@ -722,21 +719,48 @@ export function transformAdGameDailyTrend(rows) {
   return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
 }
 
+/**
+ * 本周各渠道广告数趋势：按 app_id 生成周一→周日 7 个点（APP首页 / PC首页 / APP搜索关键词）。
+ * 返回 { labels, byApp: { [appId]: { app: [], pc: [], kw: [] } } }，没有数据的日子为 null。
+ */
+export function transformAdGameChannelTrend(rows) {
+  const monday = thisMonday();
+  const dayKeys = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  });
+
+  const byApp = {};
+  (rows || []).forEach((r) => {
+    const idx = dayKeys.indexOf(String(r.day || '').slice(0, 10));
+    if (idx < 0) return;
+    const appId = r.app_id;
+    if (!byApp[appId]) {
+      byApp[appId] = { app: Array(7).fill(null), pc: Array(7).fill(null), kw: Array(7).fill(null) };
+    }
+    byApp[appId].app[idx] = Number(r.app_home || 0);
+    byApp[appId].pc[idx] = Number(r.pc_home || 0);
+    byApp[appId].kw[idx] = Number(r.kw_search || 0);
+  });
+
+  return { labels: WEEKDAY_LABELS, byApp };
+}
+
 /** 全站周汇总 → 与游戏明细行同形状（供 DataTable totalRow 使用；无趋势，趋势在组件里合并） */
 export function transformAdOverviewWeek(rows) {
   const r = (rows || [])[0];
-  if (!r) return null;
+  if (!r || r.total_push == null) return null; // overview_v5 还没数据（SUM 全为 NULL）时不显示汇总行
   const num = (v) => (v === null || v === undefined ? 0 : Number(v) || 0);
   const adViews = num(r.ad_views);
   const pcebidViews = num(r.pcebid_views);
+  if (adViews + pcebidViews === 0) return null;
   return {
     appId: '-',
     appName: '汇总（全站）',
+    distributionType: null,
     tags: [],
-    totalViews: num(r.total_views),
-    appViews: num(r.app_views),
-    pcViews: num(r.pc_views),
-    kwViews: num(r.kw_views),
     adViews,
     appAdViews: num(r.app_ad_views),
     pcAdViews: num(r.pc_ad_views),

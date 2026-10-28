@@ -77,7 +77,7 @@ function DetailTable({ label, color, rows, labels, loading }) {
 
 /**
  * 「TapPC广告本周明细」提示标签：悬停弹出上（Top橱窗广告）下（每日新发现广告）两张表。
- * 数据源 dws_taptap_pc_ad_landing_daily，本周一至今逐日聚合。
+ * 数据源 dws_taptap_ad_landing_pc_v4_daily，本周一至今逐日聚合。
  * 弹框 fixed 定位避免被卡片裁剪；数据在第一次悬停时才拉取，不拖慢页面首屏。
  */
 export default function PcAdWeeklyDetail() {
@@ -138,7 +138,7 @@ export default function PcAdWeeklyDetail() {
           <div className="d-flex align-items-center justify-content-between mb-2">
             <span className="fw-semibold" style={{ fontSize: 12 }}>TapPC广告本周明细</span>
             <span className="text-muted" style={{ fontSize: 11 }}>
-              dws_taptap_pc_ad_landing_daily · 本周一至今
+              dws_taptap_ad_landing_pc_v4_daily · 本周一至今
             </span>
           </div>
           <div className="text-muted mb-2" style={{ fontSize: 11 }}>

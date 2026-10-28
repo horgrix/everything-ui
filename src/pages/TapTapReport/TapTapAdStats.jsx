@@ -14,6 +14,7 @@ import {
   buildAdShareByWeekSql,
   buildAdGameWeeklyTopSql,
   buildAdAggrGameDailyTrendSql,
+  buildAdGameChannelTrendSql,
   buildAdOverviewWeekSql,
   buildAdOverviewDailyTrendSql,
   buildAdRankWeekSql,
@@ -27,6 +28,7 @@ import {
   transformAdAggrDailyTrend,
   transformAdShareByWeek,
   transformAdGameWeeklyTop,
+  transformAdGameChannelTrend,
   transformAdGameDailyTrend,
   transformAdOverviewWeek,
   transformAdOverviewDailyTrend,
@@ -38,10 +40,11 @@ import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import RankTopCard from './components/RankTopCard';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
+import GameChannelTrendTip from './components/GameChannelTrendTip';
 import PcAdWeeklyDetail from './components/PcAdWeeklyDetail';
 import TapAppLandingAdWeeklyDetail from './components/TapAppLandingAdWeeklyDetail';
 import TapAppKeywordAdWeeklyDetail from './components/TapAppKeywordAdWeeklyDetail';
-import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl } from './shared';
+import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl, PC_GAME_TYPE_META } from './shared';
 
 /**
  * 指标定义：本周实线加粗（深色）、上周虚线细线（浅色），全部走左 Y 轴。
@@ -77,14 +80,6 @@ const PLATFORM_COLORS = { app: '#f08c00', pc: '#7209b7', kw: '#d6336c' };
 /** 游戏明细表里的 spark 列：每列一条堆叠条，segments 依次为自左向右的堆叠段 */
 const SPARK_COLUMNS = [
   {
-    header: '曝光构成',
-    segs: [
-      { label: 'APP首页曝光', field: 'appViews', color: PLATFORM_COLORS.app },
-      { label: 'PC首页曝光', field: 'pcViews', color: PLATFORM_COLORS.pc },
-      { label: '搜索页曝光', field: 'kwViews', color: PLATFORM_COLORS.kw },
-    ],
-  },
-  {
     header: '商业AD',
     segs: [
       { label: 'APP商业广告', field: 'appAdViews', color: PLATFORM_COLORS.app },
@@ -111,6 +106,18 @@ const SPARK_COLUMNS = [
 
 /** 本周游戏明细 Top20 列配置 */
 const GAME_TOP_COLUMNS = [
+  {
+    header: '游戏类型',
+    align: 'center',
+    width: '7%',
+    help: 'distribution_type：0 = 商业游戏，1 = 创意工坊，2 = TapMaker',
+    accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? '',
+    render: (r) => {
+      const meta = PC_GAME_TYPE_META[r.distributionType];
+      if (!meta) return <span className="text-muted">-</span>;
+      return <span className="badge" style={{ backgroundColor: meta.color, color: '#fff', fontWeight: 500 }}>{meta.label}</span>;
+    },
+  },
   {
     header: 'APPID',
     width: '6%',
@@ -168,7 +175,6 @@ const GAME_TOP_COLUMNS = [
       return <span className={`badge ${cls}`}>{r.lastWeekRank}</span>;
     },
   },
-  { header: '总曝光', align: 'end', width: '6%', accessor: (r) => r.totalViews, render: (r) => <span>{formatNumber(r.totalViews)}</span> },
   ...SPARK_COLUMNS.map((col) => ({
     header: col.header,
     align: 'center',
@@ -188,10 +194,17 @@ const GAME_TOP_COLUMNS = [
     ),
   },
   {
+    header: '详细趋势',
+    align: 'center',
+    width: '5%',
+    help: '本周三渠道每日广告数折线：APP首页(app_ad_views+app_pcebid_views) / PC首页(pc_ad_views+pc_pcebid_views) / APP搜索关键词(kw_ad_views+kw_pcebid_views)',
+    render: (r) => (r.channelTrend ? <GameChannelTrendTip appName={r.appName} trend={r.channelTrend} labels={WEEKDAYS} /> : <span className="text-muted">-</span>),
+  },
+  {
     header: '广告贡献度',
     align: 'center',
     width: '9%',
-    help: '广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行 total_push，来自 dws_taptap_ad_overview_v4_daily）',
+    help: '广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行 total_push，来自 dws_taptap_ad_overview_v5_daily）',
     render: (r) => <PercentBar value={r.share} color="#8FA3B0" />,
   },
 ];
@@ -311,6 +324,15 @@ export default function TapTapAdStats() {
     { enabled: true },
   );
 
+  // 详细趋势：本周每日三渠道广告数（APP首页 / PC首页 / APP搜索关键词）
+  const gameChannelTrendQuery = useSqlQuery(
+    'taptap-ad-game-channel-trend',
+    buildAdGameChannelTrendSql,
+    [],
+    transformAdGameChannelTrend,
+    { enabled: true },
+  );
+
   const overviewWeekQuery = useSqlQuery(
     'taptap-ad-overview-week',
     buildAdOverviewWeekSql,
@@ -405,16 +427,18 @@ export default function TapTapAdStats() {
     const labels = trend?.labels || [];
     const overviewPush = overviewWeekQuery.data?.totalPush || 0;
     const rank = rankWeekQuery.data?.count ? rankWeekQuery.data : rankDerivedQuery.data;
+    const channelByApp = gameChannelTrendQuery.data?.byApp || {};
     return list.map((r) => ({
       ...r,
       trend: trend?.thisWeek?.[r.appId] || [],
       prevTrend: trend?.lastWeek?.[r.appId] || [],
       trendLabels: labels,
+      channelTrend: channelByApp[r.appId] || null,
       // 广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行）
       share: overviewPush > 0 ? (r.totalPush / overviewPush) * 100 : null,
       lastWeekRank: rank?.byAppId?.[r.appId] ?? null,
     }));
-  }, [gameTopQuery.data, gameTrendQuery.data, overviewWeekQuery.data, rankWeekQuery.data, rankDerivedQuery.data]);
+  }, [gameTopQuery.data, gameTrendQuery.data, gameChannelTrendQuery.data, overviewWeekQuery.data, rankWeekQuery.data, rankDerivedQuery.data]);
 
   /** 汇总行：全站本周合计（overview 表），趋势同样取全站每日总投放 */
   const overviewTotalRow = useMemo(() => {
@@ -548,7 +572,7 @@ export default function TapTapAdStats() {
           </div>
           <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
             <span className="text-muted small">
-              按「总投放」倒序 → 「总曝光」倒序取前 20；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
+              按「总投放」倒序取前 20；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
             </span>
             <span className="text-muted small">数据范围：本周（{thisWeekWhere(0)} 起）</span>
             <span className="text-muted small">
