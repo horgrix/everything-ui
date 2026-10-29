@@ -399,12 +399,12 @@ export function buildTop25DetailSql(table, windowStr, hourFilter, dayFilter, ord
   `;
 }
 
-/** 构建游戏名称映射 SQL（当前月份） */
+/** 构建游戏信息映射 SQL（当前月份）：名称 + icon + 三个标签 */
 export function buildGameNameSql() {
   const now = new Date();
   const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   return `
-    SELECT app_id, app_name
+    SELECT app_id, app_name, icon, tag_1, tag_2, tag_3
     FROM dws_taptap_game
     WHERE crawled_at = '${monthStr}'
   `;

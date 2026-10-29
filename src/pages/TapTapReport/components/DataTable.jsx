@@ -76,6 +76,18 @@ function HeaderHelp({ help }) {
 const RANK_COLUMN_ID = '__rank__';
 
 /**
+ * 列宽样式：width 作为基准宽度；minWidth 可选，用于在窄容器里兜住不可压缩的列
+ * （如 APPID 不能被压成省略号），不足时由外层 .table-responsive 横向滚动。
+ */
+const colWidthStyle = (c) => {
+  if (!c.width && !c.minWidth) return undefined;
+  return {
+    ...(c.width ? { width: c.width, maxWidth: c.width } : {}),
+    ...(c.minWidth ? { minWidth: c.minWidth } : c.width ? { minWidth: c.width } : {}),
+  };
+};
+
+/**
  * 通用数据表格（列配置驱动 + 排名列 + 排序 + 全局搜索 + 分页）
  * @param {Array} rows 数据行
  * @param {Array} columns [{ header, align?: 'end', accessor?: (row)=>any, render(row) }]
@@ -84,7 +96,7 @@ const RANK_COLUMN_ID = '__rank__';
  * 排序：有 accessor 的列表头可点击，循环「升序 → 降序 → 取消」，表头显示 ▲/▼。
  * 筛选：顶部全局搜索框，对「有 accessor 的列」取值做忽略大小写的 contains 匹配。
  */
-export default function DataTable({ rows, columns, pageSize = 5, totalRow = null, fixedLayout = false, rankColWidth = 60 }) {
+export default function DataTable({ rows, columns, pageSize = 5, totalRow = null, fixedLayout = false, rankColWidth = 60, tableClassName = '' }) {
   const [page, setPage] = useState(1);
   const [sorting, setSorting] = useState([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -157,7 +169,7 @@ export default function DataTable({ rows, columns, pageSize = 5, totalRow = null
       </div>
 
       <div className="table-responsive">
-        <table className="table table-hover align-middle mb-0" style={fixedLayout ? { tableLayout: 'fixed' } : undefined}>
+        <table className={`table table-hover align-middle mb-0 ${tableClassName}`} style={fixedLayout ? { tableLayout: 'fixed' } : undefined}>
           <thead className="table-light">
             <tr>
               <th className="text-center" style={{ width: rankColWidth }}>#</th>
@@ -173,7 +185,7 @@ export default function DataTable({ rows, columns, pageSize = 5, totalRow = null
                     role={sortable ? 'button' : undefined}
                     style={{
                       ...(sortable ? { cursor: 'pointer', userSelect: 'none' } : {}),
-                      ...(c.width ? { width: c.width, minWidth: c.width, maxWidth: c.width } : {}),
+                      ...colWidthStyle(c),
                     }}
                   >
                     {c.header}
@@ -199,7 +211,7 @@ export default function DataTable({ rows, columns, pageSize = 5, totalRow = null
                       <RankBadge rank={rank} />
                     </td>
                     {columns.map((c, i) => (
-                      <td key={c.header || `col-${i}`} className={c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} style={c.width ? { width: c.width, minWidth: c.width, maxWidth: c.width } : undefined}>{c.render(row)}</td>
+                      <td key={c.header || `col-${i}`} className={c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} style={colWidthStyle(c)}>{c.render(row)}</td>
                     ))}
                   </tr>
                 );
@@ -215,7 +227,7 @@ export default function DataTable({ rows, columns, pageSize = 5, totalRow = null
               <tr>
                 <td className="text-center" style={{ width: rankColWidth }}>Σ</td>
                 {columns.map((c, i) => (
-                  <td key={c.header || `col-${i}`} className={c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} style={c.width ? { width: c.width, minWidth: c.width, maxWidth: c.width } : undefined}>
+                  <td key={c.header || `col-${i}`} className={c.align === 'end' ? 'text-end' : c.align === 'center' ? 'text-center' : ''} style={colWidthStyle(c)}>
                     {c.render ? c.render(totalRow) : ''}
                   </td>
                 ))}

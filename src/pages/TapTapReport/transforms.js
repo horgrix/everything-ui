@@ -117,11 +117,16 @@ export function transformTop25Detail(rows) {
   };
 }
 
-/** 游戏名称映射（app_id -> app_name） */
+/** 游戏信息映射（app_id -> { name, icon, tags }） */
 export function transformGameNameMap(rows) {
   const map = {};
   (rows || []).forEach((r) => {
-    if (r.app_id != null) map[String(r.app_id)] = r.app_name;
+    if (r.app_id == null) return;
+    map[String(r.app_id)] = {
+      name: r.app_name != null ? String(r.app_name) : '',
+      icon: r.icon || '',
+      tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
+    };
   });
   return map;
 }

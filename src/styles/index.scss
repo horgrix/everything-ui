@@ -189,3 +189,12 @@ footer {
   font-weight: 800;
   letter-spacing: 3px;
 }
+
+// 下载Top25明细表：窄卡片（1/3 宽）里压缩单元格左右内边距，保证 APPID 等窄列不被挤压
+.top25-table {
+  th,
+  td {
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+}

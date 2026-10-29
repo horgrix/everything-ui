@@ -30,7 +30,7 @@ import {
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import KpiRow from './components/KpiRow';
-import { truncateName, AD_MATERIAL_COLORS } from './shared';
+import { AD_MATERIAL_COLORS, APP_AD_TAG_COLORS, GameIcon, taptapAppUrl } from './shared';
 
 /** 时间范围快捷选项 */
 const TIME_RANGES = [
@@ -102,13 +102,102 @@ const TOP25_DETAIL_TABLES = {
   maker: { title: '下载Top25明细(TapMaker)', hourFilter: 'distribution_type = 2', dayFilter: 'ai_maker_download_count > 0', orderBy: 'ai_maker_download_count' },
 };
 
-/** 下载Top25明细表格列（游戏名称从全局映射获取） */
-const TOP25_DETAIL_COLUMNS = (gameNameMap) => [
-  { header: 'AppID', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
-  { header: '游戏名称', width: 170, accessor: (r) => gameNameMap?.[String(r.appId)] || '', render: (r) => { const name = gameNameMap?.[String(r.appId)] || ''; return <span className="fw-semibold" title={name || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(name)}</span>; } },
-  { header: '下载数', align: 'end', accessor: (r) => r.downloadCount, render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> },
-  { header: '时间', accessor: (r) => r.crawledAt, render: (r) => <span className="text-muted small">{r.crawledAt}</span> },
-];
+/** OneSearch 线索查询地址（用 APPID 拼接） */
+const ONESEARCH_REPORT_URL = 'https://data.horgrix.com/one-search/report';
+
+/**
+ * 下载Top25明细表格列（游戏名称 / icon / 标签 从全局映射获取）
+ * @param {Object} gameMap app_id -> { name, icon, tags }
+ * @param {boolean} withOneSearch 是否在「下载数」后追加 OneSearch 跳转列（仅 APP / PC 两张宽表）
+ */
+const TOP25_DETAIL_COLUMNS = (gameMap, withOneSearch = false) => {
+  // 多一列时分摊宽度：6(#) / 13 / 18 / 30 / 16 / 17（OneSearch 表头较宽，需 17%）
+  const W = withOneSearch
+    ? { appId: '13%', tags: '18%', name: '30%', count: '16%', search: '17%' }
+    : { appId: '15%', tags: '23%', name: '36%', count: '20%' };
+
+  return [
+    {
+      header: 'AppID',
+      width: W.appId,
+      accessor: (r) => r.appId,
+      render: (r) => (
+        <a
+          href={taptapAppUrl(r.appId)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-decoration-none small"
+          style={{ color: '#4361ee', whiteSpace: 'nowrap' }}
+          title={`在 TapTap 打开（APPID ${r.appId}）`}
+        >
+          {r.appId}
+        </a>
+      ),
+    },
+    {
+      header: '标签',
+      width: W.tags,
+      accessor: (r) => (gameMap?.[String(r.appId)]?.tags || []).join(' '),
+      render: (r) => {
+        const tags = gameMap?.[String(r.appId)]?.tags || [];
+        if (!tags.length) return <span className="text-muted">-</span>;
+        return (
+          <div className="d-flex flex-wrap gap-1">
+            {tags.map((tag, i) => (
+              <span
+                key={`${tag}-${i}`}
+                className="badge"
+                style={{ backgroundColor: APP_AD_TAG_COLORS[`tag${i + 1}`], color: '#fff', fontSize: 10, padding: '2px 5px', fontWeight: 500 }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      header: '游戏名称',
+      width: W.name,
+      accessor: (r) => gameMap?.[String(r.appId)]?.name || '',
+      render: (r) => {
+        const meta = gameMap?.[String(r.appId)];
+        const name = meta?.name || '';
+        return (
+          <span className="d-inline-flex align-items-center gap-2" title={name || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
+            <GameIcon src={meta?.icon} size={20} alt={name ? `${name} 图标` : ''} />
+            <span className="fw-semibold" style={{ display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+              {name || '-'}
+            </span>
+          </span>
+        );
+      },
+    },
+    { header: '下载数', align: 'end', width: W.count, accessor: (r) => r.downloadCount, render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> },
+    ...(withOneSearch
+      ? [
+          {
+            header: 'OneSearch',
+            align: 'center',
+            width: W.search,
+            render: (r) => (
+              <a
+                href={`${ONESEARCH_REPORT_URL}?q=${r.appId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-decoration-none d-inline-flex align-items-center gap-1"
+                style={{ color: '#4361ee', fontSize: 12, whiteSpace: 'nowrap' }}
+                title={`在 OneSearch 查询 ${r.appId} 的下载 / 在线 / 投放数据`}
+              >
+                <i className="bi bi-search" aria-hidden="true"></i>
+                Search
+              </a>
+            ),
+          },
+        ]
+      : []),
+  ];
+};
 
 /** 下载Top25明细查询 hook（按窗口 + 过滤条件） */
 function useTop25DetailQuery(key, table, selectedTable, selectedWindow, enabled) {
@@ -320,7 +409,13 @@ export default function DownloadStats() {
                   <UpdateTag text={windowUpdateLabel} />
                 </div>
               </div>
-              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
+              <DataTable
+                rows={top25DetailQueries[key].data?.rows || []}
+                columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data, true)}
+                tableClassName="top25-table"
+                fixedLayout
+                rankColWidth="6%"
+              />
             </div>
           </div>
         ))}
@@ -337,7 +432,7 @@ export default function DownloadStats() {
                   <UpdateTag text={windowUpdateLabel} />
                 </div>
               </div>
-              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} />
+              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} tableClassName="top25-table" fixedLayout rankColWidth="6%" />
             </div>
           </div>
         ))}
