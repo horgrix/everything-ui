@@ -5,11 +5,6 @@ import { querySqlV09 } from '../../api/query';
 import { PC_GAME_TYPE_META } from '../TapTapReport/shared';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 
-/** 加载时长（毫秒） */
-const LOADING_MS = 3000;
-/** 玻璃碎裂动画时长（需与 index.scss 里 osShardFly 保持一致） */
-const SHATTER_MS = 780;
-
 /**
  * 搜索建议 SQL（dws_taptap_game）：仅数字前缀匹配（该接口不支持 LIKE，用 LEFT() 做前缀比较）。
  * 取最新月份快照，按 app_id 合并，带出游戏类型、图标与三级标签。
@@ -107,65 +102,17 @@ function toRankGroups(rows) {
   return groups;
 }
 
-/** 生成铺满视口的玻璃碎片（每片带随机顶点抖动与飞散方向） */
-function useShards(cols = 6, rows = 4) {
-  return useMemo(() => {
-    const list = [];
-    const w = 100 / cols;
-    const h = 100 / rows;
-    const jitter = (span) => (Math.random() - 0.5) * span;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const left = c * w;
-        const top = r * h;
-        const pts = [
-          [left + jitter(w * 0.5), top + jitter(h * 0.5)],
-          [left + w + jitter(w * 0.5), top + jitter(h * 0.5)],
-          [left + w + jitter(w * 0.5), top + h + jitter(h * 0.5)],
-          [left + jitter(w * 0.5), top + h + jitter(h * 0.5)],
-        ]
-          .map(([x, y]) => `${x.toFixed(2)}% ${y.toFixed(2)}%`)
-          .join(', ');
-
-        // 距画面中心的距离决定飞散力度，整体向外炸开
-        const cx = left + w / 2;
-        const cy = top + h / 2;
-        const spread = 1.9;
-        list.push({
-          key: `${r}-${c}`,
-          left,
-          top,
-          w,
-          h,
-          clipPath: `polygon(${pts})`,
-          dx: `${(((cx - 50) * spread) + jitter(12)).toFixed(1)}vw`,
-          dy: `${(((cy - 50) * spread) + jitter(12)).toFixed(1)}vh`,
-          rot: `${((Math.random() - 0.5) * 120).toFixed(0)}deg`,
-          delay: `${Math.round(Math.random() * 90)}ms`,
-        });
-      }
-    }
-    return list;
-  }, [cols, rows]);
-}
-
 /**
- * One Search：标题 + 搜索框；点击 Search 后加载 3 秒（0→100%），
- * 随后整页玻璃碎裂并进入报表页面。
+ * One Search：标题 + 搜索框 + 榜单；点击 Search 直接进入报表页，
+ * 加载过场（0→100% + 玻璃碎裂）改由 SearchView 加载数据时播放。
  */
 export default function OneSearch() {
   const [keyword, setKeyword] = useState('');
   const [focused, setFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [debounced, setDebounced] = useState('');
-  const [phase, setPhase] = useState('idle'); // idle | loading | shatter
-  const [percent, setPercent] = useState(0);
   const inputRef = useRef(null);
-  const rafRef = useRef(0);
-  const timeoutsRef = useRef([]);
   const navigate = useNavigate();
-  const shards = useShards();
 
   /* ===== 榜单（下载榜 / 投放榜，各自 昨日/本周/本月 的 Top5，v09） ===== */
   const month = useMemo(currentMonth, []);
@@ -211,40 +158,13 @@ export default function OneSearch() {
 
   useEffect(() => {
     inputRef.current?.focus();
-    const timeouts = timeoutsRef.current;
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      timeouts.forEach(clearTimeout);
-    };
   }, []);
 
   const handleSearch = (override) => {
     const value = String(override ?? keyword).trim();
-    if (!value || phase !== 'idle') return;
-
-    setPhase('loading');
-    setPercent(0);
-    const start = performance.now();
-
-    const step = (now) => {
-      const p = Math.min(100, ((now - start) / LOADING_MS) * 100);
-      setPercent(p);
-      if (p < 100) {
-        rafRef.current = requestAnimationFrame(step);
-        return;
-      }
-      // 加载完成 → 玻璃碎裂 → 进入报表页
-      setPhase('shatter');
-      timeoutsRef.current.push(
-        setTimeout(() => {
-          navigate(`/one-search/report?q=${encodeURIComponent(value)}`);
-        }, SHATTER_MS)
-      );
-    };
-    rafRef.current = requestAnimationFrame(step);
+    if (!value) return;
+    navigate(`/one-search/report?q=${encodeURIComponent(value)}`);
   };
-
-  const busy = phase === 'loading' || phase === 'shatter';
 
   /** 选中搜索建议 → 直接走搜索流程 */
   const pickSuggestion = (item) => {
@@ -274,7 +194,7 @@ export default function OneSearch() {
     }
   };
 
-  const showSuggest = focused && !busy && keyword.trim().length > 0;
+  const showSuggest = focused && keyword.trim().length > 0;
 
   return (
     <>
@@ -305,7 +225,6 @@ export default function OneSearch() {
               className="form-control form-control-lg"
               placeholder="输入 APPID 搜索，如 961780"
               value={keyword}
-              disabled={busy}
               onChange={(e) => {
                 setKeyword(e.target.value.replace(/\D/g, ''));
                 setActiveIndex(-1);
@@ -320,7 +239,6 @@ export default function OneSearch() {
               type="button"
               className="btn btn-primary btn-lg px-4 fw-semibold"
               onClick={() => handleSearch()}
-              disabled={busy}
               style={{ height: 64, fontSize: 18 }}
             >
               Search
@@ -472,7 +390,7 @@ export default function OneSearch() {
                               if (e.key === 'Enter' || e.key === ' ') { setKeyword(String(r.appId)); handleSearch(r.appId); }
                             }}
                             title={`搜索 ${r.name}（${r.appId}）`}
-                            style={{ padding: '1px 0', cursor: busy ? 'default' : 'pointer', lineHeight: 1.5 }}
+                            style={{ padding: '1px 0', cursor: 'pointer', lineHeight: 1.5 }}
                           >
                             <span
                               className="d-flex align-items-center justify-content-center fw-semibold"
@@ -525,44 +443,6 @@ export default function OneSearch() {
         </div>
       </div>
 
-      {/* 加载遮罩（固定 3 秒，百分比 0→100） */}
-      {busy && (
-        <div className="os-overlay">
-          <div
-            className="text-white fw-bold"
-            style={{ fontSize: 96, lineHeight: 1, letterSpacing: 2, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {Math.round(percent)}%
-          </div>
-          <div style={{ width: 280, height: 4, background: 'rgba(255,255,255,0.18)', borderRadius: 2, overflow: 'hidden', marginTop: 20 }}>
-            <div style={{ width: `${percent}%`, height: '100%', background: '#fff' }} />
-          </div>
-          <div className="text-white-50 mt-3 small">正在检索「{keyword.trim()}」…</div>
-        </div>
-      )}
-
-      {/* 玻璃碎裂 */}
-      {phase === 'shatter' && (
-        <div className="os-shard-stage">
-          {shards.map((s) => (
-            <div
-              key={s.key}
-              className="os-shard"
-              style={{
-                left: `${s.left}%`,
-                top: `${s.top}%`,
-                width: `${s.w}%`,
-                height: `${s.h}%`,
-                clipPath: s.clipPath,
-                animationDelay: s.delay,
-                '--os-dx': s.dx,
-                '--os-dy': s.dy,
-                '--os-rot': s.rot,
-              }}
-            />
-          ))}
-        </div>
-      )}
     </>
   );
 }

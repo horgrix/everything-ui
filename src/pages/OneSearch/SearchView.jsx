@@ -6,6 +6,7 @@ import BrushLineChart from '../../components/charts/BrushLineChart';
 import DashboardCard from '../../components/layout/DashboardCard';
 import { PC_GAME_TYPE_META } from '../TapTapReport/shared';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
+import SearchLoadingOverlay from './SearchLoadingOverlay';
 
 
 /** 头像底色（取自色库） */
@@ -630,8 +631,19 @@ export default function SearchView() {
     }
   );
 
+  // 【加载过场】首屏四块数据（基本信息 / 在线人数 / 下载卡 / 广告卡）就绪进度，
+  // 进入页面时播放 0→100% + 玻璃碎裂动画，数据齐了自动收起
+  const bootQueries = [infoQuery, peakQuery, downloadRankQuery, adKpiRankQuery];
+  const bootDone = bootQueries.filter((q) => !q.isLoading).length;
+  const bootReady = bootDone === bootQueries.length;
+
   return (
     <div className="container-fluid p-4">
+      <SearchLoadingOverlay
+        progress={bootDone / bootQueries.length}
+        ready={bootReady}
+        label={`正在检索「${keyword || '—'}」的数据…`}
+      />
       <h2 className="fw-bold mb-1">
         <i className="bi bi-search text-primary me-2"></i>
         游戏线索查询
