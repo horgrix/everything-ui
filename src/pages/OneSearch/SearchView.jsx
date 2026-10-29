@@ -280,6 +280,143 @@ function RankedStatCard({ title, value, subtitle, rank, rankLabel, color = '#8FA
   );
 }
 
+/** 昨天日期，'YYYY-MM-DD' */
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 概览周期：昨日 / 本周 / 本月 → 活跃游戏统计的 period_type */
+const OVERVIEW_PERIODS = [
+  { key: 'daily', label: '昨日' },
+  { key: 'weekly', label: '本周' },
+  { key: 'monthly', label: '本月' },
+];
+
+/**
+ * 整体数据概览（dws_taptap_active_game_stat）：各周期内有下载 / 有投放记录的游戏数
+ */
+function DataOverviewPanel({ data }) {
+  const groups = [
+    { key: 'download', title: '下载概览：有下载数据游戏数量', field: 'download', icon: 'bi-download', color: '#7D8F7B' },
+    { key: 'ad', title: '投放概览：有投放统计游戏数量', field: 'ad', icon: 'bi-bullseye', color: '#BFAE8E' },
+  ];
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-body d-flex flex-column">
+        <div className="d-flex align-items-center gap-2 mb-3">
+          <span
+            className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
+            style={{ width: 38, height: 38, backgroundColor: '#9B93A8' }}
+          >
+            <i className="bi bi-bar-chart-line" style={{ fontSize: 18 }}></i>
+          </span>
+          <div>
+            <div className="fw-semibold" style={{ fontSize: 15 }}>
+              整体数据概览
+            </div>
+            <div className="text-muted" style={{ fontSize: 11 }}>
+              各周期内有记录的游戏数
+            </div>
+          </div>
+        </div>
+
+        {groups.map((g, gi) => (
+          <div key={g.key} className={gi === groups.length - 1 ? '' : 'mb-3'}>
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <span
+                className="rounded-2 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
+                style={{ width: 20, height: 20, backgroundColor: g.color }}
+              >
+                <i className={`bi ${g.icon}`} style={{ fontSize: 11 }}></i>
+              </span>
+              <span className="fw-semibold" style={{ fontSize: 12 }}>
+                {g.title}
+              </span>
+            </div>
+            <div className="row g-2">
+              {OVERVIEW_PERIODS.map((p) => {
+                const value = data?.[p.key]?.[g.field];
+                return (
+                  <div className="col-4" key={p.key}>
+                    <div className="rounded-3 px-2 py-2 text-center" style={{ background: '#F5F7F9' }}>
+                      <div className="text-muted" style={{ fontSize: 11, lineHeight: 1.4 }}>
+                        {p.label}
+                      </div>
+                      <div className="fw-bold" style={{ fontSize: 18, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
+                        {value != null ? formatNumber(value) : '-'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 数据口径说明面板（放在「游戏基本信息」卡片右侧） */
+function DataNotePanel() {
+  const cutoff = yesterdayStr();
+  const notes = { daily: '代表昨日', weekly: '代表本周截至昨日', monthly: '代表本月截至昨日' };
+
+  return (
+    <div className="card border-0 shadow-sm h-100">
+      <div className="card-body">
+        {/* 数据截至日 */}
+        <div className="d-flex align-items-center gap-3 mb-3">
+          <span
+            className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
+            style={{ width: 38, height: 38, backgroundColor: '#7A8B99' }}
+          >
+            <i className="bi bi-calendar-check" style={{ fontSize: 18 }}></i>
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div className="text-muted" style={{ fontSize: 12 }}>
+              数据截至日
+            </div>
+            <div className="fw-bold" style={{ fontSize: 20, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+              {cutoff}
+            </div>
+          </div>
+        </div>
+
+        {/* 数据说明 */}
+        <div
+          className="d-flex align-items-start gap-2 rounded-3 px-2 py-2 mb-3"
+          style={{ background: '#F5F7F9', color: '#6C757D', fontSize: 12, lineHeight: 1.6 }}
+        >
+          <i className="bi bi-info-circle mt-1 flex-shrink-0"></i>
+          <span>本页面是离线计算数据，不包含今日最新的实时数据</span>
+        </div>
+
+        {/* 榜单口径 */}
+        <div className="d-flex flex-column gap-2 pt-3 border-top">
+          {RANK_PERIODS.map((p) => (
+            <div key={p.key} className="d-flex align-items-center gap-2">
+              <span
+                className="badge rounded-3 flex-shrink-0 fw-semibold"
+                style={{ backgroundColor: p.color, color: '#fff', minWidth: 44, fontSize: 11, padding: '4px 6px' }}
+              >
+                {p.label}
+              </span>
+              <span className="text-muted" style={{ fontSize: 12 }}>
+                {notes[p.key]}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 脚印图形（指向右） */
 function FootSvg() {
   return (
@@ -406,6 +543,37 @@ export default function SearchView() {
     }
   );
   const peak = peakQuery.data;
+
+  // 【整体数据概览】dws_taptap_active_game_stat：日/周/月各自最新快照的「有下载 / 有投放」游戏数
+  const activeStatQuery = useChartData(
+    'one-search-active-game-stat',
+    () =>
+      querySqlV09(
+        `SELECT r.period_type, r.crawled_at, r.ad_app_cnt, r.download_app_cnt
+         FROM dws_taptap_active_game_stat r
+         WHERE r.period_type IN ('daily', 'weekly', 'monthly')
+           AND r.crawled_at = (
+             SELECT MAX(x.crawled_at) FROM dws_taptap_active_game_stat x WHERE x.period_type = r.period_type
+           )`
+      ),
+    {},
+    {
+      enabled: true,
+      staleTime: 5 * 60 * 1000,
+      transform: (rows) => {
+        if (!rows || rows.length === 0) return null;
+        const out = {};
+        for (const r of rows) {
+          out[r.period_type] = {
+            snapshot: r.crawled_at,
+            download: r.download_app_cnt == null ? null : Number(r.download_app_cnt),
+            ad: r.ad_app_cnt == null ? null : Number(r.ad_app_cnt),
+          };
+        }
+        return Object.keys(out).length ? out : null;
+      },
+    }
+  );
 
   // 【下载量 / 下载排名】dws_taptap_download_rank：一次取 日 / 周 / 月 三个周期的最新快照
   // 该表 crawled_at 精度随 rank_type 变化：daily=YYYY-MM-DD、weekly=YYYY-WW、monthly=YYYY-MM
@@ -633,7 +801,7 @@ export default function SearchView() {
 
   // 【加载过场】首屏四块数据（基本信息 / 在线人数 / 下载卡 / 广告卡）就绪进度，
   // 进入页面时播放 0→100% + 玻璃碎裂动画，数据齐了自动收起
-  const bootQueries = [infoQuery, peakQuery, downloadRankQuery, adKpiRankQuery];
+  const bootQueries = [infoQuery, peakQuery, downloadRankQuery, adKpiRankQuery, activeStatQuery];
   const bootDone = bootQueries.filter((q) => !q.isLoading).length;
   const bootReady = bootDone === bootQueries.length;
 
@@ -664,15 +832,24 @@ export default function SearchView() {
                 <GameInfoCard
                   game={g}
                   ranks={[
-                    { label: '总下载', fullLabel: '总下载排名（本月）', rank: downloadMonth ? downloadMonth.rankTotal : null, color: '#7A8B99' },
-                    { label: '峰值在线', fullLabel: '峰值在线排名', rank: onlineRank ? onlineRank.peakRank : null, color: '#8FA3B0' },
-                    { label: '总投放次数', fullLabel: '总投放次数排名（本月）', rank: adMonth ? adMonth.rankTotal : null, color: '#C9B79C' },
+                    { label: '月榜：总下载', fullLabel: '总下载排名（月榜）', rank: downloadMonth ? downloadMonth.rankTotal : null, color: '#7A8B99' },
+                    { label: '月榜：峰值在线', fullLabel: '峰值在线排名（月榜）', rank: onlineRank ? onlineRank.peakRank : null, color: '#8FA3B0' },
+                    { label: '月榜：总投放次数', fullLabel: '总投放次数排名（月榜）', rank: adMonth ? adMonth.rankTotal : null, color: '#C9B79C' },
                   ]}
                 />
               </div>
             ))}
-            <div className="col-12 col-xl-8 d-none d-xl-block">
-              <FootprintTrail />
+            <div className="col-12 col-md-6 col-xl-4">
+              <DataOverviewPanel data={activeStatQuery.data} />
+            </div>
+            <div className="col-12 col-md-6 col-xl-4">
+              <DataNotePanel />
+            </div>
+            {/* 装饰：脚印 + 放大镜，居中一小条（原占满右侧空白，现让位给说明面板） */}
+            <div className="col-12 d-none d-xl-flex justify-content-center">
+              <div style={{ width: 360, height: 90 }}>
+                <FootprintTrail />
+              </div>
             </div>
           </div>
         ) : (
