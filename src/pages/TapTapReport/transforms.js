@@ -12,38 +12,6 @@ export function transformAggregate(rows) {
   };
 }
 
-/** 游戏详情趋势（三条折线：总下载数实线 + PC/移动虚线） */
-export function transformDetail(rows) {
-  if (!rows || !rows.length) return { series: [], categories: [], appName: null };
-  const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
-  const categories = sorted.map((r) => r.crawled_at);
-  const toData = (field) => sorted.map((r) => Number(r[field] || 0));
-  return {
-    appName: null,
-    categories,
-    series: [
-      { name: 'PC下载数', data: toData('pc_download_count') },
-      { name: '移动下载数', data: toData('app_download_count') },
-      { name: '总下载数', data: toData('download_count') },
-    ],
-  };
-}
-
-/** 游戏汇总指标（总下载 / PC / 移动 / PC占比） */
-export function transformKpiSnapshot(rows) {
-  if (!rows || !rows.length) return null;
-  const r = rows[0];
-  const totalDownload = Number(r.download_count || 0);
-  const pc = Number(r.pc_download_count || 0);
-  const mobile = Number(r.app_download_count || 0);
-  return {
-    totalDownload,
-    pcDownload: pc,
-    mobileDownload: mobile,
-    pcRatio: totalDownload > 0 ? parseFloat(((pc / totalDownload) * 100).toFixed(2)) : null,
-  };
-}
-
 /** 热门游戏TopN下载日趋势（总下载数实线 + 6 条拆分虚线） */
 export function transformDailyTrend(rows) {
   if (!rows || !rows.length) return { series: [], categories: [] };

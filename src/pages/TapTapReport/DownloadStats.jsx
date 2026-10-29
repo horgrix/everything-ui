@@ -7,8 +7,6 @@ import UpdateTag from './UpdateTag';
 import { nextUpdateTime, formatNextUpdate } from './updateTime';
 import {
   buildAggregateSql,
-  buildDetailSql,
-  buildSummarySql,
   buildDailyTrendSql,
   buildMonthlyBreakdownSql,
   buildDistributionByWindowSql,
@@ -18,8 +16,6 @@ import {
 } from './sql';
 import {
   transformAggregate,
-  transformDetail,
-  transformKpiSnapshot,
   transformDailyTrend,
   transformMonthlyBreakdown,
   transformDistributionByWindow,
@@ -29,20 +25,7 @@ import {
 } from './transforms';
 import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
-import KpiRow from './components/KpiRow';
 import { AD_MATERIAL_COLORS, APP_AD_TAG_COLORS, GameIcon, taptapAppUrl } from './shared';
-
-/** 时间范围快捷选项 */
-const TIME_RANGES = [
-  { label: '最近1天', days: 1 },
-  { label: '最近3天', days: 3 },
-  { label: '最近7天', days: 7 },
-  { label: '最近15天', days: 15 },
-  { label: '最近1个月', days: 30 },
-  { label: '最近3个月', days: 90 },
-  { label: '最近6个月', days: 180 },
-  { label: '最近1年', days: 365 },
-];
 
 /** 下载Top25明细窗口类型 */
 const WINDOW_TYPES = [
@@ -90,8 +73,6 @@ const MONTHLY_BREAKDOWN_COLORS = {
 const DAILY_TREND_COLORS = AD_MATERIAL_COLORS;
 /** 分布饼图扇区：按色库循环 */
 const DISTRIBUTION_COLORS = AD_MATERIAL_COLORS;
-/** 游戏详情趋势：PC / 移动 / 总下载数 */
-const DETAIL_TREND_COLORS = ['#7A8B99', '#9CAF9F', '#C4A4A4'];
 
 /** 下载Top25明细拆分表配置 */
 const TOP25_DETAIL_TABLES = {
@@ -102,8 +83,8 @@ const TOP25_DETAIL_TABLES = {
   maker: { title: '下载Top25明细(TapMaker)', hourFilter: 'distribution_type = 2', dayFilter: 'ai_maker_download_count > 0', orderBy: 'ai_maker_download_count' },
 };
 
-/** OneSearch 线索查询地址（用 APPID 拼接） */
-const ONESEARCH_REPORT_URL = 'https://data.horgrix.com/one-search/report';
+/** OneSearch 线索查询路由（站内相对路径，开发/生产都指向当前站点，用 APPID 拼接 q 参数） */
+const ONESEARCH_REPORT_PATH = '/one-search/report';
 
 /**
  * 下载Top25明细表格列（游戏名称 / icon / 标签 从全局映射获取）
@@ -182,7 +163,7 @@ const TOP25_DETAIL_COLUMNS = (gameMap, withOneSearch = false) => {
             width: W.search,
             render: (r) => (
               <a
-                href={`${ONESEARCH_REPORT_URL}?q=${r.appId}`}
+                href={`${ONESEARCH_REPORT_PATH}?q=${r.appId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-decoration-none d-inline-flex align-items-center gap-1"
@@ -211,11 +192,8 @@ function useTop25DetailQuery(key, table, selectedTable, selectedWindow, enabled)
 }
 
 export default function DownloadStats() {
-  const [appId, setAppId] = useState('');
-  const [days, setDays] = useState(1);
   const [selectedTable, setSelectedTable] = useState('dws_taptap_download_hourly');
   const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
-  const validAppId = /^\d+$/.test(appId);
 
   // 提示性文案，仅在渲染时计算一次（不轮询、不额外请求）
   const nowRef = new Date();
@@ -231,8 +209,6 @@ export default function DownloadStats() {
     windowGranularity === 'day' ? nextUpdateLabelMin6 : windowGranularity === 'month' ? nextUpdateLabelMin7 : nextUpdateLabelMin5;
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
-  const detailQuery = useSqlQuery('taptap-game-detail', () => buildDetailSql(appId, days), [appId, days], transformDetail, { enabled: validAppId });
-  const summaryQuery = useSqlQuery('taptap-game-summary', () => buildSummarySql(appId, days), [appId, days], transformKpiSnapshot, { enabled: validAppId });
   const dailyTrendQuery = useSqlQuery('taptap-daily-trend', buildDailyTrendSql, [], transformDailyTrend, { enabled: true });
   const monthlyBreakdownQuery = useSqlQuery('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow, { enabled: true });
@@ -253,8 +229,6 @@ export default function DownloadStats() {
       setSelectedWindow(newestDateQuery.data);
     }
   }, [newestDateQuery.data, selectedTable]);
-
-  const detailEmpty = !validAppId || (detailQuery.isSuccess && !detailQuery.data?.series?.length);
 
   return (
     <>
@@ -438,64 +412,6 @@ export default function DownloadStats() {
         ))}
       </div>
 
-      {/* 游戏统计详细信息查询条件 */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">游戏统计详细信息查询条件</div>
-        <div className="card-body">
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <label className="form-label small text-muted mb-0">AppID</label>
-            <input
-              type="text"
-              className="form-control form-control-sm"
-              style={{ width: 180 }}
-              placeholder="请输入appId"
-              value={appId}
-              onChange={(e) => setAppId(e.target.value.trim())}
-            />
-            <span className="ms-3 text-muted small">时间范围</span>
-            {TIME_RANGES.map((r) => (
-              <button
-                key={r.days}
-                type="button"
-                className={`btn btn-sm ${days === r.days ? 'btn-primary' : 'btn-outline-secondary'}`}
-                onClick={() => setDays(r.days)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 游戏汇总指标（受查询条件控制） */}
-      <KpiRow data={summaryQuery.data} />
-
-      {/* 游戏详情趋势（受查询条件控制） */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0 fw-semibold">
-          游戏详情趋势{detailQuery.data?.appName ? ` — ${detailQuery.data.appName}` : ''}
-        </div>
-        <div className="card-body">
-          {detailEmpty ? (
-            <div className="text-center text-muted py-5">
-              <i className="bi bi-inbox fs-1 d-block mb-2"></i>
-              暂无数据
-            </div>
-          ) : (
-            <LineChart
-              series={detailQuery.data?.series || []}
-              loading={detailQuery.isLoading}
-              error={detailQuery.error?.message}
-              height={400}
-              strokeWidth={2}
-              colors={DETAIL_TREND_COLORS}
-              strokeDashArray={[5, 5, 0]}
-              shared
-              xaxisOverrides={detailQuery.data?.categories ? { type: 'category', categories: detailQuery.data.categories, labels: { rotate: -45 } } : {}}
-              yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
-          )}
-        </div>
-      </div>
     </>
   );
 }
