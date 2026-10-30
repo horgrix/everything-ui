@@ -762,3 +762,30 @@ export function lastMonthLabel() {
   const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+/** 今天（YYYY-MM-DD） */
+function todayWhere() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * 构建「每日投放广告的游戏数 + 每日广告总投放次数」SQL（上周一 ~ 今天，按日去重）
+ * 投放口径：商业AD(ad_views) + 资源互换AD(pcebid_views) > 0
+ */
+export function buildAdGameCountDailySql() {
+  const lastMonday = thisWeekWhere(1);
+  const today = todayWhere();
+  return `
+    SELECT
+      substr(crawled_at, 1, 10) AS day,
+      COUNT(DISTINCT app_id) AS games,
+      SUM(COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) AS pushes
+    FROM dws_taptap_ad_aggr_v5_daily
+    WHERE crawled_at >= '${lastMonday}'
+      AND crawled_at <= '${today}'
+      AND (COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) > 0
+    GROUP BY substr(crawled_at, 1, 10)
+    ORDER BY day
+  `;
+}

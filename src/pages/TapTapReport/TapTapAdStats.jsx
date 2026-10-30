@@ -40,6 +40,7 @@ import { useSqlQuery } from './queries';
 import DataTable from './components/DataTable';
 import RankTopCard from './components/RankTopCard';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
+import WeeklyAdGameCountTips from './components/WeeklyAdGameCountTips';
 import GameChannelTrendTip from './components/GameChannelTrendTip';
 import PcAdWeeklyDetail from './components/PcAdWeeklyDetail';
 import TapAppLandingAdWeeklyDetail from './components/TapAppLandingAdWeeklyDetail';
@@ -564,6 +565,7 @@ export default function TapTapAdStats() {
             <div className="fw-semibold">【广告大盘】本周游戏明细 — Top20</div>
             {/* 本周明细入口标签：悬停看各渠道广告明细 */}
             <div className="d-flex align-items-center flex-wrap" style={{ gap: '1rem' }}>
+              <WeeklyAdGameCountTips />
               <CurrentHourAdTips />
               <PcAdWeeklyDetail />
               <TapAppLandingAdWeeklyDetail />
