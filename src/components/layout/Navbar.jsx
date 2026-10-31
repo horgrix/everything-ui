@@ -76,16 +76,16 @@ export default function Navbar() {
               </NavLink>
             </li>
             <li className="nav-item">
-              <a
-                className="nav-link"
-                href="https://file.horgrix.com/downloads/"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="打开定期报告下载页（外部链接）"
+              <NavLink
+                to="/periodic-report"
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+                title="定期报告（周报 / 月报 / 年报）"
               >
                 <i className="bi bi-file-earmark-text me-1"></i>
                 定期报告
-              </a>
+              </NavLink>
             </li>
             <li className="nav-item">
               <NavLink

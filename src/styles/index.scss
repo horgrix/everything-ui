@@ -198,3 +198,166 @@ footer {
     padding-right: 0.35rem;
   }
 }
+
+// 定期报告卡片：轻柔 hover（不改变布局）
+.pr-card {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+  &:hover {
+    border-color: #dce3e8 !important;
+    box-shadow: 0 8px 24px rgba(16, 24, 40, 0.07) !important;
+  }
+}
+
+// ========== 定期报告详情卡片（DetailCard 外壳） ==========
+.pr-detail-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 176px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #edf0f2;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f1f4f6;
+  }
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    flex: 0 0 auto;
+  }
+
+  &__title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.9px;
+    color: #5c6873;
+  }
+
+  &__subtitle {
+    margin-left: auto;
+    font-size: 11px;
+    color: #a7b0b8;
+    letter-spacing: 0.2px;
+  }
+
+  &__body {
+    flex: 1 1 auto;
+    padding-top: 14px;
+    min-height: 0;
+  }
+
+  // 内容为空时的占位（后续把排版写进 children 就会自动消失）
+  &__placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 100%;
+    min-height: 104px;
+    border: 1px dashed #e4e9ed;
+    border-radius: 12px;
+    background: #fbfcfd;
+    color: #b0b9c0;
+    font-size: 11.5px;
+    letter-spacing: 0.3px;
+
+    i {
+      font-size: 18px;
+    }
+  }
+}
+
+// ========== 定期报告详情页：可折叠分区 ==========
+.pr-section {
+  background: #fff;
+  border: 1px solid #edf0f2;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  overflow: hidden;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 16px 22px;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background: #fafbfc;
+    }
+  }
+
+  &__title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    color: #1f272e;
+  }
+
+  &__chevron {
+    font-size: 13px;
+    color: #a7b0b8;
+    transition: color 0.15s ease;
+  }
+
+  &__head:hover &__chevron {
+    color: #6c7b87;
+  }
+
+  // 折叠动画：grid-template-rows 0fr ↔ 1fr
+  &__collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &[data-open='true'] {
+      grid-template-rows: 1fr;
+    }
+  }
+
+  &__inner {
+    overflow: hidden;
+  }
+
+  &__body {
+    padding: 16px 22px 20px;
+    border-top: 1px solid #f1f4f6;
+  }
+
+  &__placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 116px;
+    border: 1px dashed #e4e9ed;
+    border-radius: 12px;
+    background: #fbfcfd;
+    color: #b0b9c0;
+    font-size: 11.5px;
+    letter-spacing: 0.3px;
+
+    i {
+      font-size: 18px;
+    }
+  }
+}

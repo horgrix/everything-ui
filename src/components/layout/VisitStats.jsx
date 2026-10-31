@@ -14,6 +14,7 @@ const PATH_LABELS = {
   '/finance': '财务信息',
   '/quant': '量化信息',
   '/reports': '定期报告',
+  '/periodic-report': '定期报告',
 };
 
 const pathLabel = (path) => PATH_LABELS[path] || path || '-';
