@@ -23,8 +23,9 @@ const WEEKLY_SQL = `SELECT week_key, week_start, week_end,
  ORDER BY week_key DESC`;
 
 /** 广告周期汇总 SQL（全站口径 category_type='all'） */
-const AD_PERIODIC_SQL = `SELECT crawled_at AS week_key, app_cnt, total_views, ad_views, pcebid_views
- FROM dws_taptap_ad_aggr_v5_periodic_report
+const AD_PERIODIC_SQL = `SELECT crawled_at AS week_key, app_cnt, total_views, ad_views, pcebid_views,
+        app_total, kw_total, pc_total
+ FROM dws_taptap_ad_aggr_v6_periodic_report
  WHERE period_type = 'weekly' AND category_type = 'all'
  ORDER BY crawled_at DESC`;
 
@@ -83,38 +84,12 @@ export function usePeriodicAd() {
         totalViews: r.total_views == null ? null : Number(r.total_views),
         adViews: r.ad_views == null ? null : Number(r.ad_views),
         pcebidViews: r.pcebid_views == null ? null : Number(r.pcebid_views),
+        // v6 周期表自带三渠道合计，无需再回日表汇总
+        appHome: r.app_total == null ? null : Number(r.app_total),
+        kwHome: r.kw_total == null ? null : Number(r.kw_total),
+        pcHome: r.pc_total == null ? null : Number(r.pc_total),
       })),
   });
-}
-
-/**
- * 每周分渠道投放数（APP首页 / APP搜索页关键词 / PC首页）
- * dws_taptap_ad_aggr_v5_periodic_report 只有全站口径，渠道拆分按周区间从 v5 日表汇总。
- */
-export function useAdChannelWeek(start, end) {
-  const enabled = !!(start && end);
-  const sql = enabled
-    ? `SELECT SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
-              SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS kw_home,
-              SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
-       FROM dws_taptap_ad_aggr_v5_daily
-       WHERE crawled_at >= '${start}' AND crawled_at <= '${end}'`
-    : '';
-  return useChartData(
-    `periodic-ad-channel-${start || 'none'}-${end || 'none'}`,
-    (p) => querySqlV09(p.sql),
-    { sql },
-    {
-      enabled,
-      staleTime: 10 * 60 * 1000,
-      transform: (rows) => {
-        const r = rows && rows[0];
-        if (!r) return null;
-        const n = (v) => (v == null ? null : Number(v));
-        return { appHome: n(r.app_home), kwHome: n(r.kw_home), pcHome: n(r.pc_home) };
-      },
-    }
-  );
 }
 
 /** 游戏类型维度：distribution_type → 名称 */
@@ -137,7 +112,7 @@ export function useAdDistWeek(start, end) {
               SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
               SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS kw_home,
               SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
-       FROM dws_taptap_ad_aggr_v5_daily
+       FROM dws_taptap_ad_aggr_v6_daily
        WHERE crawled_at >= '${start}' AND crawled_at <= '${end}'
          AND distribution_type IN (0, 1, 2)
        GROUP BY distribution_type`
@@ -181,7 +156,7 @@ export function useAdTagWeek(start, end, limit = null) {
               SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
               SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS kw_home,
               SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
-       FROM dws_taptap_ad_aggr_v5_daily
+       FROM dws_taptap_ad_aggr_v6_daily
        WHERE crawled_at >= '${start}' AND crawled_at <= '${end}'
          AND tag_1 IS NOT NULL AND tag_1 <> ''
        GROUP BY tag_1
@@ -211,7 +186,7 @@ export function useAdTagWeek(start, end, limit = null) {
 }
 
 /**
- * 投放 Top10：dws_taptap_ad_aggr_v5_periodic_rank（weekly + rank_category='top'）
+ * 投放 Top10：dws_taptap_ad_aggr_v6_periodic_rank（weekly + rank_category='top'）
  * 带总投放数、上周总投放数与增量；渠道拆分由 useAdAppChannelWeek 提供（该表无渠道列）。
  */
 export function useAdPeriodicRank(weekKey, limit = 10, category = 'top') {
@@ -220,7 +195,7 @@ export function useAdPeriodicRank(weekKey, limit = 10, category = 'top') {
     ? `SELECT rank_no, app_id, app_name, icon, distribution_type,
               tag_1, tag_2, tag_3,
               total_views, prev_total_views, diff_views
-       FROM dws_taptap_ad_aggr_v5_periodic_rank
+       FROM dws_taptap_ad_aggr_v6_periodic_rank
        WHERE period_type = 'weekly' AND rank_category = '${category}' AND crawled_at = '${weekKey}'
        ORDER BY rank_no
        ${limit ? `LIMIT ${limit}` : ''}`
@@ -258,7 +233,7 @@ export function useAdAppChannelWeek(start, end) {
               SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
               SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS kw_home,
               SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
-       FROM dws_taptap_ad_aggr_v5_daily
+       FROM dws_taptap_ad_aggr_v6_daily
        WHERE crawled_at >= '${start}' AND crawled_at <= '${end}'
        GROUP BY app_id`
     : '';
@@ -515,6 +490,80 @@ export function useOnlineDistWeekly() {
   );
 }
 
+/**
+ * 在线按 list_type 的 Top 榜单（dws_taptap_pc_online_peak_players_periodic_rank，rank_category='top'）
+ * 源表存在并列 rank_no，前端按平均在线人数排序后重编号。
+ */
+export function useOnlineGameRank(weekKey, category = 'top') {
+  const enabled = !!weekKey;
+  const sql = enabled
+    ? `SELECT list_type, rank_no, app_id, app_name, avg_online_players, prev_avg_online_players, diff_online_players
+       FROM dws_taptap_pc_online_peak_players_periodic_rank
+       WHERE period_type = 'weekly' AND rank_category = '${category}' AND crawled_at = '${weekKey}'`
+    : '';
+  return useChartData(
+    `periodic-online-rank-${weekKey || 'none'}-${category}`,
+    (p) => querySqlV09(p.sql),
+    { sql },
+    {
+      enabled,
+      staleTime: 10 * 60 * 1000,
+      transform: (rows) => {
+        const n = (v) => (v == null ? null : Number(v));
+        return (rows || []).map((r) => ({
+          listType: String(r.list_type || ''),
+          rank: n(r.rank_no),
+          appId: r.app_id,
+          appName: r.app_name == null ? '' : String(r.app_name),
+          avgOnline: n(r.avg_online_players),
+          prevAvgOnline: n(r.prev_avg_online_players),
+          diffOnline: n(r.diff_online_players),
+        }));
+      },
+    }
+  );
+}
+
+/**
+ * 在线：按游戏类型（distribution_type）取每周各游戏的平均在线人数。
+ * 用小时级榜单表聚合（覆盖全部游戏，且与周期榜单的 avg 口径一致）。
+ */
+export function useOnlineTypeRank(start, end) {
+  const enabled = !!(start && end);
+  let nextDay = '';
+  if (end) {
+    const d = new Date(`${String(end).slice(0, 10)}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    nextDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const sql = enabled
+    ? `SELECT app_id,
+              MAX(app_name) AS app_name,
+              MAX(distribution_type) AS dist,
+              AVG(online_players) AS avg_online
+       FROM dws_taptap_pc_online_peak_players_rank_hourly
+       WHERE crawled_at >= '${start} 00' AND crawled_at < '${nextDay} 00'
+       GROUP BY app_id
+       ORDER BY avg_online DESC`
+    : '';
+  return useChartData(
+    `periodic-online-type-rank-${start || 'none'}-${end || 'none'}`,
+    (p) => querySqlV09(p.sql),
+    { sql },
+    {
+      enabled,
+      staleTime: 10 * 60 * 1000,
+      transform: (rows) =>
+        (rows || []).map((r) => ({
+          appId: r.app_id,
+          appName: r.app_name == null ? '' : String(r.app_name),
+          distributionType: r.dist == null ? null : Number(r.dist),
+          avgOnline: r.avg_online == null ? null : Number(r.avg_online),
+        })),
+    }
+  );
+}
+
 /** 在线详情分区的指标行（本期 / 上期） */
 export function onlineDetailItems(cur, prev) {
   return [
@@ -535,13 +584,13 @@ export function downloadDetailItems(cur, prev) {
 }
 
 /** 广告详情分区的指标行（本期 / 上期；渠道拆分来自 useAdChannelWeek） */
-export function adDetailItems(cur, prev, chCur, chPrev) {
+export function adDetailItems(cur, prev) {
   return [
     { label: '有投放游戏数', value: cur?.appCnt ?? null, prev: prev?.appCnt ?? null },
     { label: '总投放数', value: cur?.totalViews ?? null, prev: prev?.totalViews ?? null },
-    { label: 'APP首页投放数', value: chCur?.appHome ?? null, prev: chPrev?.appHome ?? null },
-    { label: 'APP搜索页关键词投放数', value: chCur?.kwHome ?? null, prev: chPrev?.kwHome ?? null },
-    { label: 'PC首页投放数', value: chCur?.pcHome ?? null, prev: chPrev?.pcHome ?? null },
+    { label: 'APP首页投放数', value: cur?.appHome ?? null, prev: prev?.appHome ?? null },
+    { label: 'APP搜索页关键词投放数', value: cur?.kwHome ?? null, prev: prev?.kwHome ?? null },
+    { label: 'PC首页投放数', value: cur?.pcHome ?? null, prev: prev?.pcHome ?? null },
   ];
 }
 

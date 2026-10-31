@@ -6,7 +6,6 @@ import { GameIcon, APP_AD_TAG_COLORS, PC_GAME_TYPE_META, taptapAppUrl, truncateN
 import {
   useWeeklyReport,
   usePeriodicAd,
-  useAdChannelWeek,
   useAdDistWeek,
   useAdTagWeek,
   useAdPeriodicRank,
@@ -15,6 +14,8 @@ import {
   usePeriodicOnline,
   useOnlineListWeekly,
   useOnlineDistWeekly,
+  useOnlineGameRank,
+  useOnlineTypeRank,
   onlineDetailItems,
   ONLINE_LISTS,
   useDownloadDistWeekly,
@@ -505,6 +506,380 @@ function OnlineListBreakdown({ curMap, prevMap, hideGrowth }) {
   );
 }
 
+/** 在线：按 list_type 分类，每类取 Top 5（排名 / 名称 / 平均在线人数） */
+function OnlineListTop5({ rows, hideGrowth = false }) {
+  // 源表有并列名次：按平均在线人数倒序后每类取前 5，并重编号
+  const pick = (listType) =>
+    (rows || [])
+      .filter((r) => r.listType === listType && r.appName && r.appName !== '-' && r.avgOnline != null)
+      .sort((a, b) => b.avgOnline - a.avgOnline)
+      .slice(0, 5)
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="d-flex align-items-baseline justify-content-between flex-wrap" style={{ gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: '#5C6873' }}>按 list_type 分类 · Top 5</span>
+        <span style={{ fontSize: 11, color: '#A7B0B8' }}>每类按当周平均在线人数取前 5</span>
+      </div>
+
+      <div className="row g-3">
+        {ONLINE_LISTS.map((t) => {
+          const list = pick(t.value);
+          return (
+            <div className="col-12 col-xl-4" key={t.value}>
+              <div className="h-100">
+                <div className="d-flex align-items-center" style={{ gap: 7, marginBottom: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.color, flex: '0 0 auto' }}></span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#7A868F' }}>{t.label}</span>
+                </div>
+
+                {list.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: '#A7B0B8' }}>该周期暂无数据</div>
+                ) : (
+                  <>
+                    <div
+                      className="d-flex"
+                      style={{ fontSize: 10.5, color: '#A7B0B8', paddingBottom: 6, borderBottom: '1px solid #F1F4F6' }}
+                    >
+                      <span style={{ flex: '0 0 8%' }}>排名</span>
+                      <span style={{ flex: '1 1 auto', minWidth: 0 }}>名称</span>
+                      <span style={{ flex: '0 0 38%', textAlign: 'right', whiteSpace: 'nowrap' }}>平均在线人数</span>
+                    </div>
+
+                    {list.map((r) => (
+                      <div
+                        key={`${r.appId}-${r.rank}`}
+                        className="d-flex align-items-center"
+                        style={{ padding: '8px 0', borderBottom: '1px solid #F7F9FA' }}
+                      >
+                        <span style={{ flex: '0 0 8%', minWidth: 0 }}>
+                          <span
+                            className="d-inline-flex align-items-center justify-content-center"
+                            style={{
+                              minWidth: 20,
+                              height: 18,
+                              padding: '0 4px',
+                              borderRadius: 6,
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              background: r.rank <= 3 ? 'rgba(122,139,153,0.16)' : '#F5F7F9',
+                              color: r.rank <= 3 ? '#63727E' : '#8A959E',
+                            }}
+                          >
+                            {r.rank}
+                          </span>
+                        </span>
+
+                        <span style={{ flex: '1 1 auto', minWidth: 0, paddingRight: 8 }}>
+                          <a
+                            href={taptapAppUrl(r.appId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none"
+                            style={{
+                              fontSize: 12,
+                              color: '#2F3A42',
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                            }}
+                            title={r.appName}
+                          >
+                            {truncateName(r.appName)}
+                          </a>
+                        </span>
+
+                        <span
+                          className="d-inline-flex align-items-baseline justify-content-end"
+                          style={{ flex: '0 0 38%', gap: 5, whiteSpace: 'nowrap' }}
+                          title={r.prevAvgOnline == null ? '上期未上榜' : `上期：${formatNumber(Math.round(r.prevAvgOnline))}`}
+                        >
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fontVariantNumeric: 'tabular-nums',
+                              color: '#1F272E',
+                            }}
+                          >
+                            {formatNumber(Math.round(r.avgOnline))}
+                          </span>
+                          {!hideGrowth && (
+                            <GrowthPill
+                              cur={Math.round(r.avgOnline)}
+                              prev={r.prevAvgOnline == null ? null : Math.round(r.prevAvgOnline)}
+                              compact
+                            />
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 在线：按 list_type 分类，每类取 GAP Top 5（排名 / 名称 / GAP 平均在线）；tone=up 增长、down 衰退 */
+function OnlineListGapTop5({ rows, title, hint, tone = 'up' }) {
+  const gapColor = (v) => (v == null ? '#C4CBD1' : v > 0 ? '#4B7A54' : v < 0 ? '#A0554F' : '#63727E');
+  const rankTone =
+    tone === 'up'
+      ? { background: 'rgba(111,143,113,0.16)', color: '#4B7A54' }
+      : { background: 'rgba(178,124,120,0.16)', color: '#A0554F' };
+  const pick = (listType) =>
+    (rows || [])
+      .filter((r) => r.listType === listType && r.appName && r.appName !== '-' && r.diffOnline != null)
+      .sort((a, b) => (tone === 'down' ? a.diffOnline - b.diffOnline : b.diffOnline - a.diffOnline))
+      .slice(0, 5)
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="d-flex align-items-baseline justify-content-between flex-wrap" style={{ gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: '#5C6873' }}>{title}</span>
+        <span style={{ fontSize: 11, color: '#A7B0B8' }}>{hint}</span>
+      </div>
+
+      <div className="row g-3">
+        {ONLINE_LISTS.map((t) => {
+          const list = pick(t.value);
+          return (
+            <div className="col-12 col-xl-4" key={t.value}>
+              <div className="h-100">
+                <div className="d-flex align-items-center" style={{ gap: 7, marginBottom: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.color, flex: '0 0 auto' }}></span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#7A868F' }}>{t.label}</span>
+                </div>
+
+                {list.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: '#A7B0B8' }}>该周期暂无数据</div>
+                ) : (
+                  <>
+                    <div
+                      className="d-flex"
+                      style={{ fontSize: 10.5, color: '#A7B0B8', paddingBottom: 6, borderBottom: '1px solid #F1F4F6' }}
+                    >
+                      <span style={{ flex: '0 0 8%' }}>排名</span>
+                      <span style={{ flex: '1 1 auto', minWidth: 0 }}>名称</span>
+                      <span style={{ flex: '0 0 38%', textAlign: 'right', whiteSpace: 'nowrap' }}>GAP(平均在线)</span>
+                    </div>
+
+                    {list.map((r) => (
+                      <div
+                        key={`${r.appId}-${r.rank}`}
+                        className="d-flex align-items-center"
+                        style={{ padding: '8px 0', borderBottom: '1px solid #F7F9FA' }}
+                      >
+                        <span style={{ flex: '0 0 8%', minWidth: 0 }}>
+                          <span
+                            className="d-inline-flex align-items-center justify-content-center"
+                            style={{
+                              minWidth: 20,
+                              height: 18,
+                              padding: '0 4px',
+                              borderRadius: 6,
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              background: r.rank <= 3 ? rankTone.background : '#F5F7F9',
+                              color: r.rank <= 3 ? rankTone.color : '#8A959E',
+                            }}
+                          >
+                            {r.rank}
+                          </span>
+                        </span>
+
+                        <span style={{ flex: '1 1 auto', minWidth: 0, paddingRight: 8 }}>
+                          <a
+                            href={taptapAppUrl(r.appId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none"
+                            style={{
+                              fontSize: 12,
+                              color: '#2F3A42',
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                            }}
+                            title={r.appName}
+                          >
+                            {truncateName(r.appName)}
+                          </a>
+                        </span>
+
+                        <span
+                          style={{
+                            flex: '0 0 38%',
+                            textAlign: 'right',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: gapColor(r.diffOnline),
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={`本期平均在线：${formatNumber(Math.round(r.avgOnline ?? 0))}`}
+                        >
+                          {r.diffOnline > 0 ? '+' : ''}
+                          {formatNumber(Math.round(r.diffOnline))}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 在线：按游戏类型分类，每类取 Top 5（排名 / 名称 / 平均在线人数） */
+function OnlineTypeTop5({ rows, prevRows, hideGrowth = false }) {
+  const prevMap = {};
+  (prevRows || []).forEach((r) => {
+    prevMap[String(r.appId)] = r;
+  });
+
+  const pick = (dist) =>
+    (rows || [])
+      .filter((r) => r.distributionType === dist && r.appName && r.avgOnline != null)
+      .sort((a, b) => b.avgOnline - a.avgOnline)
+      .slice(0, 5)
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="d-flex align-items-baseline justify-content-between flex-wrap" style={{ gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: '#5C6873' }}>按游戏类型分类 · Top 5</span>
+        <span style={{ fontSize: 11, color: '#A7B0B8' }}>每类按当周平均在线人数取前 5</span>
+      </div>
+
+      <div className="row g-3">
+        {DIST_TYPES.map((t) => {
+          const list = pick(t.value);
+          return (
+            <div className="col-12 col-xl-4" key={t.value}>
+              <div className="h-100">
+                <div className="d-flex align-items-center" style={{ gap: 7, marginBottom: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.color, flex: '0 0 auto' }}></span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: '#7A868F' }}>{t.label}</span>
+                </div>
+
+                {list.length === 0 ? (
+                  <div style={{ fontSize: 11.5, color: '#A7B0B8' }}>该周期暂无数据</div>
+                ) : (
+                  <>
+                    <div
+                      className="d-flex"
+                      style={{ fontSize: 10.5, color: '#A7B0B8', paddingBottom: 6, borderBottom: '1px solid #F1F4F6' }}
+                    >
+                      <span style={{ flex: '0 0 8%' }}>排名</span>
+                      <span style={{ flex: '1 1 auto', minWidth: 0 }}>名称</span>
+                      <span style={{ flex: '0 0 38%', textAlign: 'right', whiteSpace: 'nowrap' }}>平均在线人数</span>
+                    </div>
+
+                    {list.map((r) => (
+                      <div
+                        key={`${r.appId}-${r.rank}`}
+                        className="d-flex align-items-center"
+                        style={{ padding: '8px 0', borderBottom: '1px solid #F7F9FA' }}
+                      >
+                        <span style={{ flex: '0 0 8%', minWidth: 0 }}>
+                          <span
+                            className="d-inline-flex align-items-center justify-content-center"
+                            style={{
+                              minWidth: 20,
+                              height: 18,
+                              padding: '0 4px',
+                              borderRadius: 6,
+                              fontSize: 10.5,
+                              fontWeight: 600,
+                              background: r.rank <= 3 ? 'rgba(122,139,153,0.16)' : '#F5F7F9',
+                              color: r.rank <= 3 ? '#63727E' : '#8A959E',
+                            }}
+                          >
+                            {r.rank}
+                          </span>
+                        </span>
+
+                        <span style={{ flex: '1 1 auto', minWidth: 0, paddingRight: 8 }}>
+                          <a
+                            href={taptapAppUrl(r.appId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-decoration-none"
+                            style={{
+                              fontSize: 12,
+                              color: '#2F3A42',
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                            }}
+                            title={r.appName}
+                          >
+                            {truncateName(r.appName)}
+                          </a>
+                        </span>
+
+                        <span
+                          className="d-inline-flex align-items-baseline justify-content-end"
+                          style={{ flex: '0 0 38%', gap: 5, whiteSpace: 'nowrap' }}
+                          title={
+                            prevMap[String(r.appId)]?.avgOnline == null
+                              ? '上期无数据'
+                              : `上期：${formatNumber(Math.round(prevMap[String(r.appId)].avgOnline))}`
+                          }
+                        >
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fontVariantNumeric: 'tabular-nums',
+                              color: '#1F272E',
+                            }}
+                          >
+                            {formatNumber(Math.round(r.avgOnline))}
+                          </span>
+                          {!hideGrowth && (
+                            <GrowthPill
+                              cur={Math.round(r.avgOnline)}
+                              prev={
+                                prevMap[String(r.appId)]?.avgOnline == null
+                                  ? null
+                                  : Math.round(prevMap[String(r.appId)].avgOnline)
+                              }
+                              compact
+                            />
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** 在线：按游戏类型分类（distribution_type 0/1/2） */
 function OnlineDistBreakdown({ curMap, prevMap, hideGrowth }) {
   const rows = DIST_TYPES.map((t) => ({
@@ -722,9 +1097,6 @@ function TagBreakdown({ curList, prevList, hideGrowth }) {
   );
 }
 
-/** 详情页四个可折叠分区 */
-const SECTIONS = ['广告详情', '下载详情', '在线详情', '游戏详情'];
-
 /**
  * 定期报告详情页（periodicReportDetailView）
  * 路由：/periodic-report/detail?week=2026-43
@@ -752,9 +1124,6 @@ export default function PeriodicReportDetail() {
   const adRow = row ? adRows.find((r) => r.weekKey === row.weekKey) || null : null;
   const adPrevRow = prevRow ? adRows.find((r) => r.weekKey === prevRow.weekKey) || null : null;
 
-  // 分渠道投放数（按周期区间从日表汇总）
-  const chCurQuery = useAdChannelWeek(row?.weekStart, row?.weekEnd);
-  const chPrevQuery = useAdChannelWeek(prevRow?.weekStart, prevRow?.weekEnd);
 
   // 下载详情：按 week_key 取本期 / 上期
   const downloadCur = row ? downloadQuery.data?.[row.weekKey] || null : null;
@@ -764,6 +1133,11 @@ export default function PeriodicReportDetail() {
   const onlineListQuery = useOnlineListWeekly();
   const onlineListCur = row ? onlineListQuery.data?.[row.weekKey] || null : null;
   const onlineListPrev = prevRow ? onlineListQuery.data?.[prevRow.weekKey] || null : null;
+  const onlineRankQuery = useOnlineGameRank(row?.weekKey, 'top');
+  const onlineGainRankQuery = useOnlineGameRank(row?.weekKey, 'gain');
+  const onlineLossRankQuery = useOnlineGameRank(row?.weekKey, 'loss');
+  const onlineTypeRankQuery = useOnlineTypeRank(row?.weekStart, row?.weekEnd);
+  const onlineTypeRankPrevQuery = useOnlineTypeRank(prevRow?.weekStart, prevRow?.weekEnd);
   const onlineDistQuery = useOnlineDistWeekly();
   const onlineDistCur = row ? onlineDistQuery.data?.[row.weekKey] || null : null;
   const onlineDistPrev = prevRow ? onlineDistQuery.data?.[prevRow.weekKey] || null : null;
@@ -932,7 +1306,7 @@ export default function PeriodicReportDetail() {
           <div className="d-flex flex-column" style={{ gap: 16, marginTop: 18 }}>
             <DetailSection title="广告详情">
               <MetricRow
-                items={adDetailItems(adRow, adPrevRow, chCurQuery.data, chPrevQuery.data)}
+                items={adDetailItems(adRow, adPrevRow)}
                 hideGrowth={inProgress}
               />
               <DistBreakdown distMap={distQuery.data} prevMap={distPrevQuery.data} hideGrowth={inProgress} />
@@ -1005,11 +1379,26 @@ export default function PeriodicReportDetail() {
             <DetailSection title="在线详情">
               <MetricRow items={onlineDetailItems(onlineCur, onlinePrev)} hideGrowth={inProgress} />
               <OnlineListBreakdown curMap={onlineListCur} prevMap={onlineListPrev} hideGrowth={inProgress} />
+              <OnlineListTop5 rows={onlineRankQuery.data} hideGrowth={inProgress} />
+              <OnlineListGapTop5
+                rows={onlineGainRankQuery.data}
+                title="按 list_type 分类 · 增长 Top 5"
+                hint="每类按 GAP（平均在线人数增量）倒序取前 5"
+                tone="up"
+              />
+              <OnlineListGapTop5
+                rows={onlineLossRankQuery.data}
+                title="按 list_type 分类 · 衰退 Top 5"
+                hint="每类按 GAP（平均在线人数降幅）倒序取前 5"
+                tone="down"
+              />
               <OnlineDistBreakdown curMap={onlineDistCur} prevMap={onlineDistPrev} hideGrowth={inProgress} />
+              <OnlineTypeTop5
+                rows={onlineTypeRankQuery.data}
+                prevRows={onlineTypeRankPrevQuery.data}
+                hideGrowth={inProgress}
+              />
             </DetailSection>
-            {SECTIONS.filter((t) => !['广告详情', '下载详情', '在线详情'].includes(t)).map((t) => (
-              <DetailSection key={t} title={t} />
-            ))}
           </div>
         </>
       )}
