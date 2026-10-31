@@ -104,7 +104,7 @@ function CompareTable({ title, subtitle, labels, lastWeek, thisWeek, delta, toda
  * 1) 投放游戏数概览 —— 每日有投放的游戏数
  * 2) 广告投放数概览 —— 每日广告投放次数
  * 3) 平均投放数 —— 每个游戏平均广告数（广告数 ÷ 游戏数）
- * 数据源 dws_taptap_ad_aggr_v5_daily；弹框 fixed 定位，避免被卡片或表格容器裁剪。
+ * 数据源 dws_taptap_ad_aggr_v6_daily；弹框 fixed 定位，避免被卡片或表格容器裁剪。
  */
 export default function WeeklyAdGameCountTips() {
   const [pos, setPos] = useState(null);

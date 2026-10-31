@@ -62,7 +62,7 @@ export function buildCurrentHourAdSnapshotSql(hour = currentHourKey()) {
         UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_top_hourly
         UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_discovery_hourly
         UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_game
-        UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_ad_aggr_v5_daily
+        UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_ad_aggr_v6_daily
       )
       WHERE app_id IS NOT NULL AND app_id > 0
       GROUP BY app_id
@@ -99,7 +99,7 @@ function adGameDimCte(extraTables = []) {
     'taptap_pc_ad_top_hourly',
     'taptap_pc_ad_discovery_hourly',
     'dws_taptap_game',
-    'dws_taptap_ad_aggr_v5_daily',
+    'dws_taptap_ad_aggr_v6_daily',
     ...extraTables,
   ].map(normalize);
   const union = tables
@@ -542,7 +542,7 @@ export function buildPcOnlineTop20TrendSql() {
 }
 
 /** 构建 TapTap 广告大盘日趋势 SQL（上周一至今，按日汇总各口径广告数）
- *  表：dws_taptap_ad_aggr_v5_daily（按 app_id + 日的广告投放汇总，无曝光列）
+ *  表：dws_taptap_ad_aggr_v6_daily（按 app_id + 日的广告投放汇总，无曝光列）
  *  口径：广告数 = ad_views + pcebid_views；APP / PC / KW 同口径（*_ad_views + *_pcebid_views）
  */
 export function buildAdAggrDailyTrendSql() {
@@ -555,7 +555,7 @@ export function buildAdAggrDailyTrendSql() {
       ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
       ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
       ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${dateStr}'
     GROUP BY substr(crawled_at, 1, 10)
     ORDER BY day
@@ -576,7 +576,7 @@ export function buildAdShareByWeekSql() {
       ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
       ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
       ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${nextMonday}'
     GROUP BY week_key
   `;
@@ -601,7 +601,7 @@ export function buildAdGameWeeklyTopSql(limit = 20) {
       SUM(app_pcebid_views) AS app_pcebid_views,
       SUM(pc_pcebid_views) AS pc_pcebid_views,
       SUM(kw_pcebid_views) AS kw_pcebid_views
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${thisMonday}' AND crawled_at < '${nextMonday}'
     GROUP BY app_id, app_name, tag_1, tag_2, tag_3
     ORDER BY SUM(ad_views) + SUM(pcebid_views) DESC
@@ -627,7 +627,7 @@ export function buildAdGameChannelTrendSql() {
       ${expr('app_ad_views', 'app_pcebid_views')} AS app_home,
       ${expr('pc_ad_views', 'pc_pcebid_views')} AS pc_home,
       ${expr('kw_ad_views', 'kw_pcebid_views')} AS kw_search
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${thisMonday}' AND crawled_at < '${nextMonday}'
     GROUP BY app_id, substr(crawled_at, 1, 10)
     ORDER BY app_id, day
@@ -645,7 +645,7 @@ export function buildAdAggrGameDailyTrendSql() {
       app_id,
       substr(crawled_at, 1, 10) AS day,
       SUM(COALESCE(ad_views, 0)) + SUM(COALESCE(pcebid_views, 0)) AS push_cnt
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${dateStr}'
     GROUP BY app_id, substr(crawled_at, 1, 10)
     ORDER BY app_id, day
@@ -727,7 +727,7 @@ export function buildAdRankDerivedWeekSql(limit = 20) {
       SUM(COALESCE(app_ad_views, 0)) + SUM(COALESCE(app_pcebid_views, 0)) AS app_ad_views,
       SUM(COALESCE(pc_ad_views, 0)) + SUM(COALESCE(pc_pcebid_views, 0)) AS pc_ad_views,
       SUM(COALESCE(kw_ad_views, 0)) + SUM(COALESCE(kw_pcebid_views, 0)) AS kv_ad_views
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${thisMonday}'
     GROUP BY app_id, app_name
     ORDER BY ${push} DESC
@@ -781,7 +781,7 @@ export function buildAdGameCountDailySql() {
       substr(crawled_at, 1, 10) AS day,
       COUNT(DISTINCT app_id) AS games,
       SUM(COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) AS pushes
-    FROM dws_taptap_ad_aggr_v5_daily
+    FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at >= '${lastMonday}'
       AND crawled_at <= '${today}'
       AND (COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) > 0
