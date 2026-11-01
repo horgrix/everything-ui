@@ -46,7 +46,7 @@ const RANK_SECTIONS = [
   {
     key: 'ad',
     title: '投放榜',
-    table: 'dws_taptap_ad_aggr_v5_rank',
+    table: 'dws_taptap_ad_aggr_v6_rank',
     valueExpr: '(ad_views + pcebid_views)',
     valueName: '投放',
     color: '#C4A4A4',

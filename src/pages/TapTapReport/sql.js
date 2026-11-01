@@ -342,7 +342,7 @@ export function buildGameNameSql() {
   return `
     SELECT app_id, app_name, icon, tag_1, tag_2, tag_3
     FROM dws_taptap_game
-    WHERE crawled_at = '${monthStr}'
+    WHERE crawled_at >= '${monthStr}'
   `;
 }
 

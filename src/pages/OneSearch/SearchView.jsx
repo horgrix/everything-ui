@@ -622,7 +622,7 @@ export default function SearchView() {
       ? '加载中…'
       : '本月暂无数据';
 
-  // 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v5_rank，带日/周/月排名）
+  // 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v6_rank，带日/周/月排名）
   // 该表每行已含各渠道合计（total_views / app_total / kw_total / pc_total）与名次（rank_no / rank_app / rank_kw / rank_pc）
   const adKpiRankQuery = useChartData(
     `one-search-ad-aggr-v5-rank-${appId ?? 'none'}`,
@@ -630,11 +630,11 @@ export default function SearchView() {
       querySqlV09(
         `SELECT r.rank_type, r.crawled_at, r.total_views, r.app_total, r.kw_total, r.pc_total,
                 r.rank_no, r.rank_app, r.rank_kw, r.rank_pc
-         FROM dws_taptap_ad_aggr_v5_rank r
+         FROM dws_taptap_ad_aggr_v6_rank r
          WHERE r.app_id = ${appId}
            AND r.rank_type IN ('daily', 'weekly', 'monthly')
            AND r.crawled_at = (
-             SELECT MAX(x.crawled_at) FROM dws_taptap_ad_aggr_v5_rank x WHERE x.rank_type = r.rank_type
+             SELECT MAX(x.crawled_at) FROM dws_taptap_ad_aggr_v6_rank x WHERE x.rank_type = r.rank_type
            )`
       ),
     {},
@@ -697,7 +697,7 @@ export default function SearchView() {
   );
   const onlineRank = onlineRankQuery.data;
 
-  // 【APP首页广告投放趋势】本年，按 app_id（dws_taptap_ad_aggr_v5_daily 的 APP 首页渠道）
+  // 【APP首页广告投放趋势】本年，按 app_id（dws_taptap_ad_aggr_v6_daily 的 APP 首页渠道）
   const landingTrendQuery = useChartData(
     `one-search-landing-trend-v5-${appId ?? 'none'}-${thisYear.start}`,
     () =>
@@ -705,7 +705,7 @@ export default function SearchView() {
         `SELECT crawled_at,
                 COALESCE(app_ad_views, 0) AS ad_views,
                 COALESCE(app_pcebid_views, 0) AS pcebid_views
-         FROM dws_taptap_ad_aggr_v5_daily
+         FROM dws_taptap_ad_aggr_v6_daily
          WHERE app_id = ${appId}
            AND crawled_at >= '${thisYear.start}' AND crawled_at < '${thisYear.end}'
          ORDER BY crawled_at ASC`
@@ -722,7 +722,7 @@ export default function SearchView() {
         `SELECT crawled_at,
                 COALESCE(kw_ad_views, 0) AS ad_views,
                 COALESCE(kw_pcebid_views, 0) AS pcebid_views
-         FROM dws_taptap_ad_aggr_v5_daily
+         FROM dws_taptap_ad_aggr_v6_daily
          WHERE app_id = ${appId}
            AND crawled_at >= '${thisYear.start}' AND crawled_at < '${thisYear.end}'
          ORDER BY crawled_at ASC`
@@ -739,7 +739,7 @@ export default function SearchView() {
         `SELECT crawled_at,
                 COALESCE(pc_ad_views, 0) AS ad_views,
                 COALESCE(pc_pcebid_views, 0) AS pcebid_views
-         FROM dws_taptap_ad_aggr_v5_daily
+         FROM dws_taptap_ad_aggr_v6_daily
          WHERE app_id = ${appId}
            AND crawled_at >= '${thisYear.start}' AND crawled_at < '${thisYear.end}'
          ORDER BY crawled_at ASC`
@@ -946,7 +946,7 @@ export default function SearchView() {
         </div>
       )}
 
-      {/* 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v5_rank，带日/周/月排名） */}
+      {/* 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v6_rank，带日/周/月排名） */}
       {appId && (
         <div className="row g-3 mb-4">
           <div className="col-12 col-sm-6 col-xl-3">
