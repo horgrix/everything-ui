@@ -806,23 +806,32 @@ export default function SearchView() {
   const bootReady = bootDone === bootQueries.length;
 
   return (
-    <div className="container-fluid p-4">
+    <div className="os-page container-fluid p-4" style={{ maxWidth: 1440, margin: '0 auto' }}>
       <SearchLoadingOverlay
         progress={bootDone / bootQueries.length}
         ready={bootReady}
         label={`正在检索「${keyword || '—'}」的数据…`}
       />
-      <h2 className="fw-bold mb-1">
-        <i className="bi bi-search text-primary me-2"></i>
-        游戏线索查询
-      </h2>
-      <div className="text-muted small mb-4">关键词：{keyword || '（空）'}</div>
+
+      {/* 页头 */}
+      <div className="d-flex flex-wrap align-items-end justify-content-between gap-3">
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, color: '#A7B0B8' }}>ONE SEARCH</div>
+          <h1 style={{ fontSize: 27, fontWeight: 650, letterSpacing: -0.3, color: '#1B2228', margin: '4px 0 0' }}>
+            游戏线索查询
+          </h1>
+          <div style={{ fontSize: 12.5, color: '#8A959E', marginTop: 6 }}>
+            关键词
+            <span style={{ color: '#3B4750', fontWeight: 600, marginLeft: 6 }}>{keyword || '（空）'}</span>
+            {appId && <span style={{ color: '#A7B0B8', marginLeft: 8 }}>· 数据月份 {month}</span>}
+          </div>
+        </div>
+      </div>
 
       {/* 【游戏基本信息】 */}
-      <div className="mb-4">
-        <div className="fw-semibold mb-1">【游戏基本信息】</div>
-        <div className="text-muted small mb-3">
-          {appId ? `APPID ${appId} · 数据月份 ${month}` : '按 APPID 精确匹配'}
+      <div className="mt-4 mb-4">
+        <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.6, color: '#5C6873', marginBottom: 10 }}>
+          游戏基本信息
         </div>
 
         {games.length ? (
@@ -996,7 +1005,7 @@ export default function SearchView() {
       {targetApp && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【游戏下载趋势】</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>游戏下载趋势</div>
             <div className="text-muted small">
               {targetApp.appName ? `${targetApp.appName}（` : ''}APPID {targetApp.appId}{targetApp.appName ? '）' : ''} · 本年 · 拖动下方刷选条可缩放时间范围
             </div>
@@ -1031,20 +1040,21 @@ export default function SearchView() {
       {appId && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-white border-0">
-            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-              <div className="btn-group btn-group-sm" role="group" aria-label="广告投放趋势切换">
-                {AD_TREND_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    className={`btn ${adTrendTab === t.key ? 'btn-primary' : 'btn-outline-secondary'}`}
-                    onClick={() => setAdTrendTab(t.key)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2" style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>广告投放趋势</div>
               <span className="text-muted small">本年 · 拖动下方刷选条可缩放时间范围</span>
+            </div>
+            <div className="btn-group btn-group-sm" role="group" aria-label="广告投放趋势切换">
+              {AD_TREND_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`btn ${adTrendTab === t.key ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setAdTrendTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           </div>
           <div className="card-body">
@@ -1128,7 +1138,7 @@ export default function SearchView() {
       {appId && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">【峰值人数在线趋势】</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>峰值人数在线趋势</div>
             <div className="text-muted small">
               {targetApp?.appName ? `${targetApp.appName}（` : ''}APPID {targetApp?.appId ?? appId}{targetApp?.appName ? '）' : ''} · 本月 · 拖动下方刷选条可缩放时间范围
             </div>

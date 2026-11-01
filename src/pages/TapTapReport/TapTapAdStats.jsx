@@ -258,21 +258,21 @@ function AdMetricHint() {
 
   return (
     <div
-      className="d-flex gap-2 mb-3 px-3 py-2 rounded-3"
-      style={{ backgroundColor: '#F7F9FC', border: '1px solid #E5EAF0', borderLeft: '3px solid #4361ee' }}
+      className="d-flex gap-2 mb-4 px-3 py-2 rounded-3"
+      style={{ backgroundColor: '#FAFBFC', border: '1px solid #EDF0F2' }}
     >
-      <i className="bi bi-info-circle text-primary" style={{ fontSize: 15, lineHeight: '28px' }}></i>
+      <i className="bi bi-info-circle" style={{ fontSize: 15, lineHeight: '30px', color: '#A7B0B8' }}></i>
       <div className="small text-body flex-grow-1" style={{ minWidth: 0 }}>
         <Row label="资源位">
           <div className="d-flex flex-column" style={{ gap: 2 }}>
             {PLATFORM_TAGS.map((group) => (
               <div key={group.platform} className="d-flex flex-wrap align-items-center" style={{ gap: '4px 6px' }}>
-                <span className="fw-semibold text-dark" style={{ minWidth: 92 }}>{group.platform}</span>
+                <span style={{ minWidth: 92, color: '#3B4750', fontWeight: 500 }}>{group.platform}</span>
                 {group.items.map((item) => (
                   <span
                     key={item}
                     className="badge fw-normal"
-                    style={{ backgroundColor: '#E7EDF5', color: '#33415C', fontSize: 11, padding: '3px 7px' }}
+                    style={{ backgroundColor: '#F2F5F7', color: '#5C6873', fontSize: 11, padding: '3px 8px' }}
                   >
                     {item}
                   </span>

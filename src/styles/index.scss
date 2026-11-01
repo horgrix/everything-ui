@@ -361,3 +361,226 @@ footer {
     }
   }
 }
+
+// ========== TapTap 报表页：统一卡面 / 表头 / 控件质感（仅作用于 .tt-page 内） ==========
+.tt-page,
+.gd-page,
+.os-page,
+.rp-page {
+  // 卡片：细边 + 轻投影 + 大圆角，hover 只加深描边
+  .card {
+    border-radius: 16px;
+    border: 1px solid #edf0f2;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    overflow: hidden;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+
+    &:hover {
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      border-color: #e0e6ea;
+    }
+  }
+
+  .card-header {
+    padding: 16px 20px;
+    background: #fff;
+    border-bottom: 1px solid #f2f5f7 !important;
+
+    .fw-semibold:first-child,
+    > .fw-semibold {
+      font-size: 13.5px;
+      letter-spacing: -0.1px;
+      color: #232b33;
+    }
+  }
+
+  .card-body {
+    padding: 16px 20px;
+  }
+
+  // 表格：表头更克制，行分隔更浅
+  .table {
+    font-size: 13px;
+
+    thead th {
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      color: #98a2ac;
+      background: #fff;
+      border-bottom: 1px solid #f1f4f6;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    tbody td {
+      border-color: #f6f8fa;
+      padding-top: 9px;
+      padding-bottom: 9px;
+    }
+  }
+
+  // 按钮：统一圆角与描边，弱化默认 Bootstrap 的“蓝按钮感”
+  .btn {
+    border-radius: 9px;
+    font-weight: 500;
+  }
+
+  .btn-sm {
+    font-size: 12px;
+  }
+
+  .btn-primary {
+    background-color: #4b5a66;
+    border-color: #4b5a66;
+
+    &:hover,
+    &:focus {
+      background-color: #3c4954;
+      border-color: #3c4954;
+    }
+  }
+
+  .btn-outline-secondary {
+    border-color: #e3e8ec;
+    color: #5c6873;
+
+    &:hover {
+      background: #f7f9fa;
+      border-color: #d5dde3;
+      color: #232b33;
+    }
+  }
+
+  .btn-group .btn {
+    border-radius: 9px !important;
+  }
+
+  // 徽标：更圆、更小一号
+  .badge {
+    border-radius: 7px;
+    font-weight: 500;
+  }
+
+  // 卡片内的说明文字
+  .card-header .text-muted,
+  .card-body .text-muted.small {
+    color: #98a2ac !important;
+  }
+}
+
+// TapTap 报表页：分页 / 输入框统一质感
+.tt-page,
+.gd-page,
+.os-page,
+.rp-page {
+  .pagination {
+    .page-link {
+      border-color: #e3e8ec;
+      color: #5c6873;
+      font-size: 12px;
+      padding: 4px 10px;
+
+      &:hover {
+        background: #f7f9fa;
+        border-color: #d5dde3;
+        color: #232b33;
+      }
+    }
+
+    .page-item.disabled .page-link {
+      color: #b6bec5;
+      background: #fbfcfd;
+      border-color: #edf0f2;
+    }
+
+    .page-item:first-child .page-link {
+      border-top-left-radius: 9px;
+      border-bottom-left-radius: 9px;
+    }
+
+    .page-item:last-child .page-link {
+      border-top-right-radius: 9px;
+      border-bottom-right-radius: 9px;
+    }
+  }
+
+  .input-group-sm > .form-control,
+  .input-group-sm > .input-group-text,
+  .form-control-sm {
+    border-radius: 9px;
+    border-color: #e3e8ec;
+    font-size: 12.5px;
+
+    &:focus {
+      border-color: #c9d3da;
+      box-shadow: 0 0 0 3px rgba(122, 139, 153, 0.1);
+    }
+  }
+
+  .input-group-sm > .input-group-text {
+    background: #fbfcfd;
+    color: #98a2ac;
+  }
+}
+
+// TapTap 报表页：KPI 卡片排版收紧（6 列一行时不折行）
+.tt-page,
+.gd-page,
+.os-page,
+.rp-page {
+  .card {
+    h4 {
+      font-size: 20px;
+      letter-spacing: -0.2px;
+      line-height: 1.3;
+    }
+
+    .card-body > small,
+    .card-body small {
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .card-body > p.small {
+      font-size: 11.5px;
+      letter-spacing: 0.2px;
+    }
+  }
+}
+
+// Games 数据大盘：KPI 标题预留两行，保证多张卡数值对齐
+.gd-page {
+  .card .card-body p.small {
+    min-height: 3em;
+    line-height: 1.5;
+    margin-bottom: 2px !important;
+  }
+}
+
+// TapREP 月报：下拉框与标签统一质感
+.rp-page {
+  .form-select,
+  .form-control {
+    border-radius: 9px;
+    border-color: #e3e8ec;
+    font-size: 12.5px;
+    color: #3b4750;
+
+    &:focus {
+      border-color: #c9d3da;
+      box-shadow: 0 0 0 3px rgba(122, 139, 153, 0.1);
+    }
+
+    &:disabled {
+      background-color: #fbfcfd;
+      color: #b6bec5;
+    }
+  }
+
+  .form-label {
+    font-size: 11px;
+    letter-spacing: 0.3px;
+    color: #98a2ac !important;
+  }
+}

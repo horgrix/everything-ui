@@ -825,32 +825,53 @@ export default function BusinessReport() {
   const game = STEAM_GAMES[gameKey];
 
   return (
-    <div className="container-fluid p-4">
-      <h2 className="fw-bold mb-4">
-        <i className="bi bi-bar-chart text-primary me-2"></i>
-        Games 数据大盘
-      </h2>
-
-      {/* 筛选栏 */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-body">
-          <div className="d-flex align-items-center flex-wrap gap-2">
-            <span className="text-muted small me-2">选择游戏:</span>
-            {GAME_KEYS.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={`btn btn-sm ${gameKey === key ? 'btn-primary' : 'btn-outline-secondary'}`}
-                onClick={() => setGameKey(key)}
-              >
-                {STEAM_GAMES[key].name}
-              </button>
-            ))}
-            <span className="ms-auto text-muted small">
-              已选: {game.name}
-            </span>
+    <div className="gd-page container-fluid p-4" style={{ maxWidth: 1440, margin: '0 auto' }}>
+      {/* 页头 */}
+      <div className="d-flex flex-wrap align-items-end justify-content-between gap-3">
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, color: '#A7B0B8' }}>GAMES DASHBOARD</div>
+          <h1 style={{ fontSize: 27, fontWeight: 650, letterSpacing: -0.3, color: '#1B2228', margin: '4px 0 0' }}>
+            Games 数据大盘
+          </h1>
+          <div style={{ fontSize: 12.5, color: '#8A959E', marginTop: 6 }}>
+            全平台在线 · 赛季表现 · 下载与榜单
+            <span style={{ color: '#A7B0B8' }}> · 当前 {game.name}</span>
           </div>
         </div>
+      </div>
+
+      {/* 游戏切换：胶囊分段控件 */}
+      <div
+        className="d-inline-flex flex-wrap"
+        style={{ background: '#F2F5F7', borderRadius: 12, padding: 4, marginTop: 20, marginBottom: 20, gap: 2 }}
+        role="group"
+        aria-label="选择游戏"
+      >
+        {GAME_KEYS.map((key) => {
+          const active = gameKey === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setGameKey(key)}
+              style={{
+                border: 'none',
+                background: active ? '#fff' : 'transparent',
+                boxShadow: active ? '0 1px 3px rgba(16,24,40,0.10)' : 'none',
+                borderRadius: 9,
+                padding: '7px 18px',
+                fontSize: 12.5,
+                fontWeight: active ? 600 : 500,
+                color: active ? '#1F272E' : '#71808A',
+                cursor: 'pointer',
+                transition: 'all .15s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {STEAM_GAMES[key].name}
+            </button>
+          );
+        })}
       </div>
 
       {/* 【全平台】在线人数趋势（仅配置了数据源的游戏） */}

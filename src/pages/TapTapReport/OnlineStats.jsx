@@ -104,7 +104,7 @@ export default function OnlineStats() {
         {(pcOnlinePeakKpisQuery.data || []).map((k) => {
           const meta = PC_KPI_META[k.key] || {};
           return (
-            <div className="col-12 col-sm-6 col-md-4 col-lg-2" key={k.key}>
+            <div className="col-12 col-sm-6 col-md-4" key={k.key}>
               <DashboardCard
                 title={k.label}
                 value={k.value != null ? formatNumber(k.value) : '-'}

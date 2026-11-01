@@ -276,11 +276,19 @@ export default function TapRepMonthly() {
     : '';
 
   return (
-    <div className="container-fluid p-4">
-      <h2 className="fw-bold mb-4">
-        <i className="bi bi-calendar3 text-primary me-2"></i>
-        TapREP 月报
-      </h2>
+    <div className="rp-page container-fluid p-4" style={{ maxWidth: 1440, margin: '0 auto' }}>
+      {/* 页头 */}
+      <div className="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, color: '#A7B0B8' }}>TAPREP MONTHLY</div>
+          <h1 style={{ fontSize: 27, fontWeight: 650, letterSpacing: -0.3, color: '#1B2228', margin: '4px 0 0' }}>
+            TapREP 月报
+          </h1>
+          <div style={{ fontSize: 12.5, color: '#8A959E', marginTop: 6 }}>
+            资源发放 · 流量消耗 · 广告效果 · 行业 Benchmark
+          </div>
+        </div>
+      </div>
 
       <div id="taprep-monthly-content">
         {/* 资源发放 / 流量消耗：分组堆叠柱（每月两根柱子并排，各自堆叠） */}

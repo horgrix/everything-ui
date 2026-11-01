@@ -197,15 +197,17 @@ export default function OneSearch() {
   const showSuggest = focused && keyword.trim().length > 0;
 
   return (
-    <>
+    <div className="os-page">
       <div className="position-relative" style={{ minHeight: 'max(calc(100vh - 120px), calc(50vh + 240px))' }}>
         {/* 标题：页面 30% 高度处 */}
         <div
           className="position-absolute start-50 translate-middle-x text-center"
-          style={{ top: '30vh', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16 }}
+          style={{ top: '26vh', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16 }}
         >
-          <div className="fw-bold" style={{ fontSize: 30, letterSpacing: 1 }}>
-            游戏线索查询
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.6, color: '#A7B0B8' }}>ONE SEARCH</div>
+          <div style={{ fontSize: 32, fontWeight: 650, letterSpacing: -0.4, color: '#1B2228', marginTop: 6 }}>游戏线索查询</div>
+          <div style={{ fontSize: 12.5, color: '#98A2AC', marginTop: 8 }}>
+            输入 APPID，查看该游戏的下载 / 在线 / 投放线索
           </div>
         </div>
 
@@ -215,14 +217,23 @@ export default function OneSearch() {
           style={{ top: '40vh', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16, zIndex: 20 }}
         >
           <div className="position-relative">
-          <div className="input-group input-group-lg shadow-sm">
+          <div
+            className="d-flex align-items-center"
+            style={{
+              background: '#fff',
+              border: '1px solid #E3E8EC',
+              borderRadius: 16,
+              boxShadow: '0 6px 20px rgba(16,24,40,0.06)',
+              padding: 6,
+            }}
+          >
             <input
               ref={inputRef}
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
               autoComplete="off"
-              className="form-control form-control-lg"
+              className="form-control form-control-lg border-0 shadow-none"
               placeholder="输入 APPID 搜索，如 961780"
               value={keyword}
               onChange={(e) => {
@@ -233,13 +244,13 @@ export default function OneSearch() {
               onBlur={() => setFocused(false)}
               onKeyDown={onInputKeyDown}
               aria-label="APPID 搜索"
-              style={{ height: 64, fontSize: 18 }}
+              style={{ height: 52, fontSize: 16, background: 'transparent' }}
             />
             <button
               type="button"
-              className="btn btn-primary btn-lg px-4 fw-semibold"
+              className="btn btn-primary btn-lg fw-semibold flex-shrink-0"
               onClick={() => handleSearch()}
-              style={{ height: 64, fontSize: 18 }}
+              style={{ height: 52, fontSize: 15, paddingLeft: 26, paddingRight: 26, borderRadius: 12 }}
             >
               Search
             </button>
@@ -343,26 +354,43 @@ export default function OneSearch() {
 
         {/* 榜单：两行（下载榜 / 投放榜），每行三列 昨日 / 本周 / 本月 Top5 */}
         <div
-          className="position-absolute start-50 translate-middle-x"
-          /* 紧贴 64px 高的搜索框下方（搜索框在 40vh） */
-          style={{ top: 'calc(40vh + 70px)', width: '100%', maxWidth: 860, paddingLeft: 16, paddingRight: 16 }}
+          /* 紧贴搜索框下方；用 paddingTop 而非绝对定位，让内容参与高度计算，避免遮挡页脚 */
+          style={{
+            paddingTop: 'calc(40vh + 76px)',
+            width: '100%',
+            maxWidth: 860,
+            margin: '0 auto',
+            paddingLeft: 16,
+            paddingRight: 16,
+            paddingBottom: 24,
+          }}
         >
           {RANK_SECTIONS.map((section) => {
             const q = rankQueries[section.key];
             const groups = q.data || {};
             return (
-              <div key={section.key} className="d-flex flex-wrap gap-2 align-items-stretch mb-2">
+              <div key={section.key} className="mb-3">
+                <div className="d-flex align-items-center mb-2" style={{ gap: 7, paddingLeft: 2 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: section.color, flex: '0 0 auto' }}></span>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 1.1, color: '#7A868F' }}>
+                    {section.title === '下载榜' ? '下载榜' : '投放榜'}
+                  </span>
+                </div>
+                <div className="d-flex flex-wrap" style={{ gap: 10, alignItems: 'stretch' }}>
                 {RANK_PERIODS.map((period) => {
                   const g = groups[period.key] || { snapshot: null, rows: [] };
                   const rows = g.rows || [];
                   return (
                     <div key={period.key} className="card border-0 shadow-sm" style={{ flex: '1 1 0', minWidth: 0 }}>
                       <div className="card-body p-2 px-3">
-                        <div className="d-flex justify-content-between align-items-baseline mb-1">
-                          <span className="fw-semibold" style={{ fontSize: 13 }}>
-                            【{section.title}】{period.label}Top5
+                        <div className="d-flex justify-content-between align-items-baseline" style={{ marginBottom: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#3B4750', letterSpacing: 0.2 }}>
+                            {period.label}
+                            <span style={{ fontSize: 10.5, fontWeight: 500, color: '#A7B0B8', marginLeft: 4 }}>Top5</span>
                           </span>
-                          <span className="text-muted" style={{ fontSize: 10.5 }}>{g.snapshot || ''}</span>
+                          <span style={{ fontSize: 10.5, color: '#B6BEC5', fontVariantNumeric: 'tabular-nums' }}>
+                            {g.snapshot || ''}
+                          </span>
                         </div>
 
                         {q.isLoading && (
@@ -437,12 +465,12 @@ export default function OneSearch() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-
-    </>
+    </div>
   );
 }
