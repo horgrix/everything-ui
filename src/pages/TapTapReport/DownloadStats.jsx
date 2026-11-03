@@ -307,7 +307,17 @@ export default function DownloadStats() {
             strokeDashArray={[0, 5, 5, 5, 5, 5, 5]}
             markers={3}
             shared
-            xaxisOverrides={dailyTrendQuery.data?.categories ? { type: 'category', categories: dailyTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
+            xaxisOverrides={(() => {
+              const cats = dailyTrendQuery.data?.categories;
+              if (!cats) return {};
+              // 30 天逐日 → 每 5 天显示一个刻度，其余留空，避免日期挤成一片
+              const shown = new Set(cats.filter((_, i) => i % 5 === 0 || i === cats.length - 1));
+              return {
+                type: 'category',
+                categories: cats,
+                labels: { rotate: 0, formatter: (v) => (shown.has(v) ? String(v).slice(5) : '') },
+              };
+            })()}
             yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }} />
         </div>
       </div>

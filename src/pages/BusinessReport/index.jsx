@@ -689,7 +689,15 @@ function SeasonCompareCard({ title, field, seasons, loading, error }) {
           tooltipCustom={seasonTooltip}
           toolbar={false}
           legendOverrides={{ floating: true, position: 'top', horizontalAlign: 'center', fontSize: '10px', offsetY: 6 }}
-          xaxisOverrides={{ type: 'numeric', min: 0, max: 90, title: { text: '赛季天数' }, labels: { formatter: (v) => String(Math.round(v)) } }}
+          xaxisOverrides={{
+            type: 'numeric',
+            min: 0,
+            max: 90,
+            // 每天一个点，默认会挤满 0~90 的刻度 → 每 10 天一格（tickAmount 为区间数）
+            tickAmount: 9,
+            title: { text: '赛季天数' },
+            labels: { rotate: 0, hideOverlappingLabels: true, formatter: (v) => String(Math.round(v)) },
+          }}
           yaxisOverrides={{ seriesName: series.map((s) => s.name), title: { text: '峰值在线' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
           yaxisRight={{ min: 0, ...(rightMax != null ? { max: rightMax } : {}), seriesName: [''], labels: { formatter: (v) => formatCompactNumber(v) } }}
           yaxisAnnotations={annotations}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Chart from 'react-apexcharts';
 import { baseChartOptions } from '../../utils/chart-theme';
 import Loading from '../common/Loading';
@@ -24,6 +24,8 @@ export default function ChartWrapper({
 }) {
   const apexRef = useRef(null);
   const boxRef = useRef(null);
+  // 容器实测宽度：量到之前不创建图表，避免首帧按错误宽度渲染导致整体右偏、与 x 轴错位
+  const [boxWidth, setBoxWidth] = useState(0);
 
   /**
    * ApexCharts 只在 window resize 时重算宽度。
@@ -53,7 +55,10 @@ export default function ChartWrapper({
 
     const ro = new ResizeObserver((entries) => {
       const width = Math.round(entries[0]?.contentRect?.width ?? el.getBoundingClientRect().width);
-      if (!width || Math.abs(width - lastWidth) < 1) return;
+      if (!width) return;
+      // 宽度变化时交给 react-apexcharts 以新宽度重建布局（updateOptions），点位与坐标轴才会一起重算
+      setBoxWidth((prev) => (prev === width ? prev : width));
+      if (Math.abs(width - lastWidth) < 1) return;
       lastWidth = width;
       redraw();
     });
@@ -72,17 +77,6 @@ export default function ChartWrapper({
     };
   }, []);
 
-  if (loading) return <Loading />;
-
-  if (error) {
-    return (
-      <div className="alert alert-warning text-center" role="alert">
-        <i className="bi bi-exclamation-triangle me-2"></i>
-        {error}
-      </div>
-    );
-  }
-
   // 深度合并 options（events 通过 chart prop 传入）
   const mergedOptions = deepMerge(baseChartOptions, options);
   if (Object.keys(events).length > 0) {
@@ -90,8 +84,21 @@ export default function ChartWrapper({
     mergedOptions.chart.events = events;
   }
 
-  return (
-    <div ref={boxRef}>
+  const renderBody = () => {
+    if (loading) return <Loading />;
+    if (error) {
+      return (
+        <div className="alert alert-warning text-center" role="alert">
+          <i className="bi bi-exclamation-triangle me-2"></i>
+          {error}
+        </div>
+      );
+    }
+    if (boxWidth === 0) {
+      // 等首帧量到容器宽度再建图（占位撑住高度），避免按错误宽度渲染导致整体右偏、与 x 轴错位
+      return <div style={{ height }} aria-hidden="true" />;
+    }
+    return (
       <Chart
         chartRef={apexRef}
         key={JSON.stringify(series)}
@@ -99,7 +106,16 @@ export default function ChartWrapper({
         series={series}
         type={type}
         height={height}
+        width={boxWidth}
       />
+    );
+  };
+
+  // 容器始终渲染：ResizeObserver 需要有真实 DOM 才能量到宽度；
+  // width:100% 保证在 flex 居中（align-items:center）的父级里也不会塌成 0 宽
+  return (
+    <div ref={boxRef} style={{ width: '100%', minWidth: 0 }}>
+      {renderBody()}
     </div>
   );
 }
