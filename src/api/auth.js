@@ -65,10 +65,19 @@ export function redirectToSignIn(rd) {
   return true;
 }
 
-/** 退出：清网关侧 Cookie 后由 oauth2-proxy 跳回首页 */
+/**
+ * 退出：两步，顺序不能反。
+ * 1) oauth2-proxy 的 /oauth2/sign_out 清掉自己下发的 Cookie（它才是"能不能访问"的依据）；
+ * 2) 再跳 Keycloak 的 end_session 终结 SSO 会话，否则 Keycloak 会话还在，回到站点又被静默登回来。
+ *
+ * 第 2 步 Keycloak 会先给一个“您确定要注销吗”确认页（它没拿到 id_token_hint，这是它防退出 CSRF 的默认行为），
+ * 点“注销”后回到站点根目录，此时必须重新输密码。
+ */
 export function signOut() {
   if (!isAuthEnabled() || typeof window === 'undefined') return;
-  window.location.assign(SSO.signOut);
+  const backTo = encodeURIComponent(`${window.location.origin}/`);
+  const kcLogout = `${SSO.issuerLogout}?client_id=${SSO.clientId}&post_logout_redirect_uri=${backTo}`;
+  window.location.assign(`${SSO.signOut}?rd=${encodeURIComponent(kcLogout)}`);
 }
 
 /** 判断一个 axios 错误是否是「未登录 / 登录已过期」 */
