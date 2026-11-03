@@ -12,7 +12,8 @@ dist
 dist-ssr
 *.local
 .env
-.env.production
+# 注意：.env.production 已入库（只含相对路径与开关，无任何密钥），不要加回忽略
+.env.local
 
 # Editor directories and files
 .vscode/*
