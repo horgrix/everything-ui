@@ -66,22 +66,16 @@ export function redirectToSignIn(rd) {
 }
 
 /**
- * 退出：两步，顺序不能反。
- * 1) /oauth2/sign_out 清掉网关 Cookie（它才是“能不能访问”的依据）；
- * 2) 带 rd 跳 Keycloak end_session，由 IdP 终结 SSO 会话，再回站点（必须重新输密码）。
+ * 退出：一跳就行 —— 跳站点的 /logout，后面整条链路由 nginx 接管：
+ * 清 oauth2-proxy Cookie → 跳 Keycloak end_session → 确认页自动提交（sso 侧 sub_filter 注入）
+ * → 回站点根，此时 Keycloak 会话已终结，必须重新输密码。
  *
- * 为什么一定要第 2 步：只清网关 Cookie 时 Keycloak 侧会话还活着，下次打开页面会被静默签回来，
- * 看起来就是“退出无效”。
- *
- * 关于体验：Keycloak 拿不到 id_token_hint（oauth2-proxy 不向浏览器交给它）时会先出一页
- * “您确定要注销吗”，点“注销”即终结会话——这是它防退出 CSRF 的默认行为，不是故障。
- * Keycloak 26.8.1 已修好早先 26.0.8 上 logout-confirm 点下去 500 的 bug，此路径实测走通。
+ * 为什么不自己拼 Keycloak 地址：id_token 在 oauth2-proxy 的加密 session 里，前端拿不到，
+ * Keycloak 因此总会出确认页；这段处理放到服务端，前端只关心“清掉登录态”这件事。
  */
 export function signOut() {
   if (!isAuthEnabled() || typeof window === 'undefined') return;
-  const backTo = encodeURIComponent(`${window.location.origin}/`);
-  const kcLogout = `${SSO.issuerLogout}?client_id=${SSO.clientId}&post_logout_redirect_uri=${backTo}`;
-  window.location.assign(`${SSO.signOut}?rd=${encodeURIComponent(kcLogout)}`);
+  window.location.assign(SSO.signOut);
 }
 
 /** 判断一个 axios 错误是否是「未登录 / 登录已过期」 */

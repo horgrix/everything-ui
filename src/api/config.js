@@ -35,16 +35,17 @@ export const FINANCIAL_API_BASE = env.VITE_FINANCIAL_API_BASE_URL || 'https://ap
  */
 export const AUTH_MODE = env.VITE_AUTH_MODE === 'sso' ? 'sso' : 'off';
 
-/** oauth2-proxy 的标准路径（挂在站点根，不经任何子路径前缀）；Keycloak 两个地址供退出时终结 SSO 会话 */
+/**
+ * 网关（oauth2-proxy）与退出入口。
+ * 注意：退出不要在本 bundle 里拼 Keycloak 地址 —— 整条链路由 nginx 的 GET /logout 负责：
+ *   清 oauth2-proxy Cookie → 302 到 Keycloak end_session → 确认页由 sso 侧注入脚本自动提交 → 回站点根。
+ * 好处：前端不硬编码 IdP 域名，IdP 换域名/换路径只改 nginx。
+ */
 export const SSO = {
   signIn: '/oauth2/sign_in',
-  // 清掉 oauth2-proxy 自己的 Cookie（它才是“能不能访问”的依据）。
-  signOut: '/oauth2/sign_out',
+  // 站点级退出入口（nginx 定义，不经 auth_request）
+  signOut: '/logout',
   auth: '/oauth2/userinfo',
-  // Keycloak realm 的登出端点（取自 .well-known 的 end_session_endpoint）。
-  // 只清网关 Cookie 不够：Keycloak 侧 SSO 会话还在，下次访问会被静默签回来。
-  issuerLogout: 'https://sso.horgrix.com/realms/horgrix/protocol/openid-connect/logout',
-  clientId: 'oauth2-proxy',
 };
 
 /**
