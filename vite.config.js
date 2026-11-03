@@ -21,6 +21,17 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      // 下面两个只在把 baseURL 改成同源相对路径（如 /api/v09/data、/api/v1）时才会用到
+      '/api/v09': {
+        target: 'https://api.horgrix.com',
+        changeOrigin: true,
+        secure: true,
+      },
+      '/api/v1': {
+        target: 'https://api.horgrix.com',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 })

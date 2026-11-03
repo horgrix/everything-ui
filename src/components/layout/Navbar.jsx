@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import VisitStats from './VisitStats';
 import usePageviewTracking from '../../hooks/usePageviewTracking';
+import { isAuthEnabled, signOut } from '../../api/auth';
 
 export default function Navbar() {
   usePageviewTracking();
@@ -109,6 +110,20 @@ export default function Navbar() {
                 量化信息
               </NavLink>
             </li>
+            {/* 退出登录：仅在网关 SSO 开启时出现；点后由 oauth2-proxy 清 Cookie 并跳回首页 */}
+            {isAuthEnabled() && (
+              <li className="nav-item">
+                <button
+                  type="button"
+                  className="nav-link btn btn-link border-0 bg-transparent"
+                  title="退出登录"
+                  onClick={signOut}
+                >
+                  <i className="bi bi-box-arrow-right me-1"></i>
+                  退出
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>

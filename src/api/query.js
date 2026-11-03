@@ -1,5 +1,7 @@
 import axios from 'axios';
 import apiClient from './client';
+import { V09_API_BASE, COMMON_HEADERS } from './config';
+import { handleResponseError } from './authNotice';
 
 /**
  * 通用查询函数 — 对应 https://horgrix.com/api/data/{table_name}/query
@@ -35,11 +37,11 @@ export default function query(tableName, params = {}) {
 export function querySql(sql) {
   return apiClient.post('/sql', { sql });
 }
-/** v09 数据服务（后端为 MySQL，接口 https://api.horgrix.com/api/v09/data） */
+/** v09 数据服务（后端为 MySQL；地址由 VITE_V09_API_BASE_URL 决定，默认 api.horgrix.com/api/v09/data） */
 const v09Client = axios.create({
-  baseURL: 'https://api.horgrix.com/api/v09/data',
+  baseURL: V09_API_BASE,
   timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: COMMON_HEADERS,
 });
 
 v09Client.interceptors.response.use(
@@ -50,7 +52,10 @@ v09Client.interceptors.response.use(
     }
     return { data: body?.data, total: body?.total };
   },
-  (error) => Promise.reject(new Error(error.response?.data?.message || error.message || '请求失败'))
+  (error) => {
+    handleResponseError(error, 'v09 API');
+    return Promise.reject(new Error(error.response?.data?.message || error.message || '请求失败'));
+  }
 );
 
 /**

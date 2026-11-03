@@ -15,7 +15,8 @@ const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_STATS_MOCK === 'tru
 const statsClient = axios.create({
   baseURL,
   timeout: 8000,
-  headers: { 'Content-Type': 'application/json' },
+  // 统一带 Accept: application/json —— 未登录时网关返回 401 而不是登录页 HTML
+  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 });
 
 /** 拆掉 {code,message,data} 包装；code 非 0 视为失败 */

@@ -1,13 +1,17 @@
 import axios from 'axios';
+import { FINANCIAL_API_BASE, COMMON_HEADERS } from './config';
+import { handleResponseError } from './authNotice';
 
 const finClient = axios.create({
-  baseURL: 'https://api.horgrix.com/api/v2/financial',
+  baseURL: FINANCIAL_API_BASE,
   timeout: 30000,
+  headers: COMMON_HEADERS,
 });
 
 finClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    handleResponseError(error, 'Finance API');
     const message = error.response?.data?.message || error.message || '请求失败';
     console.error('[Finance API Error]', message);
     return Promise.reject(new Error(message));
