@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import Chart from 'react-apexcharts';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { baseChartOptions } from '../../utils/chart-theme';
 import Loading from '../common/Loading';
+
+/**
+ * ApexCharts（约 220KB gzip）按需加载：不进首屏关键路径。
+ * 页面骨架、卡片和「加载中」状态先画出来，图表库与数据并行下载，下载完再挂载。
+ */
+const Chart = lazy(() => import('react-apexcharts'));
 
 /**
  * ApexCharts 通用包装组件
@@ -99,15 +104,17 @@ export default function ChartWrapper({
       return <div style={{ height }} aria-hidden="true" />;
     }
     return (
-      <Chart
-        chartRef={apexRef}
-        key={JSON.stringify(series)}
-        options={mergedOptions}
-        series={series}
-        type={type}
-        height={height}
-        width={boxWidth}
-      />
+      <Suspense fallback={<div style={{ height }} aria-hidden="true" />}>
+        <Chart
+          chartRef={apexRef}
+          key={JSON.stringify(series)}
+          options={mergedOptions}
+          series={series}
+          type={type}
+          height={height}
+          width={boxWidth}
+        />
+      </Suspense>
     );
   };
 

@@ -4,6 +4,22 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // 第三方库单独成 chunk：与业务代码分开缓存，改业务代码不用重下图表库。
+        // 注意：不要把 apexcharts 放进 manualChunks —— 它由 ChartWrapper 动态 import，
+        // 一旦被提成共享 chunk，rolldown 会把它写进 index.html 的 modulepreload，
+        // 等于又把 219KB(gzip) 拉回首屏关键路径。交给动态 import 自然分块。
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler') || id.includes('react-router')) return 'vendor-react'
+          if (id.includes('bootstrap')) return 'vendor-bootstrap'
+          if (id.includes('@tanstack') || id.includes('axios')) return 'vendor-data'
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api/data': {

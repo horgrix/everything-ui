@@ -1,16 +1,27 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import ErrorBoundary from './components/common/ErrorBoundary';
-import BusinessReport from './pages/BusinessReport';
-import OneSearch from './pages/OneSearch';
-import SearchView from './pages/OneSearch/SearchView';
-import FinanceInfo from './pages/FinanceInfo';
-import QuantInfo from './pages/QuantInfo';
-import TapTapReport from './pages/TapTapReport';
-import TapRepMonthly from './pages/TapRepMonthly';
-import DataDashboard from './pages/DataDashboard';
-import PeriodicReport from './pages/PeriodicReport';
-import PeriodicReportDetail from './pages/PeriodicReport/DetailView';
+
+/* 路由级代码分割：每个页面单独 chunk，/taptap 首屏不再下载全站代码 */
+const BusinessReport = lazy(() => import('./pages/BusinessReport'));
+const OneSearch = lazy(() => import('./pages/OneSearch'));
+const SearchView = lazy(() => import('./pages/OneSearch/SearchView'));
+const FinanceInfo = lazy(() => import('./pages/FinanceInfo'));
+const QuantInfo = lazy(() => import('./pages/QuantInfo'));
+const TapTapReport = lazy(() => import('./pages/TapTapReport'));
+const TapRepMonthly = lazy(() => import('./pages/TapRepMonthly'));
+const DataDashboard = lazy(() => import('./pages/DataDashboard'));
+const PeriodicReport = lazy(() => import('./pages/PeriodicReport'));
+const PeriodicReportDetail = lazy(() => import('./pages/PeriodicReport/DetailView'));
+
+function RouteFallback() {
+  return (
+    <div className="d-flex align-items-center justify-content-center py-5 text-muted small">
+      加载中…
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -19,19 +30,21 @@ export default function App() {
         <Navbar />
         <main className="flex-grow-1 bg-light">
           <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Navigate to="/business" replace />} />
-              <Route path="/dashboard" element={<DataDashboard />} />
-              <Route path="/business" element={<BusinessReport />} />
-              <Route path="/one-search" element={<OneSearch />} />
-              <Route path="/one-search/report" element={<SearchView />} />
-              <Route path="/taptap" element={<TapTapReport />} />
-              <Route path="/taprep-monthly" element={<TapRepMonthly />} />
-              <Route path="/periodic-report" element={<PeriodicReport />} />
-              <Route path="/periodic-report/detail" element={<PeriodicReportDetail />} />
-              <Route path="/finance" element={<FinanceInfo />} />
-              <Route path="/quant" element={<QuantInfo />} />
-            </Routes>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<Navigate to="/business" replace />} />
+                <Route path="/dashboard" element={<DataDashboard />} />
+                <Route path="/business" element={<BusinessReport />} />
+                <Route path="/one-search" element={<OneSearch />} />
+                <Route path="/one-search/report" element={<SearchView />} />
+                <Route path="/taptap" element={<TapTapReport />} />
+                <Route path="/taprep-monthly" element={<TapRepMonthly />} />
+                <Route path="/periodic-report" element={<PeriodicReport />} />
+                <Route path="/periodic-report/detail" element={<PeriodicReportDetail />} />
+                <Route path="/finance" element={<FinanceInfo />} />
+                <Route path="/quant" element={<QuantInfo />} />
+              </Routes>
+            </Suspense>
           </ErrorBoundary>
         </main>
         <footer className="bg-dark text-white text-center py-3 small">
