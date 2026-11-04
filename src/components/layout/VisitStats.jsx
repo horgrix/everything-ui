@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import ChartWrapper from '../charts/ChartWrapper';
 import { DEFAULT_RANGE, fetchStats, getLastIdentity, rangeLabel, STATS_RANGES } from '../../api/stats';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
@@ -26,6 +26,13 @@ const IDENTITY_LABELS = {
   cid: '浏览器匿名 ID',
   fp: 'IP + UA 指纹',
 };
+
+/** 面板里 PV 按身份来源拆分的展示顺序与配色 */
+const IDENTITY_ROWS = [
+  { key: 'sso', label: '登录账号', color: '#4dabf7' },
+  { key: 'cid', label: '浏览器 ID', color: '#63e6be' },
+  { key: 'fp', label: 'IP + UA', color: '#adb5bd' },
+];
 
 const PANEL_WIDTH = 380;
 /** 稳定的空数组引用：data 还没到时也让 useMemo 依赖不变，避免每帧重建图表配置 */
@@ -74,6 +81,45 @@ function Sparkline({ values, width = 46, height = 16 }) {
   );
 }
 
+/** 身份来源拆分条：三段比例 + 图例；看一眼就知道 UV 有没有降级成浏览器指纹 */
+function IdentityBar({ identities, total }) {
+  const rows = IDENTITY_ROWS.map((row) => ({ ...row, value: Number(identities?.[row.key]) || 0 })).filter(
+    (row) => row.value > 0,
+  );
+  if (!total || rows.length === 0) return null;
+
+  const pct = (value) => (value / total) * 100;
+  const fpShare = pct(Number(identities?.fp) || 0);
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="d-flex align-items-center justify-content-between" style={{ marginBottom: 3 }}>
+        <span style={{ color: 'rgba(255,255,255,0.5)' }}>身份来源 · 按浏览量</span>
+        {fpShare >= 10 && (
+          <span style={{ color: '#ffd8a8', fontSize: 10.5 }}>指纹占 {fpShare.toFixed(0)}%，可推广登录</span>
+        )}
+      </div>
+      <div className="d-flex" style={{ height: 6, borderRadius: 3, overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+        {rows.map((row) => (
+          <div
+            key={row.key}
+            style={{ width: `${pct(row.value)}%`, background: row.color }}
+            title={`${row.label} ${formatNumber(row.value)}`}
+          ></div>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap" style={{ gap: '2px 10px', marginTop: 3, fontSize: 10.5 }}>
+        {rows.map((row) => (
+          <span key={row.key} className="d-inline-flex align-items-center" style={{ gap: 4, color: 'rgba(255,255,255,0.55)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: 2, background: row.color, display: 'inline-block' }}></span>
+            {row.label} {pct(row.value).toFixed(0)}%
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * 访问统计（PV / UV）徽章 + 趋势面板
  * - 默认窗口 = 本周，与老接口 `/week` 数字完全一致
@@ -90,6 +136,8 @@ export default function VisitStats() {
   const { data, isFetching, isError } = useQuery({
     queryKey: ['visit-stats', range],
     queryFn: () => fetchStats(range),
+    // 切窗口时保留上一份数据，避免徽章数字和曲线闪成「—」/空图
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
     // 接口 4xx/5xx（未登录、参数错、后端抖动）不给重试，直接按「暂无数据」处理
     retry: (failureCount, error) => !error?.noRetry && failureCount < 1,
@@ -229,7 +277,7 @@ export default function VisitStats() {
         className="d-none d-xl-inline-flex align-items-center rounded-pill"
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="点击查看访问趋势"
+        title="点击查看访问趋势（浏览量已按「同一页面 30 分钟」去重）"
         onClick={() => setOpen((prev) => !prev)}
         style={{
           gap: 8,
@@ -365,6 +413,8 @@ export default function VisitStats() {
             )}
           </div>
 
+          {!isEmpty && <IdentityBar identities={data?.identities} total={data?.pv} />}
+
           {data?.topPaths?.length > 0 && (
             <>
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', margin: '6px 0 6px' }}></div>
@@ -388,6 +438,9 @@ export default function VisitStats() {
           <div style={{ color: 'rgba(255,255,255,0.3)', marginTop: 6, fontSize: 10.5 }}>
             {granularity === 'month' ? '跨度较长，曲线按「月」聚合' : '曲线按天聚合，缺数据按 0 补齐'}
             {isFetching && data ? ' · 更新中' : ''}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.42)', fontSize: 10.5 }}>
+            浏览量为去重后口径：同一页面 30 分钟内不重复计
           </div>
         </div>
       )}

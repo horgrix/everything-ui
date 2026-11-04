@@ -100,6 +100,9 @@ function thisMonday() {
 /** mock 窗口长度与粒度（与后端 resolve_window 保持一致：≤180 天才按天） */
 const MOCK_DAYS = { today: 1, week: 7, '7d': 7, '30d': 30, all: 120 };
 
+/** 身份来源键：后端恒给这三项（缺失/未知一律补 0），用于展示 PV 拆分 */
+export const IDENTITY_KEYS = ['sso', 'cid', 'fp'];
+
 /** 与后端完全同形状的 mock 响应（走同一套 unwrap / 字段解析，便于真接口上线后零改动切换） */
 function mockEnvelope(range) {
   const name = MOCK_DAYS[range] ? range : DEFAULT_RANGE;
@@ -117,6 +120,7 @@ function mockEnvelope(range) {
     });
   }
   const sum = (key) => series.reduce((acc, item) => acc + item[key], 0);
+  const pv = sum('pv');
   return {
     code: 0,
     message: 'success',
@@ -126,9 +130,11 @@ function mockEnvelope(range) {
       end: series[series.length - 1].date,
       granularity: 'day',
       week_start: thisMonday(),
-      pv: sum('pv'),
+      pv,
       uv: sum('uv'),
       series,
+      // 身份来源拆分：三项恒存在、和等于 pv（与后端 identities 同形状）
+      identities: { sso: Math.round(pv * 0.86), cid: Math.round(pv * 0.12), fp: pv - Math.round(pv * 0.86) - Math.round(pv * 0.12) },
       top_paths: [
         { path: '/taptap', pv: 642, uv: 58 },
         { path: '/business', pv: 331, uv: 41 },
@@ -154,8 +160,9 @@ export function sendHit({ path, title, referrer }) {
       noTrack ? '/hit?no_track=1' : '/hit',
       {
         path,
-        title: title || document.title || '',
-        referrer: referrer ?? (document.referrer || ''),
+        // title 不入库，referrer 服务端截到 255：这里先自己截，少传无用字节
+        title: (title || document.title || '').slice(0, 255),
+        referrer: (referrer ?? (document.referrer || '')).slice(0, 255),
         // 可选兜底：SSO 身份头缺失时后端才用（8~64 位 [A-Za-z0-9_-]）
         visitor_id: getVisitorId(),
       },
@@ -218,14 +225,11 @@ export async function fetchStats(range = DEFAULT_RANGE) {
   const data = unwrap({ data: raw });
   if (!data) throw new Error('empty stats payload');
 
-  // 可选：各身份来源占比（后端后续提供才解析，缺省为空对象）
+  // PV 按身份来源拆分（sso / cid / fp）：后端三项恒存在、和等于 pv，缺字段时补 0
   const identities = {};
-  if (data.identities && typeof data.identities === 'object') {
-    Object.entries(data.identities).forEach(([k, v]) => {
-      const n = Number(v) || 0;
-      if (n > 0) identities[String(k)] = n;
-    });
-  }
+  IDENTITY_KEYS.forEach((key) => {
+    identities[key] = Number(data.identities?.[key]) || 0;
+  });
 
   return {
     range: data.range || name,
