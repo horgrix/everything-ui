@@ -15,6 +15,8 @@ export default defineConfig({
         target: 'https://horgrix.com',
         changeOrigin: true,
         secure: true,
+        // 本地调试的每次页面浏览不走线上统计（后端识别 X-No-Track 后直接丢弃）
+        headers: { 'X-No-Track': '1' },
       },
       '/api/v2': {
         target: 'https://api.horgrix.com',
