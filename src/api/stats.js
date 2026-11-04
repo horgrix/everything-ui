@@ -159,6 +159,7 @@ export function sendHit({ path, title, referrer }) {
     .post(
       noTrack ? '/hit?no_track=1' : '/hit',
       {
+        // path 由后端统一归一化（截到 128），前端不再截断，避免顶掉上报
         path,
         // title 不入库，referrer 服务端截到 255：这里先自己截，少传无用字节
         title: (title || document.title || '').slice(0, 255),
@@ -173,7 +174,14 @@ export function sendHit({ path, title, referrer }) {
       const identity = res?.data?.data?.identity;
       if (identity) saveIdentity(identity);
     })
-    .catch(() => {});
+    .catch((error) => {
+      // 生产保持静默（统计不能影响页面），但开发环境要把失败原因喊出来：
+      // 后端对字段长度/格式是严格校验，400 会让 PV 静默丢失，只翻 devtools 很容易漏。
+      if (import.meta.env.DEV) {
+        const status = error?.response?.status;
+        console.warn('[stats] /hit 上报失败（本次 PV 不会入库）', status || '', error?.response?.data || error?.message || '');
+      }
+    });
 }
 
 /** 记住后端实际采用的身份来源 */
