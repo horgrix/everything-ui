@@ -8,6 +8,7 @@ import FinanceInfo from './pages/FinanceInfo';
 import QuantInfo from './pages/QuantInfo';
 import TapTapReport from './pages/TapTapReport';
 import TapRepMonthly from './pages/TapRepMonthly';
+import DataDashboard from './pages/DataDashboard';
 import PeriodicReport from './pages/PeriodicReport';
 import PeriodicReportDetail from './pages/PeriodicReport/DetailView';
 
@@ -20,6 +21,7 @@ export default function App() {
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Navigate to="/business" replace />} />
+              <Route path="/dashboard" element={<DataDashboard />} />
               <Route path="/business" element={<BusinessReport />} />
               <Route path="/one-search" element={<OneSearch />} />
               <Route path="/one-search/report" element={<SearchView />} />

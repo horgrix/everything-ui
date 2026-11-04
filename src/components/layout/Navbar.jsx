@@ -34,6 +34,17 @@ export default function Navbar() {
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
               <NavLink
+                to="/dashboard"
+                className={({ isActive }) =>
+                  `nav-link ${isActive ? 'active' : ''}`
+                }
+              >
+                <i className="bi bi-speedometer2 me-1"></i>
+                数据大盘
+              </NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink
                 to="/one-search"
                 className={({ isActive }) =>
                   `nav-link ${isActive ? 'active' : ''}`

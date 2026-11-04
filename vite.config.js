@@ -18,6 +18,12 @@ export default defineConfig({
         // 本地调试的每次页面浏览不走线上统计（后端识别 X-No-Track 后直接丢弃）
         headers: { 'X-No-Track': '1' },
       },
+      // 数据大盘的静态 JSON（生产是同源静态目录 /_api/，dev 回落到线上源）
+      '/_api': {
+        target: 'https://horgrix.com',
+        changeOrigin: true,
+        secure: true,
+      },
       '/api/v2': {
         target: 'https://api.horgrix.com',
         changeOrigin: true,
