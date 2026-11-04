@@ -3,10 +3,13 @@ import { baseChartOptions } from '../../utils/chart-theme';
 import Loading from '../common/Loading';
 
 /**
- * ApexCharts（约 220KB gzip）按需加载：不进首屏关键路径。
- * 页面骨架、卡片和「加载中」状态先画出来，图表库与数据并行下载，下载完再挂载。
+ * ApexCharts（约 219KB gzip）不阻塞首屏：不强塞进入口包。
+ * 但也不等到 React 挂载图表才去下载 —— 那会多排一次「页面 chunk 下载完 → 再请求图表库」的串行等待。
+ * 这里在模块加载时就发起 import（模块本身属于路由 chunk，自然不会拖慢首帧），
+ * 图表库与页面 chunk / 接口数据并行下载，下载完再挂载。
  */
-const Chart = lazy(() => import('react-apexcharts'));
+const chartModule = import('react-apexcharts');
+const Chart = lazy(() => chartModule);
 
 /**
  * ApexCharts 通用包装组件
