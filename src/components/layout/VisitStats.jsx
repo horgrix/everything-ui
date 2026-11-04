@@ -256,7 +256,7 @@ export default function VisitStats() {
 
   const chartSeries = useMemo(
     () => [
-      { name: '浏览量', data: series.map((item) => item.pv) },
+      { name: '浏览量（去重后）', data: series.map((item) => item.pv) },
       { name: '使用人数', data: series.map((item) => item.uv) },
     ],
     [series],
@@ -380,7 +380,7 @@ export default function VisitStats() {
           </div>
 
           <div className="d-flex align-items-start" style={{ gap: 20, marginBottom: 4 }}>
-            <Total label={`浏览量 · ${rangeText}`} value={data?.pv ?? 0} />
+            <Total label={`浏览量（去重后）· ${rangeText}`} value={data?.pv ?? 0} />
             <Total label="使用人数（去重）" value={data?.uv ?? 0} hint={identity ? `按${identity}去重` : undefined} />
             {data?.pv > 0 && data?.uv > 0 && (
               <Total label="人均浏览" value={data.pv / data.uv} decimals={1} />
