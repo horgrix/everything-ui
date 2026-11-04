@@ -585,17 +585,3 @@ footer {
   }
 }
 
-/* 数据大盘：刷新按钮转圈 */
-@keyframes dd-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.spin {
-  display: inline-block;
-  animation: dd-spin 1s linear infinite;
-}

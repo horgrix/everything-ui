@@ -11,7 +11,6 @@ const FinanceInfo = lazy(() => import('./pages/FinanceInfo'));
 const QuantInfo = lazy(() => import('./pages/QuantInfo'));
 const TapTapReport = lazy(() => import('./pages/TapTapReport'));
 const TapRepMonthly = lazy(() => import('./pages/TapRepMonthly'));
-const DataDashboard = lazy(() => import('./pages/DataDashboard'));
 const PeriodicReport = lazy(() => import('./pages/PeriodicReport'));
 const PeriodicReportDetail = lazy(() => import('./pages/PeriodicReport/DetailView'));
 
@@ -33,7 +32,6 @@ export default function App() {
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Navigate to="/business" replace />} />
-                <Route path="/dashboard" element={<DataDashboard />} />
                 <Route path="/business" element={<BusinessReport />} />
                 <Route path="/one-search" element={<OneSearch />} />
                 <Route path="/one-search/report" element={<SearchView />} />
@@ -43,6 +41,8 @@ export default function App() {
                 <Route path="/periodic-report/detail" element={<PeriodicReportDetail />} />
                 <Route path="/finance" element={<FinanceInfo />} />
                 <Route path="/quant" element={<QuantInfo />} />
+                {/* 已下线的旧路径（含数据大盘 /dashboard）统一回首页，避免书签打开空白 */}
+                <Route path="*" element={<Navigate to="/business" replace />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>
