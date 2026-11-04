@@ -66,6 +66,7 @@ const EFFECT_GROUP = 'taprep-effect';
 
 /** benchmark 区块的三级联动维度（顺序即联动顺序） */
 const AD_BENCH_DIMS = [
+  { field: 'client', label: '客户端' },
   { field: 'plan_group', label: '计划分组' },
   { field: 'plan_type', label: '计划类型' },
   { field: 'metric', label: '指标' },

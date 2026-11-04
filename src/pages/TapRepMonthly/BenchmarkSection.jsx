@@ -38,6 +38,24 @@ function sqlString(v) {
   return String(v ?? '').replace(/'/g, "''");
 }
 
+/** 维度空值统一显示的文案 */
+export const UNCLASSIFIED = '未分类';
+
+/**
+ * 维度取值表达式：库里空串 / NULL / 纯空格统一归到「未分类」。
+ * 选项查询、筛选条件都必须用同一个表达式，否则选中「未分类」会查不到行。
+ */
+function dimExpr(field) {
+  return `IFNULL(NULLIF(TRIM(${field}), ''), '${UNCLASSIFIED}')`;
+}
+
+/** 读取行里的维度值（查询已归一化，这里只做兜底） */
+function dimValue(row, field) {
+  const raw = row[field];
+  const text = raw == null ? '' : String(raw).trim();
+  return text || UNCLASSIFIED;
+}
+
 function transformOptions(rows) {
   return {
     rows: (rows || []).map((r) => ({ ...r, c: Number(r.c) || 0 })),
@@ -62,17 +80,47 @@ function transformSeries(rows) {
   };
 }
 
-/** 按行数倒序的取值列表（数据越多的取值排前面，作为默认选中项更不容易是空图） */
-function rankValues(list, field) {
+/**
+ * 下拉选项固定排序（不再按数据量抖动）：
+ * 1. 维度配置里显式给了 order 的，按 order 的先后；
+ * 2. 其余未被列出的值按中文拼音（zh-CN）升序；
+ * 3. 「未分类」固定排在最后（兜底项）。
+ */
+function orderOptions(values, order) {
+  const list = order || [];
+  const rank = (v) => {
+    const idx = list.indexOf(v);
+    return idx >= 0 ? idx : list.length;
+  };
+  return [...values].sort((a, b) => {
+    const ua = a === UNCLASSIFIED ? 1 : 0;
+    const ub = b === UNCLASSIFIED ? 1 : 0;
+    if (ua !== ub) return ua - ub;
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return String(a).localeCompare(String(b), 'zh-CN');
+  });
+}
+
+/** 某维度在当前筛选池里的全部取值（固定排序） */
+function dimensionOptions(list, dim) {
+  const values = new Set();
+  list.forEach((row) => values.add(dimValue(row, dim.field)));
+  return orderOptions([...values], dim.order);
+}
+
+/** 数据量最多的取值：仅用于默认选中，保证首屏不是空图（不参与选项排序） */
+function mostFrequent(list, field) {
   const counts = new Map();
   list.forEach((row) => {
-    const key = row[field];
-    if (!key) return;
+    const key = dimValue(row, field);
     counts.set(key, (counts.get(key) || 0) + row.c);
   });
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh-CN'))
-    .map(([key]) => key);
+  const top = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'zh-CN')
+  )[0];
+  return top ? top[0] : undefined;
 }
 
 /** 单位 → y 轴标题 / 数值后缀 */
@@ -84,16 +132,15 @@ function unitMeta(unit) {
 }
 
 export default function BenchmarkSection({ title, table, dims, height = 550 }) {
-  const dimKey = dims.map((d) => d.field).join(',');
 
   /* 第一步：维度候选 + 每个候选的行数（用于排序和默认值） */
   const optionsSql = useMemo(
     () =>
-      `SELECT ${dimKey.replace(/,/g, ', ')}, unit, COUNT(*) c
+      `SELECT ${dims.map((d) => `${dimExpr(d.field)} AS ${d.field}`).join(', ')}, unit, COUNT(*) c
 FROM ${table}
 WHERE crawled_at >= '${LAST_YEAR}-01'
-GROUP BY ${dimKey.replace(/,/g, ', ')}, unit`,
-    [table, dimKey]
+GROUP BY ${dims.map((d) => dimExpr(d.field)).join(', ')}, unit`,
+    [table, dims]
   );
 
   const optionsQuery = useChartData(
@@ -113,11 +160,12 @@ GROUP BY ${dimKey.replace(/,/g, ', ')}, unit`,
     const options = {};
     let pool = optRows;
     dims.forEach((d) => {
-      const opts = rankValues(pool, d.field);
-      const pick = opts.includes(sel[d.field]) ? sel[d.field] : opts[0];
+      const opts = dimensionOptions(pool, d);
+      const fallback = mostFrequent(pool, d.field) || opts[0];
+      const pick = opts.includes(sel[d.field]) ? sel[d.field] : fallback;
       chosen[d.field] = pick;
       options[d.field] = opts;
-      pool = pool.filter((r) => r[d.field] === pick);
+      pool = pool.filter((r) => dimValue(r, d.field) === pick);
     });
     return { chosen, options, unit: pool[0]?.unit || '' };
   }, [optRows, sel, dims]);
@@ -128,7 +176,7 @@ GROUP BY ${dimKey.replace(/,/g, ', ')}, unit`,
     ? `SELECT crawled_at, unit, low, median, high
 FROM ${table}
 WHERE crawled_at >= '${LAST_YEAR}-01'
-  AND ${dims.map((d) => `${d.field} = '${sqlString(active.chosen[d.field])}'`).join('\n  AND ')}
+  AND ${dims.map((d) => `${dimExpr(d.field)} = '${sqlString(active.chosen[d.field])}'`).join('\n  AND ')}
 ORDER BY crawled_at ASC`
     : '';
 
@@ -224,7 +272,8 @@ ORDER BY crawled_at ASC`
       <div className="card-body">
         <div className="row g-2 mb-3">
           {dims.map((d, i) => (
-            <div key={d.field} className="col-12 col-md-4">
+            // 4 个维度时一行 4 个（col-md-3），3 个时一行 3 个
+            <div key={d.field} className={dims.length >= 4 ? 'col-12 col-sm-6 col-xl-3' : 'col-12 col-md-4'}>
               <label className="form-label small text-muted mb-1" htmlFor={`bench-${table}-${d.field}`}>
                 {d.label} {d.field}
               </label>

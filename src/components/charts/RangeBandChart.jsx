@@ -29,6 +29,8 @@ export default function RangeBandChart({
   yAxisTitle = '',
   yFormatter = null,
   legendOverrides = {},
+  /** 悬停时是否把所有系列在该 x 上的值一起显示（默认开） */
+  sharedTooltip = true,
 }) {
   const options = {
     chart: {
@@ -47,8 +49,42 @@ export default function RangeBandChart({
     dataLabels: { enabled: false },
     legend: { ...legendOverrides },
     /* 注：ApexCharts v6 对 rangeArea 系列用内置 rangebar 版 tooltip，tooltip.custom 不生效，
-       所以这里只做基础配置（悬停显示该系列的月份与值） */
-    tooltip: { shared: false, intersect: false },
+       所以这里用 shared + y.formatter：悬停同一个月份时把所有系列（区间带 + 均值线）一起列出，
+       区间带的 y 是 [low, high]，格式化成「下限 ~ 上限」。 */
+    tooltip: {
+      shared: sharedTooltip,
+      intersect: false,
+      custom: ({ dataPointIndex, w }) => {
+        const fmt = (v) => (v == null || Number.isNaN(Number(v)) ? '-' : yFormatter ? yFormatter(Number(v)) : String(v));
+        // 取当前悬停的 x（月份序号）；Apex 对不同 series 的 x 做了对齐，优先用 seriesX
+        const seriesX = w?.globals?.seriesX?.[0] || [];
+        const hoveredX = seriesX[dataPointIndex] ?? w?.globals?.labels?.[dataPointIndex];
+        if (hoveredX == null) return '';
+        const monthNum = Number(hoveredX);
+        const title = Number.isFinite(monthNum) ? `${Math.round(monthNum)}月` : String(hoveredX);
+
+        const rows = (w?.config?.series || [])
+          .map((s, i) => {
+            const pt = (s.data || []).find((d) => Number(d.x) === monthNum);
+            if (!pt || pt.y == null) return null;
+            const value = Array.isArray(pt.y) ? `${fmt(pt.y[0])} ~ ${fmt(pt.y[1])}` : fmt(pt.y);
+            const color = (w?.config?.colors || [])[i] || '#999';
+            const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px"></span>`;
+            return `<div style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span style="display:inline-flex;align-items:center;white-space:nowrap">${dot}${s.name}</span><b style="margin-left:12px;white-space:nowrap">${value}</b></div>`;
+          })
+          .filter(Boolean);
+
+        if (!rows.length) return '';
+        return `<div style="padding:6px 10px;font-size:12px;line-height:1.7;min-width:200px"><div style="opacity:.7;margin-bottom:4px">${title}</div>${rows.join('')}</div>`;
+      },
+      y: {
+        formatter: (val) => {
+          const fmt = (v) => (v == null || Number.isNaN(Number(v)) ? '-' : yFormatter ? yFormatter(Number(v)) : String(v));
+          if (Array.isArray(val)) return `${fmt(val[0])} ~ ${fmt(val[1])}`;
+          return fmt(val);
+        },
+      },
+    },
     xaxis: xMax
       ? {
           /* 数值轴：每个点是 { x: 月份序号, y }，两年点位按月份对齐（缺月自然留白） */
