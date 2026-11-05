@@ -408,14 +408,30 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
   `;
 }
 
-/** 构建游戏信息映射 SQL（当前月份）：名称 + icon + 三个标签 */
-export function buildGameNameSql() {
+/**
+ * 构建游戏信息映射 SQL（当前月份）：名称 + icon + 三个标签
+ * 只按明细里出现的 app_id 捞（IN 列表），并按 app_id 取当月最新快照，避免整月全量回传
+ * @param {Array<string|number>} appIds 明细表中的 app_id
+ */
+export function buildGameNameSql(appIds = []) {
   const now = new Date();
   const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // 只保留纯数字 ID，防止拼接出非法 SQL
+  const ids = (appIds || []).map((v) => String(v).trim()).filter((v) => /^\d+$/.test(v));
+  if (!ids.length) {
+    // 还没有明细结果时返回空集，避免拉全表
+    return `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3 FROM dws_taptap_game WHERE 1 = 0`;
+  }
   return `
     SELECT app_id, app_name, icon, tag_1, tag_2, tag_3
-    FROM dws_taptap_game
-    WHERE crawled_at >= '${monthStr}'
+    FROM dws_taptap_game h
+    WHERE h.crawled_at >= '${monthStr}'
+      AND h.app_id IN (${ids.join(',')})
+      AND h.crawled_at = (
+        SELECT MAX(g.crawled_at)
+        FROM dws_taptap_game g
+        WHERE g.app_id = h.app_id AND g.crawled_at >= '${monthStr}'
+      )
   `;
 }
 

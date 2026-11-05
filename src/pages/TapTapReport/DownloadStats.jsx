@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
@@ -272,13 +272,33 @@ export default function DownloadStats() {
   const dailyTrendQuery = useSqlQuery('taptap-daily-trend', buildDailyTrendSql, [], transformDailyTrend, { enabled: true });
   const monthlyBreakdownQuery = useSqlQuery('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow, { enabled: true });
-  const gameNameQuery = useSqlQuery('taptap-game-name-map', buildGameNameSql, [], transformGameNameMap, { enabled: true });
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
 
   const top25DetailQueries = {
     platform: useTop25DetailQuery('platform', TOP25_DETAIL_TABLES.platform, selectedTable, selectedWindow, true),
     gameType: useTop25DetailQuery('gameType', TOP25_DETAIL_TABLES.gameType, selectedTable, selectedWindow, true),
   };
+
+  // 两份明细里实际出现的 app_id（去重），名称/图标/标签只按这些 ID 捞，减少查询体量
+  const detailAppIds = useMemo(() => {
+    const set = new Set();
+    [top25DetailQueries.platform.data, top25DetailQueries.gameType.data].forEach((d) => {
+      (d?.rows || []).forEach((r) => {
+        if (r.appId != null) set.add(String(r.appId));
+      });
+    });
+    return [...set];
+  }, [top25DetailQueries.platform.data, top25DetailQueries.gameType.data]);
+
+  // 两份明细都回来后再一次性捞名称，避免先按一份明细发请求、随后再补一次
+  const detailReady = top25DetailQueries.platform.isSuccess && top25DetailQueries.gameType.isSuccess;
+  const gameNameQuery = useSqlQuery(
+    'taptap-game-name-map',
+    () => buildGameNameSql(detailAppIds),
+    [detailAppIds.join(',')],
+    transformGameNameMap,
+    { enabled: detailReady && detailAppIds.length > 0, placeholderData: (prev) => prev }
+  );
 
   // 数据最新时间加载后，小时选项的统计窗口默认值同步为最新数据时间，避免数据更新期间空白
   useEffect(() => {
