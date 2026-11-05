@@ -46,28 +46,30 @@ function formatNowWindow(granularity) {
   return `${y}-${m}-${d}`;
 }
 
-/** 月趋势拆分图（平台/AI/TapMaker）配置 */
+/** 月趋势拆分图（平台 / 游戏类型）配置 */
 const MONTHLY_BREAKDOWN_CHARTS = [
   { key: 'platform', title: '热门游戏TopN下载月趋势(平台) — 最近12个月' },
-  { key: 'ai', title: '热门游戏TopN下载月趋势(AI) — 最近12个月' },
-  { key: 'tapmaker', title: '热门游戏TopN下载月趋势(TapMaker) — 最近12个月' },
+  { key: 'gameType', title: '热门游戏TopN下载月趋势(游戏类型) — 最近12个月' },
 ];
 
-/** 追踪的游戏分布拆分图（平台/AI/TapMaker）配置 */
+/** 追踪的游戏分布拆分图（平台 / 游戏类型）配置 */
 const DISTRIBUTION_CHARTS = [
   { key: 'platform', title: '追踪的游戏分布(平台)' },
-  { key: 'ai', title: '追踪的游戏分布(AI)' },
-  { key: 'tapmaker', title: '追踪的游戏分布(TapMaker)' },
+  { key: 'gameType', title: '追踪的游戏分布(游戏类型)' },
 ];
 
 /* ===== 图表配色（均取自 AD_MATERIAL_COLORS 色库） ===== */
 /** 平台拆分：APP / PC */
 const PLATFORM_DOWNLOAD_COLORS = ['#7A8B99', '#9CAF9F'];
-/** 月趋势三个拆分图各自的配色（APP/PC、非AI/AI、非TapMaker/TapMaker） */
+/** 「下载平台」标签配色：APP / PC / APP+PC 各自区分（取自同一色库） */
+const PLATFORM_BADGE_COLORS = { app: '#7A8B99', pc: '#9CAF9F', 'app+pc': '#B08B8B' };
+/** 「游戏类型」标签文案与配色（0=商业游戏、2=TapMaker） */
+const DISTRIBUTION_TYPE_LABELS = { 0: '商业游戏', 1: '创意工坊', 2: 'TapMaker' };
+const DISTRIBUTION_TYPE_BADGE_COLORS = { 0: '#8FA3B0', 1: '#C9B79C', 2: '#9B93A8' };
+/** 月趋势两个拆分图各自的配色（APP/PC、商业游戏/TapMaker） */
 const MONTHLY_BREAKDOWN_COLORS = {
   platform: ['#7A8B99', '#9CAF9F'],
-  ai: ['#8FA3B0', '#C9B79C'],
-  tapmaker: ['#9B93A8', '#B08B8B'],
+  gameType: ['#8FA3B0', '#9B93A8'],
 };
 /** 日趋势 7 条折线：按色库循环 */
 const DAILY_TREND_COLORS = AD_MATERIAL_COLORS;
@@ -76,11 +78,10 @@ const DISTRIBUTION_COLORS = AD_MATERIAL_COLORS;
 
 /** 下载Top25明细拆分表配置 */
 const TOP25_DETAIL_TABLES = {
-  app: { title: '下载Top25明细(APP)', hourFilter: "refer = 'app'", dayFilter: 'app_download_count > 0', orderBy: 'app_download_count' },
-  pc: { title: '下载Top25明细(PC)', hourFilter: "refer = 'pc'", dayFilter: 'pc_download_count > 0', orderBy: 'pc_download_count' },
-  ai: { title: '下载Top25明细(AI)', hourFilter: 'distribution_type > 0', dayFilter: 'ai_download_count > 0', orderBy: 'ai_download_count' },
-  noneMaker: { title: '下载Top25明细(非TapMaker)', hourFilter: 'distribution_type = 1', dayFilter: 'ai_none_maker_download_count > 0', orderBy: 'ai_none_maker_download_count' },
-  maker: { title: '下载Top25明细(TapMaker)', hourFilter: 'distribution_type = 2', dayFilter: 'ai_maker_download_count > 0', orderBy: 'ai_maker_download_count' },
+  // 平台版：APP / PC 各取 Top50 再合并（小时按 refer，日/月按 app / pc 下载数）
+  platform: { title: '下载Top100明细(平台)', limit: 100, splitTop: { size: 50, mode: 'platform' }, withPlatform: true, rankWidth: '5%' },
+  // 游戏类型版：distribution_type 0（商业游戏）/ 2（TapMaker）各取 Top50 再合并
+  gameType: { title: '下载Top100明细(游戏类型)', limit: 100, splitTop: { size: 50, mode: 'type' }, withType: true, rankWidth: '5%' },
 };
 
 /** OneSearch 线索查询路由（站内相对路径，开发/生产都指向当前站点，用 APPID 拼接 q 参数） */
@@ -91,11 +92,13 @@ const ONESEARCH_REPORT_PATH = '/one-search/report';
  * @param {Object} gameMap app_id -> { name, icon, tags }
  * @param {boolean} withOneSearch 是否在「下载数」后追加 OneSearch 跳转列（仅 APP / PC 两张宽表）
  */
-const TOP25_DETAIL_COLUMNS = (gameMap, withOneSearch = false) => {
-  // 多一列时分摊宽度：6(#) / 13 / 18 / 30 / 16 / 17（OneSearch 表头较宽，需 17%）
-  const W = withOneSearch
-    ? { appId: '13%', tags: '18%', name: '30%', count: '16%', search: '17%' }
-    : { appId: '15%', tags: '23%', name: '36%', count: '20%' };
+const TOP25_DETAIL_COLUMNS = (gameMap, { withOneSearch = false, withPlatform = false, withType = false } = {}) => {
+  // 列宽分摊（rank 列宽由调用方传入）：带附加列（下载平台 / 游戏类型）时按 5/10/30/10/25/10/10 分配
+  const W = withPlatform || withType
+    ? { appId: '10%', tags: '30%', extra: '10%', name: '25%', count: '10%', search: '10%' }
+    : withOneSearch
+      ? { appId: '13%', tags: '18%', name: '30%', count: '16%', search: '17%' }
+      : { appId: '15%', tags: '23%', name: '36%', count: '20%' };
 
   return [
     {
@@ -137,6 +140,63 @@ const TOP25_DETAIL_COLUMNS = (gameMap, withOneSearch = false) => {
         );
       },
     },
+    ...(withPlatform
+      ? [
+          {
+            header: '下载平台',
+            width: W.extra,
+            accessor: (r) => r.refer || '',
+            render: (r) => {
+              const raw = (r.refer || '').toLowerCase();
+              if (!raw || raw === '-') return <span className="text-muted">-</span>;
+              const label = raw === 'app+pc' ? 'APP+PC' : raw === 'pc' ? 'PC' : raw === 'app' ? 'APP' : r.refer;
+              return (
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: PLATFORM_BADGE_COLORS[raw] || '#8FA3B0',
+                    color: '#fff',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    fontWeight: 500,
+                  }}
+                >
+                  {label}
+                </span>
+              );
+            },
+          },
+        ]
+      : []),
+    ...(withType
+      ? [
+          {
+            header: '游戏类型',
+            width: W.extra,
+            accessor: (r) => DISTRIBUTION_TYPE_LABELS[r.distributionType] || '',
+            render: (r) => {
+              const type = r.distributionType;
+              const label = DISTRIBUTION_TYPE_LABELS[type];
+              if (!label) return <span className="text-muted">-</span>;
+              return (
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: DISTRIBUTION_TYPE_BADGE_COLORS[type] || '#8FA3B0',
+                    color: '#fff',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {label}
+                </span>
+              );
+            },
+          },
+        ]
+      : []),
     {
       header: '游戏名称',
       width: W.name,
@@ -184,7 +244,7 @@ const TOP25_DETAIL_COLUMNS = (gameMap, withOneSearch = false) => {
 function useTop25DetailQuery(key, table, selectedTable, selectedWindow, enabled) {
   return useSqlQuery(
     `taptap-top25-${key}`,
-    () => buildTop25DetailSql(selectedTable, selectedWindow, table.hourFilter, table.dayFilter, table.orderBy),
+    () => buildTop25DetailSql(selectedTable, selectedWindow, table),
     [selectedTable, selectedWindow],
     transformTop25Detail,
     { enabled }
@@ -216,11 +276,8 @@ export default function DownloadStats() {
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
 
   const top25DetailQueries = {
-    app: useTop25DetailQuery('app', TOP25_DETAIL_TABLES.app, selectedTable, selectedWindow, true),
-    pc: useTop25DetailQuery('pc', TOP25_DETAIL_TABLES.pc, selectedTable, selectedWindow, true),
-    ai: useTop25DetailQuery('ai', TOP25_DETAIL_TABLES.ai, selectedTable, selectedWindow, true),
-    noneMaker: useTop25DetailQuery('noneMaker', TOP25_DETAIL_TABLES.noneMaker, selectedTable, selectedWindow, true),
-    maker: useTop25DetailQuery('maker', TOP25_DETAIL_TABLES.maker, selectedTable, selectedWindow, true),
+    platform: useTop25DetailQuery('platform', TOP25_DETAIL_TABLES.platform, selectedTable, selectedWindow, true),
+    gameType: useTop25DetailQuery('gameType', TOP25_DETAIL_TABLES.gameType, selectedTable, selectedWindow, true),
   };
 
   // 数据最新时间加载后，小时选项的统计窗口默认值同步为最新数据时间，避免数据更新期间空白
@@ -259,10 +316,10 @@ export default function DownloadStats() {
         </div>
       </div>
 
-      {/* 热门游戏TopN下载月趋势（平台/AI/TapMaker 并排） */}
+      {/* 热门游戏TopN下载月趋势（平台/AI 并排） */}
       <div className="row g-3 mb-4">
         {MONTHLY_BREAKDOWN_CHARTS.map((c) => (
-          <div className="col-12 col-md-4" key={c.key}>
+          <div className="col-12 col-md-6" key={c.key}>
             <div className="card border-0 shadow-sm h-100">
               <div className="card-header bg-white border-0">
                 <div className="fw-semibold">{c.title}</div>
@@ -353,74 +410,66 @@ export default function DownloadStats() {
         </div>
       </div>
 
-      {/* 追踪的游戏分布（平台/AI/TapMaker 并排） */}
-      <div className="row g-3 mb-4">
-        {DISTRIBUTION_CHARTS.map((c) => (
-          <div className="col-12 col-md-4" key={c.key}>
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0">
-                <div className="fw-semibold">{c.title}</div>
-                <div className="mt-1">
-                  <UpdateTag text={windowUpdateLabel} />
+      {/* 追踪的游戏分布（平台/AI 并排） */}
+      {/* 分布饼图 + Top25 明细：两两一行，顺序为 平台｜APP 明细、游戏类型｜PC 明细 */}
+      {[
+        ['platform', 'platform'],
+        ['gameType', 'gameType'],
+      ].map(([distKey, tableKey]) => {
+        const dist = DISTRIBUTION_CHARTS.find((c) => c.key === distKey);
+        return (
+          <div className="row g-3 mb-4" key={`${distKey}-${tableKey}`}>
+            {/* 追踪的游戏分布（宽 35%） */}
+            <div className="col-12 tt-split-35">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-header bg-white border-0">
+                  <div className="fw-semibold">{dist?.title || ''}</div>
+                  <div className="mt-1">
+                    <UpdateTag text={windowUpdateLabel} />
+                  </div>
+                </div>
+                <div className="card-body d-flex flex-column align-items-center justify-content-center">
+                  <PieChart
+                    series={distributionByWindowQuery.data?.[distKey]?.series || []}
+                    labels={distributionByWindowQuery.data?.[distKey]?.labels || []}
+                    loading={distributionByWindowQuery.isLoading}
+                    error={distributionByWindowQuery.error?.message}
+                    height={300}
+                    donut
+                    colors={DISTRIBUTION_COLORS}
+                    legendOverrides={{ horizontalAlign: 'center' }}
+                    totalLabel={distributionByWindowQuery.data?.[distKey]?.totalLabel}
+                    totalValue={distributionByWindowQuery.data?.[distKey]?.totalValue}
+                  />
                 </div>
               </div>
-              <div className="card-body d-flex flex-column align-items-center justify-content-center">
-                <PieChart
-                  series={distributionByWindowQuery.data?.[c.key]?.series || []}
-                  labels={distributionByWindowQuery.data?.[c.key]?.labels || []}
-                  loading={distributionByWindowQuery.isLoading}
-                  error={distributionByWindowQuery.error?.message}
-                  height={300}
-                  donut
-                  colors={DISTRIBUTION_COLORS}
-                  totalLabel={distributionByWindowQuery.data?.[c.key]?.totalLabel}
-                  totalValue={distributionByWindowQuery.data?.[c.key]?.totalValue}
+            </div>
+
+            {/* 下载TopN明细（占剩余 65%） */}
+            <div className="col-12 tt-split-65">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-header bg-white border-0">
+                  <div className="fw-semibold">{TOP25_DETAIL_TABLES[tableKey].title}</div>
+                  <div className="mt-1">
+                    <UpdateTag text={windowUpdateLabel} />
+                  </div>
+                </div>
+                <DataTable
+                  rows={top25DetailQueries[tableKey].data?.rows || []}
+                  columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data, {
+                    withOneSearch: true,
+                    withPlatform: !!TOP25_DETAIL_TABLES[tableKey].withPlatform,
+                    withType: !!TOP25_DETAIL_TABLES[tableKey].withType,
+                  })}
+                  tableClassName="top25-table"
+                  fixedLayout
+                  rankColWidth={TOP25_DETAIL_TABLES[tableKey].rankWidth || '6%'}
                 />
               </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* 下载Top25明细（APP/PC） */}
-      <div className="row g-3 mb-4">
-        {['app', 'pc'].map((key) => (
-          <div className="col-12 col-md-6" key={key}>
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0">
-                <div className="fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
-                <div className="mt-1">
-                  <UpdateTag text={windowUpdateLabel} />
-                </div>
-              </div>
-              <DataTable
-                rows={top25DetailQueries[key].data?.rows || []}
-                columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data, true)}
-                tableClassName="top25-table"
-                fixedLayout
-                rankColWidth="6%"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 下载Top25明细（AI/非TapMaker/TapMaker） */}
-      <div className="row g-3 mb-4">
-        {['ai', 'noneMaker', 'maker'].map((key) => (
-          <div className="col-12 col-md-4" key={key}>
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-header bg-white border-0">
-                <div className="fw-semibold">{TOP25_DETAIL_TABLES[key].title}</div>
-                <div className="mt-1">
-                  <UpdateTag text={windowUpdateLabel} />
-                </div>
-              </div>
-              <DataTable rows={top25DetailQueries[key].data?.rows || []} columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data)} tableClassName="top25-table" fixedLayout rankColWidth="6%" />
-            </div>
-          </div>
-        ))}
-      </div>
+        );
+      })}
 
     </>
   );

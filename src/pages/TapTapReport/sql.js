@@ -305,8 +305,77 @@ export function buildDistributionByWindowSql(table, windowStr) {
   `;
 }
 
-/** 构建下载Top25明细 SQL（按窗口类型/统计窗口 + 过滤条件，受查询条件约束） */
-export function buildTop25DetailSql(table, windowStr, hourFilter, dayFilter, orderBy) {
+/**
+ * 构建下载TopN明细 SQL（受查询条件约束）
+ * opts: { hourFilter, dayFilter, orderBy, limit, splitTop }
+ * - hourFilter / dayFilter 传空则不加过滤
+ * - splitTop: { size, mode } —— 两个分组各取 Top size 后合并：
+ *     mode='platform' 小时表按 refer、日/月表按 app/pc 下载数
+ *     mode='type'     小时表按 distribution_type、日/月表按 none_ai / ai_maker 下载数（0=商业游戏、2=TapMaker）
+ * - 日/月表按 app_id 聚合、无 refer / distribution_type 列，合并时用常量补列
+ */
+export function buildTop25DetailSql(table, windowStr, opts = {}) {
+  const { hourFilter = null, dayFilter = null, orderBy = 'download_count', limit = 25, splitTop = null } = opts;
+  const hourWhere = hourFilter ? ` AND ${hourFilter}` : '';
+  const dayWhere = dayFilter ? ` AND ${dayFilter}` : '';
+
+  if (splitTop) {
+    const { size, mode } = splitTop;
+    const isType = mode === 'type';
+
+    if (table === 'dws_taptap_download_hourly') {
+      // 小时表：每行已带 refer 与 distribution_type，按分组条件过滤后各取 Top N
+      const branch = (where) => `
+        SELECT * FROM (
+          SELECT
+            app_id,
+            crawled_at,
+            refer,
+            distribution_type,
+            download_count
+          FROM ${table}
+          WHERE crawled_at = '${windowStr}'
+            AND ${where}
+          ORDER BY download_count DESC
+          LIMIT ${size}
+        )`;
+      const whereA = isType ? 'distribution_type = 0' : "refer = 'app'";
+      const whereB = isType ? 'distribution_type = 2' : "refer = 'pc'";
+      return `
+        ${branch(whereA)}
+        UNION ALL
+        ${branch(whereB)}
+        ORDER BY download_count DESC
+        LIMIT ${limit}
+      `;
+    }
+
+    // 日/月表：没有 refer / distribution_type 列，用常量补上，下载数取所属分组的指标列
+    const branch = (referSql, typeSql, orderCol) => `
+      SELECT * FROM (
+        SELECT
+          app_id,
+          crawled_at,
+          ${referSql} as refer,
+          ${typeSql} as distribution_type,
+          ${orderCol} as download_count
+        FROM ${table}
+        WHERE crawled_at = '${windowStr}'
+          AND ${orderCol} > 0
+        ORDER BY ${orderCol} DESC
+        LIMIT ${size}
+      )`;
+    const branchA = isType ? branch('NULL', '0', 'none_ai_download_count') : branch("'app'", 'NULL', 'app_download_count');
+    const branchB = isType ? branch('NULL', '2', 'ai_maker_download_count') : branch("'pc'", 'NULL', 'pc_download_count');
+    return `
+      ${branchA}
+      UNION ALL
+      ${branchB}
+      ORDER BY download_count DESC
+      LIMIT ${limit}
+    `;
+  }
+
   if (table === 'dws_taptap_download_hourly') {
     return `
       SELECT
@@ -316,22 +385,26 @@ export function buildTop25DetailSql(table, windowStr, hourFilter, dayFilter, ord
         distribution_type,
         download_count
       FROM ${table}
-      WHERE crawled_at = '${windowStr}'
-        AND ${hourFilter}
+      WHERE crawled_at = '${windowStr}'${hourWhere}
       ORDER BY download_count DESC
-      LIMIT 25
+      LIMIT ${limit}
     `;
   }
   return `
     SELECT
       app_id,
       crawled_at,
+      CASE
+        WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
+        WHEN pc_download_count > 0 THEN 'pc'
+        WHEN app_download_count > 0 THEN 'app'
+        ELSE '-'
+      END as refer,
       ${orderBy} as download_count
     FROM ${table}
-    WHERE crawled_at = '${windowStr}'
-      AND ${dayFilter}
+    WHERE crawled_at = '${windowStr}'${dayWhere}
     ORDER BY ${orderBy} DESC
-    LIMIT 25
+    LIMIT ${limit}
   `;
 }
 

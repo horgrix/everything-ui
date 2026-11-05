@@ -21,6 +21,8 @@ export default function PieChart({
   totalValue = null,
   /** 图例位置 */
   legendPosition = 'bottom',
+  /** 图例覆盖配置（horizontalAlign 等） */
+  legendOverrides = {},
   /** 数据标签偏移（正值向外，标签显示在圈外） */
   dataLabelsOffset = 0,
   /** 是否显示工具栏 */
@@ -47,6 +49,7 @@ export default function PieChart({
     legend: {
       show: showLegend,
       position: legendPosition,
+      ...legendOverrides,
     },
     plotOptions: {
       pie: {
