@@ -12,21 +12,55 @@ export function transformAggregate(rows) {
   };
 }
 
-/** 热门游戏TopN下载日趋势（总下载数实线 + 6 条拆分虚线） */
-export function transformDailyTrend(rows) {
-  if (!rows || !rows.length) return { series: [], categories: [] };
-  const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
-  const categories = sorted.map((r) => r.crawled_at);
-  const toData = (field) => sorted.map((r) => Number(r[field] || 0));
-  return {
-    categories,
-    series: [
-      { name: '总下载数', data: toData('download_count') },
-      { name: 'PC端下载数', data: toData('pc_download_count') },
-      { name: 'APP下载数', data: toData('app_download_count') },
-      { name: 'TapMaker游戏下载数', data: toData('ai_maker_download_count') },
-    ],
+/** 周几标签（周一到周日） */
+const WEEK_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+/**
+ * 周趋势（上周一 ~ 本周日）：按周几对齐两周数据，缺失的天用 null（折线断开而不是掉到 0）
+ * 返回 { categories, platform:{current,previous}, miniGame:{current,previous} }
+ */
+export function transformWeeklyTrend(rows, ref) {
+  // 注意：useChartData 会把 total 作为第二个参数传进来，这里只接受 Date
+  const base = ref instanceof Date ? ref : new Date();
+  const emptyWeek = () => ({ app: Array(7).fill(null), pc: Array(7).fill(null) });
+  const emptyMini = () => ({ nonMaker: Array(7).fill(null), maker: Array(7).fill(null) });
+  const result = {
+    categories: WEEK_LABELS,
+    platform: { current: emptyWeek(), previous: emptyWeek() },
+    miniGame: { current: emptyMini(), previous: emptyMini() },
   };
+  if (!rows || !rows.length) return result;
+
+  const today = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  const mondayOffset = (today.getDay() + 6) % 7; // 周一=0
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - mondayOffset);
+
+  rows.forEach((r) => {
+    const date = String(r.crawled_at || '').slice(0, 10);
+    if (!date) return;
+    const d = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    // 与本周一的天数差：0~6 = 本周，-7~-1 = 上周，其余忽略
+    const diff = Math.round((d - thisMonday) / 86400000);
+    let idx = -1;
+    let isCurrent = false;
+    if (diff >= 0 && diff <= 6) {
+      idx = diff;
+      isCurrent = true;
+    } else if (diff >= -7 && diff <= -1) {
+      idx = diff + 7;
+    }
+    if (idx < 0) return;
+
+    const bucket = isCurrent ? result.platform.current : result.platform.previous;
+    const miniBucket = isCurrent ? result.miniGame.current : result.miniGame.previous;
+    bucket.app[idx] = Number(r.app_download_count || 0);
+    bucket.pc[idx] = Number(r.pc_download_count || 0);
+    miniBucket.nonMaker[idx] = Number(r.ai_none_maker_download_count || 0);
+    miniBucket.maker[idx] = Number(r.ai_maker_download_count || 0);
+  });
+  return result;
 }
 
 /** 追踪的游戏分布（平台/AI/TapMaker 三个拆分视图，受窗口查询条件约束） */
@@ -36,19 +70,18 @@ export function transformDistributionByWindow(rows) {
   const trace = Number(r.trace_game_count || 0);
   const pc = Number(r.pc_game_count || 0);
   const app = Number(r.app_game_count || 0);
-  const noneAi = Number(r.none_ai_game_count || 0);
   const ai = Number(r.ai_game_count || 0);
   const aiNoneMaker = Number(r.ai_none_maker_game_count || 0);
   const aiMaker = Number(r.ai_maker_game_count || 0);
-  /* 游戏类型分布：distribution_type 0=商业游戏、2=TapMaker；1（创意工坊）等其它值归到「其他」，
-     只有真的存在这类游戏时才多出一个扇区，保证扇区之和与圆心总数一致。 */
-  const biz = noneAi;
-  const maker = aiMaker;
-  const other = Math.max(0, trace - biz - maker);
-  const gameTypeSeries = [biz, maker];
-  const gameTypeLabels = ['商业游戏', 'TapMaker'];
-  if (other > 0) {
-    gameTypeSeries.push(other);
+  /* 小游戏分布：distribution_type 1=非Maker独立小游戏、2=Maker独立小游戏，
+     圆心总数取二者之和（= AI/小游戏口径 ai_game_count），出现其它类型时补「其他」扇区。 */
+  const nonMakerMini = aiNoneMaker;
+  const makerMini = aiMaker;
+  const miniOther = Math.max(0, ai - nonMakerMini - makerMini);
+  const gameTypeSeries = [nonMakerMini, makerMini];
+  const gameTypeLabels = ['非Maker独立小游戏', 'Maker独立小游戏'];
+  if (miniOther > 0) {
+    gameTypeSeries.push(miniOther);
     gameTypeLabels.push('其他');
   }
 
@@ -57,14 +90,14 @@ export function transformDistributionByWindow(rows) {
     gameType: {
       series: gameTypeSeries,
       labels: gameTypeLabels,
-      totalValue: trace,
-      totalLabel: '总游戏数',
+      totalValue: ai,
+      totalLabel: '小游戏数',
     },
     tapmaker: { series: [aiNoneMaker, aiMaker], labels: ['非TapMaker游戏下载数', 'TapMaker游戏下载数'], totalValue: ai, totalLabel: 'AI游戏数' },
   };
 }
 
-/** 热门游戏TopN下载月趋势（平台 / 游戏类型 两个拆分视图） */
+/** 热门游戏TopN下载月趋势（平台 / 小游戏 两个拆分视图） */
 export function transformMonthlyBreakdown(rows) {
   if (!rows || !rows.length) return { categories: [], platform: [], gameType: [] };
   const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
@@ -75,10 +108,10 @@ export function transformMonthlyBreakdown(rows) {
       { name: 'APP下载数', color: '#7A8B99', data: sorted.map((r) => Number(r.app_download_count || 0)) },
       { name: 'PC端下载数', color: '#9CAF9F', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
     ],
-    // 游戏类型：distribution_type 0=商业游戏（none_ai_download_count）、2=TapMaker（ai_maker_download_count）
+    // 小游戏：distribution_type 1=非Maker独立小游戏（ai_none_maker_download_count）、2=Maker独立小游戏（ai_maker_download_count）
     gameType: [
-      { name: '商业游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.none_ai_download_count || 0)) },
-      { name: 'TapMaker下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.ai_maker_download_count || 0)) },
+      { name: '非Maker独立小游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.ai_none_maker_download_count || 0)) },
+      { name: 'Maker独立小游戏下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.ai_maker_download_count || 0)) },
     ],
   };
 }

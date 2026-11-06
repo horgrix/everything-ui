@@ -35,6 +35,12 @@ export default function PieChart({
   percentOnly = false,
   /** 自定义切片颜色（按 series 顺序） */
   colors = null,
+  /** 点击切片回调：({ seriesIndex, label, value }) => void */
+  onDataClick = null,
+  /** 每个切片的描边颜色（用于标出「已选中」的扇区） */
+  sliceStrokeColors = null,
+  /** 切片描边宽度 */
+  sliceStrokeWidth = 1,
 }) {
   const type = donut ? 'donut' : 'pie';
 
@@ -43,9 +49,25 @@ export default function PieChart({
       type,
       width: '100%',
       toolbar: { show: toolbar },
+      ...(onDataClick
+        ? {
+            events: {
+              dataPointSelection: (event, chartContext, config) => {
+                const index = config?.dataPointIndex;
+                if (index == null || index < 0) return;
+                onDataClick({
+                  seriesIndex: index,
+                  label: labels[index],
+                  value: series[index],
+                });
+              },
+            },
+          }
+        : {}),
     },
     labels,
     ...(colors ? { colors } : {}),
+    ...(sliceStrokeColors ? { stroke: { width: sliceStrokeWidth, colors: sliceStrokeColors } } : {}),
     legend: {
       show: showLegend,
       position: legendPosition,

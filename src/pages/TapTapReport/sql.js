@@ -259,9 +259,35 @@ function buildDownloadSummarySql(table, dateStr) {
   `;
 }
 
-/** 构建日趋势 SQL（最近30天） */
-export function buildDailyTrendSql() {
-  return buildDownloadSummarySql('dws_taptap_download_daily', recentDaysWhere(30));
+/** 计算「上周一 ~ 本周日」的日期字符串（本周按周一为首日） */
+export function weekRange(ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const mondayOffset = (today.getDay() + 6) % 7; // 周一=0
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() - mondayOffset);
+  const lastMonday = new Date(thisMonday);
+  lastMonday.setDate(thisMonday.getDate() - 7);
+  const thisSunday = new Date(thisMonday);
+  thisSunday.setDate(thisMonday.getDate() + 6);
+  return { lastMonday: fmt(lastMonday), thisMonday: fmt(thisMonday), thisSunday: fmt(thisSunday) };
+}
+
+/** 构建周趋势 SQL（上周一 ~ 本周日，按天聚合平台 / 小游戏下载数） */
+export function buildWeeklyTrendSql(ref = new Date()) {
+  const { lastMonday, thisSunday } = weekRange(ref);
+  return `
+    SELECT
+      crawled_at,
+      SUM(app_download_count) as app_download_count,
+      SUM(pc_download_count) as pc_download_count,
+      SUM(ai_none_maker_download_count) as ai_none_maker_download_count,
+      SUM(ai_maker_download_count) as ai_maker_download_count
+    FROM dws_taptap_download_daily
+    WHERE crawled_at >= '${lastMonday}' AND crawled_at <= '${thisSunday}'
+    GROUP BY crawled_at
+    ORDER BY crawled_at
+  `;
 }
 
 /** 构建月趋势明细 SQL（最近12个月） */
@@ -307,17 +333,37 @@ export function buildDistributionByWindowSql(table, windowStr) {
 
 /**
  * 构建下载TopN明细 SQL（受查询条件约束）
- * opts: { hourFilter, dayFilter, orderBy, limit, splitTop }
+ * opts: { hourFilter, dayFilter, orderBy, limit, splitTop, typeFilter, referFilter }
  * - hourFilter / dayFilter 传空则不加过滤
+ * - typeFilter: distribution_type（1=非Maker独立小游戏、2=Maker独立小游戏，其它值按原样用）；
+ *   传 'all' 表示「全部小游戏」= distribution_type IN (1,2)；
+ *   传入时只查该口径（不再两段合并），日/月表用对应的小游戏下载数列排序
+ * - referFilter: 'app' / 'pc' 只查该平台；传 'all' 表示 APP+PC 全平台（日/月表用总下载数排序）
  * - splitTop: { size, mode } —— 两个分组各取 Top size 后合并：
  *     mode='platform' 小时表按 refer、日/月表按 app/pc 下载数
  *     mode='type'     小时表按 distribution_type、日/月表按 none_ai / ai_maker 下载数（0=商业游戏、2=TapMaker）
  * - 日/月表按 app_id 聚合、无 refer / distribution_type 列，合并时用常量补列
  */
 export function buildTop25DetailSql(table, windowStr, opts = {}) {
-  const { hourFilter = null, dayFilter = null, orderBy = 'download_count', limit = 25, splitTop = null } = opts;
+  const {
+    hourFilter = null,
+    dayFilter = null,
+    orderBy = 'download_count',
+    limit = 25,
+    splitTop = null,
+    typeFilter = null,
+    referFilter = null,
+  } = opts;
   const hourWhere = hourFilter ? ` AND ${hourFilter}` : '';
   const dayWhere = dayFilter ? ` AND ${dayFilter}` : '';
+  // 只查指定平台（饼图选中项）：'all' = APP+PC 全平台
+  const referAll = referFilter === 'all';
+  const referValue = referAll || referFilter == null ? null : String(referFilter);
+  const referWhere = referValue ? ` AND refer = '${referValue}'` : referAll ? " AND refer IN ('app', 'pc')" : '';
+  // 只查指定游戏类型（饼图选中项）：'all' = 全部小游戏（1、2 两类）
+  const typeAll = typeFilter === 'all';
+  const typeValue = typeFilter == null || typeAll ? null : Number(typeFilter);
+  const typeWhere = typeValue != null ? ` AND distribution_type = ${typeValue}` : typeAll ? ' AND distribution_type IN (1, 2)' : '';
 
   if (splitTop) {
     const { size, mode } = splitTop;
@@ -339,7 +385,8 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
           ORDER BY download_count DESC
           LIMIT ${size}
         )`;
-      const whereA = isType ? 'distribution_type = 0' : "refer = 'app'";
+      // 小游戏口径：1=非Maker独立小游戏、2=Maker独立小游戏
+      const whereA = isType ? 'distribution_type = 1' : "refer = 'app'";
       const whereB = isType ? 'distribution_type = 2' : "refer = 'pc'";
       return `
         ${branch(whereA)}
@@ -365,7 +412,7 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         ORDER BY ${orderCol} DESC
         LIMIT ${size}
       )`;
-    const branchA = isType ? branch('NULL', '0', 'none_ai_download_count') : branch("'app'", 'NULL', 'app_download_count');
+    const branchA = isType ? branch('NULL', '1', 'ai_none_maker_download_count') : branch("'app'", 'NULL', 'app_download_count');
     const branchB = isType ? branch('NULL', '2', 'ai_maker_download_count') : branch("'pc'", 'NULL', 'pc_download_count');
     return `
       ${branchA}
@@ -385,7 +432,79 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         distribution_type,
         download_count
       FROM ${table}
-      WHERE crawled_at = '${windowStr}'${hourWhere}
+      WHERE crawled_at = '${windowStr}'${hourWhere}${typeWhere}${referWhere}
+      ORDER BY download_count DESC
+      LIMIT ${limit}
+    `;
+  }
+  // 日/月表「全部小游戏」：下载数 = 非Maker + Maker 两个小游戏列之和，类型按两列推断（两者都有则留空）
+  if (typeAll) {
+    const miniSum = '(ai_none_maker_download_count + ai_maker_download_count)';
+    return `
+      SELECT
+        app_id,
+        crawled_at,
+        CASE
+          WHEN ai_maker_download_count > 0 AND ai_none_maker_download_count = 0 THEN 2
+          WHEN ai_none_maker_download_count > 0 AND ai_maker_download_count = 0 THEN 1
+          ELSE NULL
+        END as distribution_type,
+        ${miniSum} as download_count
+      FROM ${table}
+      WHERE crawled_at = '${windowStr}'
+        AND ${miniSum} > 0${dayWhere}
+      ORDER BY ${miniSum} DESC
+      LIMIT ${limit}
+    `;
+  }
+  // 日/月表按指定类型查询：用该类型的小游戏下载数排序，类型用常量补上
+  if (typeValue != null) {
+    const typeCol =
+      typeValue === 1 ? 'ai_none_maker_download_count' : typeValue === 2 ? 'ai_maker_download_count' : 'ai_none_maker_download_count';
+    return `
+      SELECT
+        app_id,
+        crawled_at,
+        ${typeValue} as distribution_type,
+        ${typeCol} as download_count
+      FROM ${table}
+      WHERE crawled_at = '${windowStr}'
+        AND ${typeCol} > 0${dayWhere}
+      ORDER BY ${typeCol} DESC
+      LIMIT ${limit}
+    `;
+  }
+  // 日/月表按指定平台查询：用该平台下载数排序，平台用常量补上
+  if (referValue) {
+    const referCol = referValue === 'pc' ? 'pc_download_count' : 'app_download_count';
+    return `
+      SELECT
+        app_id,
+        crawled_at,
+        '${referValue}' as refer,
+        ${referCol} as download_count
+      FROM ${table}
+      WHERE crawled_at = '${windowStr}'
+        AND ${referCol} > 0${dayWhere}
+      ORDER BY ${referCol} DESC
+      LIMIT ${limit}
+    `;
+  }
+  // 日/月表「APP+PC 全平台」：按总下载数排序，平台按两列推断
+  if (referAll) {
+    return `
+      SELECT
+        app_id,
+        crawled_at,
+        CASE
+          WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
+          WHEN pc_download_count > 0 THEN 'pc'
+          WHEN app_download_count > 0 THEN 'app'
+          ELSE '-'
+        END as refer,
+        download_count
+      FROM ${table}
+      WHERE crawled_at = '${windowStr}'${dayWhere}
       ORDER BY download_count DESC
       LIMIT ${limit}
     `;

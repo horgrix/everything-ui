@@ -48,7 +48,11 @@ export default function LineChart({
       width: strokeWidth,
       ...(strokeDashArray ? { dashArray: strokeDashArray } : {}),
     },
-    markers: { size: markers, hover: { size: markers + 2 || 5 } },
+    // markers 支持数字（默认 hover 略放大）或直接传 ApexCharts 配置对象（如 { size: 6, hover: { size: 12 } }）
+    markers:
+      typeof markers === 'object' && markers !== null
+        ? markers
+        : { size: markers, hover: { size: markers + 2 || 5 } },
     fill: area ? { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05 } } : {},
     legend: {
       ...legendOverrides,
