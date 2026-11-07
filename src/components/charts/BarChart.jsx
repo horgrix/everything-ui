@@ -43,6 +43,10 @@ export default function BarChart({
   fill = null,
   /** 堆叠总数标签格式化函数 (val, opts) => string */
   totalLabelFormatter = null,
+  /** 柱宽（如 '34%'），分组堆叠时用来让同组两根柱并排 */
+  columnWidth = null,
+  /** 自定义 tooltip（ApexCharts custom formatter）；传入后覆盖默认 tooltip */
+  tooltipCustom = null,
 }) {
   const hasRightAxis = Object.keys(yaxisRight).length > 0;
 
@@ -58,7 +62,7 @@ export default function BarChart({
       bar: {
         horizontal,
         borderRadius: 4,
-        columnWidth: horizontal ? '70%' : '60%',
+        columnWidth: columnWidth || (horizontal ? '70%' : '60%'),
         dataLabels: {
           position: dataLabelPosition || (horizontal ? 'center' : 'top'),
           ...(totalLabels
@@ -97,7 +101,7 @@ export default function BarChart({
     legend: {
       ...legendOverrides,
     },
-    tooltip: { shared, intersect: !shared },
+    tooltip: tooltipCustom ? { custom: tooltipCustom, shared: true, intersect: false } : { shared, intersect: !shared },
     dataLabels: {
       enabled: dataLabelsEnabled,
       ...(dataLabels || {}),

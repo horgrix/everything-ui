@@ -1,3 +1,9 @@
+/** 小时窗口数据表（v2：每行一个游戏，自带 app/pc/总下载数与游戏类型） */
+export const HOURLY_TABLE = 'dws_taptap_download_v2_hourly';
+
+/** v2 小时表自带的名称 / 图标 / 标签列（明细表直接用，不用再查 dws_taptap_game） */
+const HOURLY_META_COLS = 'app_name, icon, tag_1, tag_2, tag_3';
+
 /** 最近 N 天 */
 export function recentDaysWhere(days = 3) {
   const start = new Date(Date.now() - days * 86400000);
@@ -223,43 +229,26 @@ export function recentMonthsWhere(months) {
 }
 
 /** 构建聚合下载 SQL（近24小时，按 crawled_at 汇总下载量，忽略0值） */
+/** 近 24 小时增量（堆叠面积：商业 / 独立小游戏 / Maker小游戏），数据源 dws_taptap_download_summary_hourly */
 export function buildAggregateSql() {
   const dateStr = recentHoursWhere(24);
   return `
     SELECT
       crawled_at,
-      SUM(download_count) as download_count,
-      SUM(CASE WHEN refer = 'pc' THEN download_count ELSE 0 END) as pc_download_count,
-      SUM(CASE WHEN refer = 'app' THEN download_count ELSE 0 END) as app_download_count
-    FROM dws_taptap_download_hourly
+      SUM(biz_download_count) as biz_download_count,
+      SUM(mini_download_count) as mini_download_count,
+      SUM(tmk_download_count) as tmk_download_count
+    FROM dws_taptap_download_summary_hourly
     WHERE crawled_at >= '${dateStr}'
     GROUP BY crawled_at
-    HAVING SUM(download_count) > 0
+    HAVING SUM(biz_download_count + mini_download_count + tmk_download_count) > 0
     ORDER BY crawled_at
   `;
 }
 
-/** 构建下载汇总 SQL（日/月共用，按 crawled_at 汇总平台/AI/TapMaker 下载量，忽略0值） */
-function buildDownloadSummarySql(table, dateStr) {
-  return `
-    SELECT
-      crawled_at,
-      SUM(download_count) as download_count,
-      SUM(pc_download_count) as pc_download_count,
-      SUM(app_download_count) as app_download_count,
-      SUM(none_ai_download_count) as none_ai_download_count,
-      SUM(ai_download_count) as ai_download_count,
-      SUM(ai_none_maker_download_count) as ai_none_maker_download_count,
-      SUM(ai_maker_download_count) as ai_maker_download_count
-    FROM ${table}
-    WHERE crawled_at >= '${dateStr}'
-    GROUP BY crawled_at
-    HAVING SUM(download_count) > 0
-    ORDER BY crawled_at
-  `;
-}
-
-/** 计算「上周一 ~ 本周日」的日期字符串（本周按周一为首日） */
+/**
+ * 计算「上周一 ~ 本周日」的日期字符串（本周按周一为首日）
+ */
 export function weekRange(ref = new Date()) {
   const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
   const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
@@ -273,39 +262,59 @@ export function weekRange(ref = new Date()) {
   return { lastMonday: fmt(lastMonday), thisMonday: fmt(thisMonday), thisSunday: fmt(thisSunday) };
 }
 
-/** 构建周趋势 SQL（上周一 ~ 本周日，按天聚合平台 / 小游戏下载数） */
+/**
+ * 构建周趋势 SQL（上周一 ~ 本周日，按天聚合平台 / 小游戏下载数）
+ * 数据源为 MySQL 的 dws_taptap_download_v2_daily（走 v09 接口）：
+ *   平台 = app/pc_download_count；小游戏按 distribution_type 1/2 汇总 download_count
+ */
 export function buildWeeklyTrendSql(ref = new Date()) {
   const { lastMonday, thisSunday } = weekRange(ref);
   return `
     SELECT
       crawled_at,
-      SUM(app_download_count) as app_download_count,
-      SUM(pc_download_count) as pc_download_count,
-      SUM(ai_none_maker_download_count) as ai_none_maker_download_count,
-      SUM(ai_maker_download_count) as ai_maker_download_count
-    FROM dws_taptap_download_daily
+      SUM(app_download_count) AS app_download_count,
+      SUM(pc_download_count) AS pc_download_count,
+      SUM(CASE WHEN distribution_type = 1 THEN download_count ELSE 0 END) AS mini_download_count,
+      SUM(CASE WHEN distribution_type = 2 THEN download_count ELSE 0 END) AS tmk_download_count
+    FROM dws_taptap_download_v2_daily
     WHERE crawled_at >= '${lastMonday}' AND crawled_at <= '${thisSunday}'
     GROUP BY crawled_at
     ORDER BY crawled_at
   `;
 }
 
-/** 构建月趋势明细 SQL（最近12个月） */
+/** 构建月趋势明细 SQL（最近12个月，MySQL v09 的 dws_taptap_download_v2_monthly） */
 export function buildMonthlyBreakdownSql() {
-  return buildDownloadSummarySql('dws_taptap_download_monthly', recentMonthsWhere(12));
+  // MySQL（v09）的 dws_taptap_download_v2_monthly 已按月预聚合，直接取列即可
+  const months = Math.max(1, 12);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+  return `
+    SELECT
+      crawled_at,
+      app_download_count,
+      pc_download_count,
+      dist_type_1_download_count AS mini_download_count,
+      dist_type_2_download_count AS tmk_download_count
+    FROM dws_taptap_download_v2_monthly
+    WHERE crawled_at >= '${startStr}'
+    ORDER BY crawled_at
+  `;
 }
 
 /** 构建追踪的游戏分布 SQL（按窗口类型/统计窗口，受查询条件约束） */
 export function buildDistributionByWindowSql(table, windowStr) {
-  if (table === 'dws_taptap_download_hourly') {
+  if (table === HOURLY_TABLE) {
+    // v2 小时表：一行一个游戏，平台按 app/pc 下载数是否 >0 判断，小游戏按 distribution_type 1/2
     return `
       SELECT
         crawled_at,
         COUNT(*) as trace_game_count,
-        SUM(CASE WHEN refer = 'pc' THEN 1 ELSE 0 END) as pc_game_count,
-        SUM(CASE WHEN refer = 'app' THEN 1 ELSE 0 END) as app_game_count,
+        SUM(CASE WHEN pc_download_count > 0 THEN 1 ELSE 0 END) as pc_game_count,
+        SUM(CASE WHEN app_download_count > 0 THEN 1 ELSE 0 END) as app_game_count,
         SUM(CASE WHEN distribution_type = 0 THEN 1 ELSE 0 END) as none_ai_game_count,
-        SUM(CASE WHEN distribution_type > 0 THEN 1 ELSE 0 END) as ai_game_count,
+        SUM(CASE WHEN distribution_type IN (1, 2) THEN 1 ELSE 0 END) as ai_game_count,
         SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as ai_none_maker_game_count,
         SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as ai_maker_game_count
       FROM ${table}
@@ -333,106 +342,71 @@ export function buildDistributionByWindowSql(table, windowStr) {
 
 /**
  * 构建下载TopN明细 SQL（受查询条件约束）
- * opts: { hourFilter, dayFilter, orderBy, limit, splitTop, typeFilter, referFilter }
- * - hourFilter / dayFilter 传空则不加过滤
- * - typeFilter: distribution_type（1=非Maker独立小游戏、2=Maker独立小游戏，其它值按原样用）；
+ * opts: { dayFilter, orderBy, limit, typeFilter, referFilter }
+ * - dayFilter 传空则不加过滤
+ * - typeFilter: distribution_type（1=独立小游戏、2=Maker小游戏，其它值按原样用）；
  *   传 'all' 表示「全部小游戏」= distribution_type IN (1,2)；
  *   传入时只查该口径（不再两段合并），日/月表用对应的小游戏下载数列排序
  * - referFilter: 'app' / 'pc' 只查该平台；传 'all' 表示 APP+PC 全平台（日/月表用总下载数排序）
- * - splitTop: { size, mode } —— 两个分组各取 Top size 后合并：
- *     mode='platform' 小时表按 refer、日/月表按 app/pc 下载数
- *     mode='type'     小时表按 distribution_type、日/月表按 none_ai / ai_maker 下载数（0=商业游戏、2=TapMaker）
  * - 日/月表按 app_id 聚合、无 refer / distribution_type 列，合并时用常量补列
  */
 export function buildTop25DetailSql(table, windowStr, opts = {}) {
   const {
-    hourFilter = null,
     dayFilter = null,
     orderBy = 'download_count',
     limit = 25,
-    splitTop = null,
     typeFilter = null,
     referFilter = null,
   } = opts;
-  const hourWhere = hourFilter ? ` AND ${hourFilter}` : '';
   const dayWhere = dayFilter ? ` AND ${dayFilter}` : '';
   // 只查指定平台（饼图选中项）：'all' = APP+PC 全平台
   const referAll = referFilter === 'all';
   const referValue = referAll || referFilter == null ? null : String(referFilter);
-  const referWhere = referValue ? ` AND refer = '${referValue}'` : referAll ? " AND refer IN ('app', 'pc')" : '';
   // 只查指定游戏类型（饼图选中项）：'all' = 全部小游戏（1、2 两类）
   const typeAll = typeFilter === 'all';
   const typeValue = typeFilter == null || typeAll ? null : Number(typeFilter);
   const typeWhere = typeValue != null ? ` AND distribution_type = ${typeValue}` : typeAll ? ' AND distribution_type IN (1, 2)' : '';
 
-  if (splitTop) {
-    const { size, mode } = splitTop;
-    const isType = mode === 'type';
-
-    if (table === 'dws_taptap_download_hourly') {
-      // 小时表：每行已带 refer 与 distribution_type，按分组条件过滤后各取 Top N
-      const branch = (where) => `
-        SELECT * FROM (
-          SELECT
-            app_id,
-            crawled_at,
-            refer,
-            distribution_type,
-            download_count
-          FROM ${table}
-          WHERE crawled_at = '${windowStr}'
-            AND ${where}
-          ORDER BY download_count DESC
-          LIMIT ${size}
-        )`;
-      // 小游戏口径：1=非Maker独立小游戏、2=Maker独立小游戏
-      const whereA = isType ? 'distribution_type = 1' : "refer = 'app'";
-      const whereB = isType ? 'distribution_type = 2' : "refer = 'pc'";
+  if (table === HOURLY_TABLE) {
+    // v2 小时表：一行一个游戏，没有 refer 列；平台列由 app/pc 下载数推断
+    const referExpr = `CASE
+          WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
+          WHEN pc_download_count > 0 THEN 'pc'
+          WHEN app_download_count > 0 THEN 'app'
+          ELSE '-'
+        END`;
+    // 指定平台：用该平台的下载数排序并作为「下载数」列
+    if (referValue) {
+      const referCol = referValue === 'pc' ? 'pc_download_count' : 'app_download_count';
       return `
-        ${branch(whereA)}
-        UNION ALL
-        ${branch(whereB)}
-        ORDER BY download_count DESC
-        LIMIT ${limit}
-      `;
-    }
-
-    // 日/月表：没有 refer / distribution_type 列，用常量补上，下载数取所属分组的指标列
-    const branch = (referSql, typeSql, orderCol) => `
-      SELECT * FROM (
         SELECT
           app_id,
           crawled_at,
-          ${referSql} as refer,
-          ${typeSql} as distribution_type,
-          ${orderCol} as download_count
+          '${referValue}' as refer,
+          distribution_type,
+          ${referCol} as download_count,
+          ${HOURLY_META_COLS}
         FROM ${table}
         WHERE crawled_at = '${windowStr}'
-          AND ${orderCol} > 0
-        ORDER BY ${orderCol} DESC
-        LIMIT ${size}
-      )`;
-    const branchA = isType ? branch('NULL', '1', 'ai_none_maker_download_count') : branch("'app'", 'NULL', 'app_download_count');
-    const branchB = isType ? branch('NULL', '2', 'ai_maker_download_count') : branch("'pc'", 'NULL', 'pc_download_count');
-    return `
-      ${branchA}
-      UNION ALL
-      ${branchB}
-      ORDER BY download_count DESC
-      LIMIT ${limit}
-    `;
-  }
-
-  if (table === 'dws_taptap_download_hourly') {
+          AND ${referCol} > 0
+        ORDER BY ${referCol} DESC
+        LIMIT ${limit}
+      `;
+    }
+    // 指定游戏类型 / 全部小游戏 / 无筛选（全部平台）：都用总下载数 download_count 排序
+    const whereParts = [`crawled_at = '${windowStr}'`];
+    if (typeWhere) whereParts.push(typeWhere.replace(/^ AND /, ''));
+    if (referAll) whereParts.push('download_count > 0');
     return `
       SELECT
         app_id,
         crawled_at,
-        refer,
+        ${referExpr} as refer,
         distribution_type,
-        download_count
+        download_count,
+        ${HOURLY_META_COLS}
       FROM ${table}
-      WHERE crawled_at = '${windowStr}'${hourWhere}${typeWhere}${referWhere}
+      WHERE ${whereParts.join(' AND ')}
       ORDER BY download_count DESC
       LIMIT ${limit}
     `;
@@ -528,6 +502,27 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
 }
 
 /**
+ * 构建「某游戏某日按小时的下载趋势」SQL（明细表下载数后的趋势图标用）
+ * @param {string|number} appId 游戏 ID
+ * @param {string} day 日期，形如 2026-11-07（取统计窗口的日期部分）
+ * @param {string} metric 取值列：app_download_count / pc_download_count / download_count
+ */
+export function buildAppHourTrendSql(appId, day, metric = 'download_count') {
+  const id = String(appId ?? '').trim();
+  const col = ['app_download_count', 'pc_download_count', 'download_count'].includes(metric) ? metric : 'download_count';
+  if (!/^\d+$/.test(id)) return `SELECT crawled_at, 0 as value FROM ${HOURLY_TABLE} WHERE 1 = 0`;
+  return `
+    SELECT crawled_at, SUM(${col}) as value
+    FROM ${HOURLY_TABLE}
+    WHERE app_id = ${id}
+      AND crawled_at >= '${day} 00'
+      AND crawled_at <= '${day} 23'
+    GROUP BY crawled_at
+    ORDER BY crawled_at
+  `;
+}
+
+/**
  * 构建游戏信息映射 SQL（当前月份）：名称 + icon + 三个标签
  * 只按明细里出现的 app_id 捞（IN 列表），并按 app_id 取当月最新快照，避免整月全量回传
  * @param {Array<string|number>} appIds 明细表中的 app_id
@@ -559,15 +554,13 @@ export function buildOnlinePlayersTrendSql() {
   return `
     SELECT
       crawled_at,
-      pc_online_players,
-      pc_emulator_online_players,
-      creative_non_online_players,
-      creative_mk_online_players,
-      stat_pc_game_cnt,
-      stat_pc_emulator_game_cnt,
-      stat_creative_non_game_cnt,
-      stat_creative_mk_game_cnt
-    FROM dws_taptap_pc_online_peak_players_hourly
+      biz_online_players,
+      mini_game_online_players,
+      tmk_online_players,
+      biz_game_cnt,
+      mini_game_cnt,
+      tmk_game_cnt
+    FROM dws_taptap_pc_online_peak_players_v2_hourly
     WHERE crawled_at >= '${recentHoursWhere(24)}'
     ORDER BY crawled_at
   `;
@@ -590,7 +583,7 @@ export function buildNewestDateSql() {
   const dateStr = recentDaysWhere(7);
   return `
     SELECT MAX(crawled_at) AS newest_datestr
-    FROM dws_taptap_download_hourly
+    FROM ${HOURLY_TABLE}
     WHERE crawled_at >= '${dateStr}'
   `;
 }
@@ -599,7 +592,7 @@ export function buildNewestDateSql() {
 export function buildOnlinePlayersSourceNewestSql() {
   return `
     SELECT MAX(crawled_at) AS newest_datestr
-    FROM taptap_pc_online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly
   `;
 }
 
@@ -618,7 +611,7 @@ export function buildOnlinePlayersSourceSql(dateStr) {
       END AS player_bucket,
       COUNT(*) AS game_cnt,
       SUM(online_players) AS online_players
-    FROM taptap_pc_online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly
     WHERE crawled_at = '${dateStr}'
     GROUP BY player_bucket
   `;
@@ -628,46 +621,39 @@ export function buildOnlinePlayersSourceSql(dateStr) {
 export function buildOnlinePlayersSourceGamesSql(dateStr) {
   return `
     SELECT
-      b.app_name AS app_name,
-      a.online_players AS online_players
-    FROM (
-      SELECT app_id, online_players
-      FROM taptap_pc_online_players
-      WHERE crawled_at = '${dateStr}'
-    ) a
-    LEFT JOIN (
-      SELECT * FROM taptap_online_peak_players_ids_weekly
-      WHERE crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
-    ) b ON a.app_id = b.app_id
-    ORDER BY a.online_players DESC
+      app_name,
+      online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly
+    WHERE crawled_at = '${dateStr}'
+    ORDER BY online_players DESC
   `;
 }
 
-/** 构建TapPC在线峰值来源在线人数 SQL（最新一行全量汇总，三个来源在线人数） */
-export function buildPcOnlinePeakSourceSql() {
+/** 构建TapPC在线峰值来源 SQL（最新窗口按 distribution_type 汇总：商业游戏 / 独立小游戏 / Maker小游戏） */
+export function buildPcOnlinePeakSourceSql(dateStr) {
   return `
     SELECT
-      pc_online_players,
-      pc_emulator_online_players,
-      creative_online_players,
-      crawled_at
-    FROM dws_taptap_pc_online_peak_players_hourly
-    ORDER BY crawled_at DESC
-    LIMIT 1
+      distribution_type,
+      COUNT(*) AS game_cnt,
+      SUM(online_players) AS online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly
+    WHERE crawled_at = '${dateStr}'
+    GROUP BY distribution_type
   `;
 }
 
 /** 构建TapPC峰值在线 KPI SQL（各指标的最大值及其发生的时间节点） */
 export function buildPcOnlinePeakKpisSql() {
-  const table = 'dws_taptap_pc_online_peak_players_hourly';
-  const one = (key, col) => `SELECT * FROM (SELECT '${key}' AS k, ${col} AS v, crawled_at AS at FROM ${table} ORDER BY ${col} DESC, crawled_at DESC LIMIT 1)`;
+  // MySQL（v09）的 dws_taptap_pc_online_peak_players_v2_hourly：
+  // 总最高在线 + 商业游戏 / 独立小游戏 / Maker小游戏 各自最高在线
+  const table = 'dws_taptap_pc_online_peak_players_v2_hourly';
+  const one = (key, col) =>
+    `(SELECT '${key}' AS k, ${col} AS v, crawled_at AS at FROM ${table} ORDER BY ${col} DESC, crawled_at DESC LIMIT 1)`;
   return [
     one('online', 'online_players'),
-    one('pc', 'pc_online_players'),
-    one('pc_emulator', 'pc_emulator_online_players'),
-    one('creative', 'creative_online_players'),
-    one('creative_non', 'creative_non_online_players'),
-    one('creative_mk', 'creative_mk_online_players'),
+    one('biz', 'biz_online_players'),
+    one('mini', 'mini_game_online_players'),
+    one('tmk', 'tmk_online_players'),
   ].join('\n    UNION ALL\n    ');
 }
 
@@ -689,63 +675,63 @@ export function buildPcOnlinePeakTotalsSql() {
 export function buildPcOnlinePeakNewestSql() {
   return `
     SELECT MAX(crawled_at) AS newest_datestr
-    FROM dws_taptap_pc_online_peak_players_rank_hourly
+    FROM dws_taptap_pc_online_peak_players_details_hourly
   `;
 }
 
 /** 构建TapPC在线峰值来源游戏明细 SQL（最新窗口，按来源分组，游戏按在线人数降序） */
-export function buildPcOnlinePeakRankSql() {
+export function buildPcOnlinePeakRankSql(dateStr) {
   return `
     SELECT
-      list_type,
+      distribution_type,
       app_name,
       online_players
-    FROM dws_taptap_pc_online_peak_players_rank_hourly
-    WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
-    ORDER BY list_type, online_players DESC
+    FROM dws_taptap_pc_online_peak_players_details_hourly
+    WHERE crawled_at = '${dateStr}'
+    ORDER BY distribution_type, online_players DESC
   `;
 }
 
-/** 构建TapPC在线人数Top20游戏列表 SQL（最新统计窗口，筛选 list_type_rk<=20） */
-export function buildPcOnlineTop20ListSql() {
+/** 构建TapPC在线人数Top100游戏列表 SQL（最新窗口，按 online_players 取前 100） */
+export function buildPcOnlineTop100ListSql(dateStr) {
+  const where = dateStr
+    ? `crawled_at = '${dateStr}'`
+    : `crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_details_hourly)`;
   return `
     SELECT
       app_id,
       app_name,
+      icon,
       tag_1,
       tag_2,
       tag_3,
-      list_type,
       distribution_type,
-      online_players,
-      list_type_rk
-    FROM dws_taptap_pc_online_peak_players_rank_hourly
-    WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
-      AND list_type_rk <= 20
+      online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly
+    WHERE ${where}
     ORDER BY online_players DESC
+    LIMIT 100
   `;
 }
 
-/** 构建TapPC在线人数Top20游戏最近24小时趋势 SQL（仅取最新窗口 Top20 的 app_id+list_type） */
-export function buildPcOnlineTop20TrendSql() {
+/** 构建TapPC在线人数Top100游戏最近24小时趋势 SQL（仅取最新窗口 Top100 的 app_id） */
+export function buildPcOnlineTop100TrendSql() {
   const dateStr = recentHoursWhere(24);
   return `
     SELECT
-      r.app_id,
-      r.list_type,
-      r.crawled_at,
-      r.online_players
-    FROM dws_taptap_pc_online_peak_players_rank_hourly r
-    WHERE r.crawled_at >= '${dateStr}'
-      AND EXISTS (
-        SELECT 1
-        FROM dws_taptap_pc_online_peak_players_rank_hourly t
-        WHERE t.app_id = r.app_id
-          AND t.list_type = r.list_type
-          AND t.list_type_rk <= 20
-          AND t.crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_rank_hourly)
+      d.app_id,
+      d.crawled_at,
+      d.online_players
+    FROM dws_taptap_pc_online_peak_players_details_hourly d
+    WHERE d.crawled_at >= '${dateStr}'
+      AND d.app_id IN (
+        SELECT app_id
+        FROM dws_taptap_pc_online_peak_players_details_hourly
+        WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_details_hourly)
+        ORDER BY online_players DESC
+        LIMIT 100
       )
-    ORDER BY r.app_id, r.list_type, r.crawled_at
+    ORDER BY d.app_id, d.crawled_at
   `;
 }
 

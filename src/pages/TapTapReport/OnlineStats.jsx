@@ -13,11 +13,10 @@ import {
   buildOnlinePlayersSourceGamesSql,
   buildPcOnlinePeakSourceSql,
   buildPcOnlinePeakKpisSql,
-  buildPcOnlinePeakTotalsSql,
   buildPcOnlinePeakNewestSql,
   buildPcOnlinePeakRankSql,
-  buildPcOnlineTop20ListSql,
-  buildPcOnlineTop20TrendSql,
+  buildPcOnlineTop100ListSql,
+  buildPcOnlineTop100TrendSql,
 } from './sql';
 import {
   transformOnlinePlayersTrend,
@@ -27,26 +26,23 @@ import {
   transformOnlinePlayersSourceGames,
   transformPcOnlinePeakSource,
   transformPcOnlinePeakKpis,
-  transformPcOnlinePeakTotals,
   transformPcOnlinePeakRank,
-  transformPcOnlineTop20List,
-  transformPcOnlineTop20Trend,
+  transformPcOnlineTop100List,
+  transformPcOnlineTop100Trend,
   PC_SOURCE_COLORS,
   PC_SOURCE_TYPES,
   ONLINE_PLAYERS_BUCKETS,
 } from './transforms';
-import { useSqlQuery } from './queries';
+import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
-import { PC_ONLINE_TOP20_COLUMNS } from './shared';
+import { PC_ONLINE_TOP100_COLUMNS, PC_GAME_TYPE_META } from './shared';
 
 /** TapPC 峰值在线 KPI 图标与配色 */
 const PC_KPI_META = {
   online: { icon: 'bi-people', color: 'primary' },
-  pc: { icon: 'bi-pc-display', color: 'info' },
-  pc_emulator: { icon: 'bi-cpu', color: 'success' },
-  creative: { icon: 'bi-controller', color: 'warning' },
-  creative_non: { icon: 'bi-dpad', color: 'secondary' },
-  creative_mk: { icon: 'bi-joystick', color: 'dark' },
+  biz: { icon: 'bi-pc-display', color: 'info' },
+  mini: { icon: 'bi-controller', color: 'success' },
+  tmk: { icon: 'bi-joystick', color: 'warning' },
 };
 
 export default function OnlineStats() {
@@ -56,21 +52,44 @@ export default function OnlineStats() {
   const onlinePlayersSourceQuery = useSqlQuery('taptap-online-players-source', () => buildOnlinePlayersSourceSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSource, { enabled: !!onlinePlayersSourceNewestQuery.data });
   const onlinePlayersSourceGamesQuery = useSqlQuery('taptap-online-players-source-games', () => buildOnlinePlayersSourceGamesSql(onlinePlayersSourceNewestQuery.data), [onlinePlayersSourceNewestQuery.data], transformOnlinePlayersSourceGames, { enabled: !!onlinePlayersSourceNewestQuery.data });
   const pcSourceNewestQuery = useSqlQuery('taptap-pc-online-peak-newest', buildPcOnlinePeakNewestSql, [], transformNewestDate, { enabled: true });
-  const pcSourceGamesOnlinePlayersQuery = useSqlQuery('taptap-pc-online-peak-source', buildPcOnlinePeakSourceSql, [], transformPcOnlinePeakSource, { enabled: true });
-  const pcSourceGamesOnlinePlayersGamesQuery = useSqlQuery('taptap-pc-online-peak-rank', buildPcOnlinePeakRankSql, [], transformPcOnlinePeakRank, { enabled: true });
-  const pcOnlineTop20ListQuery = useSqlQuery('taptap-pc-online-top20-list', buildPcOnlineTop20ListSql, [], transformPcOnlineTop20List, { enabled: true });
-  const pcOnlineTop20TrendQuery = useSqlQuery('taptap-pc-online-top20-trend', buildPcOnlineTop20TrendSql, [], transformPcOnlineTop20Trend, { enabled: true });
-  const pcOnlinePeakTotalsQuery = useSqlQuery('taptap-pc-online-peak-totals', buildPcOnlinePeakTotalsSql, [], transformPcOnlinePeakTotals, { enabled: true });
-  const pcOnlinePeakKpisQuery = useSqlQuery('taptap-pc-online-peak-kpis', buildPcOnlinePeakKpisSql, [], transformPcOnlinePeakKpis, { enabled: true });
-  const pcOnlineTop20Rows = useMemo(() => {
-    const list = pcOnlineTop20ListQuery.data?.rows || [];
-    const labels = pcOnlineTop20TrendQuery.data?.labels || [];
-    const byKey = pcOnlineTop20TrendQuery.data?.byKey || {};
-    const totals = pcOnlinePeakTotalsQuery.data;
-    const totalOnline = totals?.total || 0;
+  const pcSourceGamesOnlinePlayersQuery = useSqlQuery(
+    'taptap-pc-online-peak-source',
+    () => buildPcOnlinePeakSourceSql(pcSourceNewestQuery.data),
+    [pcSourceNewestQuery.data],
+    transformPcOnlinePeakSource,
+    { enabled: !!pcSourceNewestQuery.data }
+  );
+  const pcSourceGamesOnlinePlayersGamesQuery = useSqlQuery(
+    'taptap-pc-online-peak-rank',
+    () => buildPcOnlinePeakRankSql(pcSourceNewestQuery.data),
+    [pcSourceNewestQuery.data],
+    transformPcOnlinePeakRank,
+    { enabled: !!pcSourceNewestQuery.data }
+  );
+  const pcOnlineTop100ListQuery = useSqlQuery(
+    'taptap-pc-online-top100-list',
+    () => buildPcOnlineTop100ListSql(pcSourceNewestQuery.data),
+    [pcSourceNewestQuery.data],
+    transformPcOnlineTop100List,
+    { enabled: !!pcSourceNewestQuery.data }
+  );
+  const pcOnlineTop100TrendQuery = useSqlQuery('taptap-pc-online-top100-trend', buildPcOnlineTop100TrendSql, [], transformPcOnlineTop100Trend, { enabled: true });
+  // KPI 走 MySQL（v09 接口）的 dws_taptap_pc_online_peak_players_v2_hourly
+  const pcOnlinePeakKpisQuery = useSqlQueryV09('taptap-pc-online-peak-kpis', buildPcOnlinePeakKpisSql, [], transformPcOnlinePeakKpis, { enabled: true });
+  const pcOnlineTop100Rows = useMemo(() => {
+    const list = pcOnlineTop100ListQuery.data?.rows || [];
+    const labels = pcOnlineTop100TrendQuery.data?.labels || [];
+    const byKey = pcOnlineTop100TrendQuery.data?.byKey || {};
+    // 各游戏类型（distribution_type）在同一窗口的在线人数合计：来自来源分布图的第一层数据
+    const typeTotals = {};
+    (pcSourceGamesOnlinePlayersQuery.data?.data || []).forEach((d) => {
+      const type = Object.keys(PC_GAME_TYPE_META).find((k) => PC_GAME_TYPE_META[k].label === d.x);
+      if (type != null) typeTotals[type] = Number(d.y || 0);
+    });
+    const totalOnline = Object.values(typeTotals).reduce((a, b) => a + b, 0);
     return list.map((r) => {
-      const series = byKey[`${r.appId}::${r.listType}`] || {};
-      const typeTotal = totals?.byType?.[r.listType] || 0;
+      const series = byKey[String(r.appId)] || {};
+      const typeTotal = typeTotals[String(r.distributionType)] || 0;
       const trendValues = Object.values(series);
       const avgOnlinePlayers = trendValues.length
         ? Math.round(trendValues.reduce((a, b) => a + b, 0) / trendValues.length)
@@ -84,14 +103,14 @@ export default function OnlineStats() {
         typeContribution: typeTotal > 0 ? (r.onlinePlayers / typeTotal) * 100 : null,
       };
     });
-  }, [pcOnlineTop20ListQuery.data, pcOnlineTop20TrendQuery.data, pcOnlinePeakTotalsQuery.data]);
+  }, [pcOnlineTop100ListQuery.data, pcOnlineTop100TrendQuery.data, pcSourceGamesOnlinePlayersQuery.data]);
 
   const trendCategories = onlinePlayersTrendQuery.data?.categories || [];
   const trendRangeStart = trendCategories[0] || '';
   const trendRangeEnd = trendCategories[trendCategories.length - 1] || '';
   // TapPC 在线人数 KPI 与趋势/分布图：每 2 小时第 15 分钟更新
   const pcUpdateLabel = nextUpdateLabel(15);
-  // 在线人数Top20游戏列表：每 2 小时第 14 分钟更新
+  // 在线人数Top100游戏列表：每 2 小时第 14 分钟更新
   const pcUpdateTop20Label = nextUpdateLabel(14);
 
   return (
@@ -104,7 +123,8 @@ export default function OnlineStats() {
         {(pcOnlinePeakKpisQuery.data || []).map((k) => {
           const meta = PC_KPI_META[k.key] || {};
           return (
-            <div className="col-12 col-sm-6 col-md-4" key={k.key}>
+            // 4 张 KPI 大屏排成一排（每张 25%），小屏 2 列、超小屏单列
+            <div className="col-12 col-sm-6 col-lg-3" key={k.key}>
               <DashboardCard
                 title={k.label}
                 value={k.value != null ? formatNumber(k.value) : '-'}
@@ -139,12 +159,12 @@ export default function OnlineStats() {
                 dataLabelsEnabled
                 shared
                 fill={{ opacity: 1 }}
-                colors={['#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0', '#7A8B99', '#9CAF9F', '#C4A4A4', '#D6C9B0']}
+                colors={['#7A8B99', '#9CAF9F', '#C4A4A4', '#5C6B7A', '#8A8F6B', '#B08B8B']}
                 toolbar={false}
                 legendOverrides={{ show: true, position: 'top', horizontalAlign: 'right', fontSize: '12px', itemMargin: { horizontal: 6, vertical: 2 } }}
                 xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
-                yaxisOverrides={{ min: 0, seriesName: ['TapPC峰值在线玩家数', 'TapPC模拟器峰值在线玩家数', 'TapPC小游戏C峰值在线玩家数', 'TapPC小游戏M峰值在线玩家数'], title: { text: '峰值在线玩家数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                yaxisRight={{ min: 0, max: 3000, seriesName: ['TapPC统计游戏数', 'TapPC模拟器统计游戏数', 'TapPC小游戏C统计游戏数', 'TapPC小游戏M统计游戏数'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
+                yaxisOverrides={{ min: 0, seriesName: ['商业游戏-Players', '独立小游戏-Players', 'Maker小游戏-Players'], title: { text: '峰值在线玩家数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
+                yaxisRight={{ min: 0, seriesName: ['商业游戏-Cnt', '独立小游戏-Cnt', 'Maker小游戏-Cnt'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
                 annotations={onlinePlayersStatsQuery.data ? [
                   { y: onlinePlayersStatsQuery.data.maxOnlinePlayers, color: '#421243', position: 'center', label: `历史峰值玩家最高值 (${formatNumber(onlinePlayersStatsQuery.data.maxOnlinePlayers)})` },
                   { y: onlinePlayersStatsQuery.data.minOnlinePlayers, color: '#C0ADDB', position: 'center', label: `历史峰值玩家最低值 (${formatNumber(onlinePlayersStatsQuery.data.minOnlinePlayers)})` },
@@ -163,7 +183,9 @@ export default function OnlineStats() {
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC游戏在线人数来源分布图</div>
               <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-                <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}</span>
+                <span className="text-muted small">
+                  最新统计窗口为 - {pcSourceNewestQuery.data || ''}（按游戏类型：商业游戏 / 独立小游戏 / Maker小游戏，面积=在线人数）
+                </span>
                 <UpdateTag text={pcUpdateLabel} />
               </div>
             </div>
@@ -231,17 +253,17 @@ export default function OnlineStats() {
         </div>
       </div>
 
-      {/* 在线人数Top20游戏列表 */}
+      {/* 在线人数Top100游戏列表 */}
       <div className="mb-4">
         <div className="card border-0 shadow-sm">
           <div className="card-header bg-white border-0">
-            <div className="fw-semibold">在线人数Top20游戏列表</div>
+            <div className="fw-semibold">在线人数Top100游戏列表</div>
             <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-              <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（每个来源取 list_type_rk ≤ 20）</span>
+              <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（按 online_players 取前 100）</span>
               <UpdateTag text={pcUpdateTop20Label} />
             </div>
           </div>
-          <DataTable rows={pcOnlineTop20Rows} columns={PC_ONLINE_TOP20_COLUMNS} pageSize={10} fixedLayout rankColWidth="3%" />
+          <DataTable rows={pcOnlineTop100Rows} columns={PC_ONLINE_TOP100_COLUMNS} pageSize={10} fixedLayout rankColWidth="3%" />
         </div>
       </div>
 

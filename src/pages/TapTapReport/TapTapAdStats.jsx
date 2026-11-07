@@ -111,7 +111,7 @@ const GAME_TOP_COLUMNS = [
     header: '游戏类型',
     align: 'center',
     width: '7%',
-    help: 'distribution_type：0 = 商业游戏，1 = 创意工坊，2 = TapMaker',
+    help: 'distribution_type：0 = 商业游戏，1 = 独立小游戏，2 = Maker小游戏',
     accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? '',
     render: (r) => {
       const meta = PC_GAME_TYPE_META[r.distributionType];

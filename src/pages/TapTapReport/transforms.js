@@ -2,12 +2,12 @@
 export function transformAggregate(rows) {
   if (!rows || !rows.length) return { series: [], categories: [] };
   const sorted = [...rows].sort((a, b) => a.crawled_at < b.crawled_at ? -1 : 1);
-  const categories = sorted.map((r) => r.crawled_at);
   return {
-    categories,
+    categories: sorted.map((r) => r.crawled_at),
     series: [
-      { name: 'APP下载数', color: '#7A8B99', data: sorted.map((r) => Number(r.app_download_count || 0)) },
-      { name: 'PC端下载数', color: '#9CAF9F', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
+      { name: '商业游戏', color: '#8FA3B0', data: sorted.map((r) => Number(r.biz_download_count || 0)) },
+      { name: '独立小游戏', color: '#B08B8B', data: sorted.map((r) => Number(r.mini_download_count || 0)) },
+      { name: 'Maker小游戏', color: '#9B93A8', data: sorted.map((r) => Number(r.tmk_download_count || 0)) },
     ],
   };
 }
@@ -57,8 +57,8 @@ export function transformWeeklyTrend(rows, ref) {
     const miniBucket = isCurrent ? result.miniGame.current : result.miniGame.previous;
     bucket.app[idx] = Number(r.app_download_count || 0);
     bucket.pc[idx] = Number(r.pc_download_count || 0);
-    miniBucket.nonMaker[idx] = Number(r.ai_none_maker_download_count || 0);
-    miniBucket.maker[idx] = Number(r.ai_maker_download_count || 0);
+    miniBucket.nonMaker[idx] = Number(r.mini_download_count || 0);
+    miniBucket.maker[idx] = Number(r.tmk_download_count || 0);
   });
   return result;
 }
@@ -73,13 +73,13 @@ export function transformDistributionByWindow(rows) {
   const ai = Number(r.ai_game_count || 0);
   const aiNoneMaker = Number(r.ai_none_maker_game_count || 0);
   const aiMaker = Number(r.ai_maker_game_count || 0);
-  /* 小游戏分布：distribution_type 1=非Maker独立小游戏、2=Maker独立小游戏，
+  /* 小游戏分布：distribution_type 1=独立小游戏、2=Maker小游戏，
      圆心总数取二者之和（= AI/小游戏口径 ai_game_count），出现其它类型时补「其他」扇区。 */
   const nonMakerMini = aiNoneMaker;
   const makerMini = aiMaker;
   const miniOther = Math.max(0, ai - nonMakerMini - makerMini);
   const gameTypeSeries = [nonMakerMini, makerMini];
-  const gameTypeLabels = ['非Maker独立小游戏', 'Maker独立小游戏'];
+  const gameTypeLabels = ['独立小游戏', 'Maker小游戏'];
   if (miniOther > 0) {
     gameTypeSeries.push(miniOther);
     gameTypeLabels.push('其他');
@@ -108,10 +108,10 @@ export function transformMonthlyBreakdown(rows) {
       { name: 'APP下载数', color: '#7A8B99', data: sorted.map((r) => Number(r.app_download_count || 0)) },
       { name: 'PC端下载数', color: '#9CAF9F', data: sorted.map((r) => Number(r.pc_download_count || 0)) },
     ],
-    // 小游戏：distribution_type 1=非Maker独立小游戏（ai_none_maker_download_count）、2=Maker独立小游戏（ai_maker_download_count）
+    // 小游戏：distribution_type 1=独立小游戏（dist_type_1_download_count）、2=Maker小游戏（dist_type_2_download_count）
     gameType: [
-      { name: '非Maker独立小游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.ai_none_maker_download_count || 0)) },
-      { name: 'Maker独立小游戏下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.ai_maker_download_count || 0)) },
+      { name: '独立小游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.mini_download_count || 0)) },
+      { name: 'Maker小游戏下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.tmk_download_count || 0)) },
     ],
   };
 }
@@ -122,7 +122,10 @@ export function transformTop25Detail(rows) {
   return {
     rows: rows.map((r) => ({
       appId: r.app_id,
+      // v2 小时表直接在行里带名称/图标/标签；日/月表没有这些列（走 gameMap 兜底）
       appName: r.app_name != null ? r.app_name : null,
+      icon: r.icon != null ? r.icon : null,
+      tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
       downloadCount: r.download_count != null ? Number(r.download_count) : null,
       refer: r.refer != null ? String(r.refer) : null,
       distributionType: r.distribution_type != null ? Number(r.distribution_type) : null,
@@ -154,14 +157,12 @@ export function transformOnlinePlayersTrend(rows) {
   return {
     categories,
     series: [
-      { name: 'TapPC峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('pc_online_players') },
-      { name: 'TapPC模拟器峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('pc_emulator_online_players') },
-      { name: 'TapPC小游戏C峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('creative_non_online_players') },
-      { name: 'TapPC小游戏M峰值在线玩家数', group: 'peak_players', yAxisIndex: 0, data: toData('creative_mk_online_players') },
-      { name: 'TapPC统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_pc_game_cnt') },
-      { name: 'TapPC模拟器统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_pc_emulator_game_cnt') },
-      { name: 'TapPC小游戏C统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_creative_non_game_cnt') },
-      { name: 'TapPC小游戏M统计游戏数', group: 'game_cnt', yAxisIndex: 1, data: toData('stat_creative_mk_game_cnt') },
+      { name: '商业游戏-Players', group: 'peak_players', yAxisIndex: 0, data: toData('biz_online_players') },
+      { name: '独立小游戏-Players', group: 'peak_players', yAxisIndex: 0, data: toData('mini_game_online_players') },
+      { name: 'Maker小游戏-Players', group: 'peak_players', yAxisIndex: 0, data: toData('tmk_online_players') },
+      { name: '商业游戏-Cnt', group: 'game_cnt', yAxisIndex: 1, data: toData('biz_game_cnt') },
+      { name: '独立小游戏-Cnt', group: 'game_cnt', yAxisIndex: 1, data: toData('mini_game_cnt') },
+      { name: 'Maker小游戏-Cnt', group: 'game_cnt', yAxisIndex: 1, data: toData('tmk_game_cnt') },
     ],
   };
 }
@@ -243,26 +244,26 @@ export function transformOnlinePlayersSourceGames(rows) {
 /** TapPC来源配色（取自 AD_MATERIAL_COLORS 色库） */
 export const PC_SOURCE_COLORS = ['#5C6B7A', '#8A8F6B', '#B08B8B'];
 
-/** TapPC来源定义（固定顺序、标签、下钻 id） */
+/** TapPC来源定义（明细表 distribution_type 0/1/2，固定顺序与下钻 id） */
 export const PC_SOURCE_TYPES = [
-  { type: 'pc_played', label: 'TapPC游戏在线' },
-  { type: 'pc_emulator_played', label: 'TapPC模拟器游戏在线' },
-  { type: 'app_hot_creative', label: 'TapPC小游戏在线' },
+  { type: '0', label: '商业游戏' },
+  { type: '1', label: '独立小游戏' },
+  { type: '2', label: 'Maker小游戏' },
 ];
 
 /** TapPC在线峰值来源在线人数第一层（下钻入口，按来源在线人数） */
 export function transformPcOnlinePeakSource(rows) {
   if (!rows || !rows.length) return { data: [], colors: [] };
-  const r = rows[0];
-  const values = {
-    pc_played: Number(r.pc_online_players || 0),
-    pc_emulator_played: Number(r.pc_emulator_online_players || 0),
-    app_hot_creative: Number(r.creative_online_players || 0),
-  };
+  const byType = {};
+  rows.forEach((r) => {
+    byType[String(r.distribution_type)] = Number(r.online_players || 0);
+  });
   const data = [];
   const colors = [];
   PC_SOURCE_TYPES.forEach((t, idx) => {
-    data.push({ x: t.label, y: values[t.type], drilldown: t.type });
+    const value = byType[t.type];
+    if (value == null) return;
+    data.push({ x: t.label, y: value, drilldown: t.type });
     colors.push(PC_SOURCE_COLORS[idx]);
   });
   return { data, colors };
@@ -270,13 +271,9 @@ export function transformPcOnlinePeakSource(rows) {
 
 /** TapPC在线峰值来源第二层（按来源分组的具体游戏明细，按在线人数降序） */
 export function transformPcOnlinePeakRank(rows) {
-  const byType = {
-    pc_played: [],
-    pc_emulator_played: [],
-    app_hot_creative: [],
-  };
+  const byType = { 0: [], 1: [], 2: [] };
   (rows || []).forEach((r) => {
-    const bucket = byType[r.list_type];
+    const bucket = byType[String(r.distribution_type)];
     if (bucket) {
       bucket.push({
         x: r.app_name != null ? String(r.app_name) : '未知',
@@ -290,11 +287,9 @@ export function transformPcOnlinePeakRank(rows) {
 /** TapPC 峰值在线 KPI 字段定义（顺序即展示顺序） */
 export const PC_ONLINE_KPI_FIELDS = [
   { key: 'online', label: '最高在线人数' },
-  { key: 'pc', label: 'PC最高在线人数' },
-  { key: 'pc_emulator', label: '模拟器最高在线人数' },
-  { key: 'creative', label: '小游戏最高在线人数' },
-  { key: 'creative_non', label: '小游戏C最高在线人数' },
-  { key: 'creative_mk', label: '小游戏M最高在线人数' },
+  { key: 'biz', label: '商业游戏最高在线人数' },
+  { key: 'mini', label: '独立小游戏最高在线人数' },
+  { key: 'tmk', label: 'Maker小游戏最高在线人数' },
 ];
 
 /** TapPC峰值在线 KPI（各指标的最大值及其发生的时间节点） */
@@ -326,30 +321,29 @@ export function transformPcOnlinePeakTotals(rows) {
 }
 
 /** TapPC在线人数Top20游戏列表（最新统计窗口，list_type_rk<=20，按在线人数降序） */
-export function transformPcOnlineTop20List(rows) {
+export function transformPcOnlineTop100List(rows) {
   if (!rows || !rows.length) return { rows: [] };
   return {
     rows: rows.map((r) => ({
       appId: r.app_id,
       appName: r.app_name != null ? String(r.app_name) : null,
+      icon: r.icon || '',
       tag1: r.tag_1,
       tag2: r.tag_2,
       tag3: r.tag_3,
-      listType: r.list_type,
       distributionType: r.distribution_type,
       onlinePlayers: Number(r.online_players || 0),
-      listTypeRk: r.list_type_rk,
     })),
   };
 }
 
-/** TapPC在线人数Top20游戏最近24小时趋势（按 app_id+list_type 分组，输出共享时间轴 + 各 app 的时序） */
-export function transformPcOnlineTop20Trend(rows) {
+/** TapPC在线人数Top100游戏最近24小时趋势（按 app_id 分组，输出共享时间轴 + 各 app 的时序） */
+export function transformPcOnlineTop100Trend(rows) {
   if (!rows || !rows.length) return { labels: [], byKey: {} };
   const labelSet = new Set();
   const byKey = {};
   rows.forEach((r) => {
-    const key = `${r.app_id}::${r.list_type}`;
+    const key = String(r.app_id);
     labelSet.add(r.crawled_at);
     if (!byKey[key]) byKey[key] = {};
     byKey[key][r.crawled_at] = Number(r.online_players || 0);

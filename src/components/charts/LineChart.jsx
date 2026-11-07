@@ -30,8 +30,12 @@ export default function LineChart({
   toolbar = true,
   /** 图例覆盖配置（position / horizontalAlign 等） */
   legendOverrides = {},
+  /** 曲线类型覆盖（smooth / straight / stepline）；不传按 stepline 开关决定 */
+  curveOverride = null,
+  /** 面积填充覆盖（面积图配色浓度等） */
+  fill = null,
 }) {
-  const curve = stepline ? 'stepline' : 'smooth';
+  const curve = curveOverride || (stepline ? 'stepline' : 'smooth');
   const type = area ? 'area' : 'line';
 
   const options = {
@@ -53,7 +57,7 @@ export default function LineChart({
       typeof markers === 'object' && markers !== null
         ? markers
         : { size: markers, hover: { size: markers + 2 || 5 } },
-    fill: area ? { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05 } } : {},
+    fill: fill || (area ? { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05 } } : {}),
     legend: {
       ...legendOverrides,
     },

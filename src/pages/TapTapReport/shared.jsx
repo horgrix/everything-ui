@@ -191,25 +191,32 @@ export const PC_GAME_SOURCE_META = {
   app_hot_creative: { label: '小游戏', color: '#B08B8B' },
 };
 
-/** TapPC在线人数Top20游戏列表：游戏类型（distribution_type）→ 标签/配色 */
+/** TapPC在线人数Top100游戏列表：游戏类型（distribution_type）→ 标签/配色 */
 export const PC_GAME_TYPE_META = {
   0: { label: '商业游戏', color: '#8FA3B0' },
-  1: { label: '创意工坊', color: '#C9B79C' },
-  2: { label: 'TapMaker', color: '#B9A2AE' },
+  1: { label: '独立小游戏', color: '#C9B79C' },
+  2: { label: 'Maker小游戏', color: '#B9A2AE' },
 };
 
-/** TapPC在线人数Top20游戏列表列配置 */
-export const PC_ONLINE_TOP20_COLUMNS = [
+/** TapPC在线人数Top100游戏列表列配置 */
+export const PC_ONLINE_TOP100_COLUMNS = [
   { header: 'APPID', width: '6%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
   {
     header: '游戏名称',
-    width: '12%',
+    width: '15%',
     accessor: (r) => r.appName,
-    render: (r) => <span className="fw-semibold" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>{truncateName(r.appName)}</span>,
+    render: (r) => (
+      <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
+        <GameIcon src={r.icon} size={20} alt={r.appName ? `${r.appName} 图标` : ''} />
+        <span className="fw-semibold" style={{ display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+          {truncateName(r.appName)}
+        </span>
+      </span>
+    ),
   },
   {
     header: '标签',
-    width: '16%',
+    width: '15%',
     accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -221,18 +228,8 @@ export const PC_ONLINE_TOP20_COLUMNS = [
     ),
   },
   {
-    header: '游戏来源',
-    width: '5%',
-    accessor: (r) => PC_GAME_SOURCE_META[r.listType]?.label ?? String(r.listType ?? ''),
-    render: (r) => {
-      const meta = PC_GAME_SOURCE_META[r.listType];
-      if (!meta) return <span className="text-muted">-</span>;
-      return <span className="badge" style={{ backgroundColor: meta.color, color: '#fff' }}>{meta.label}</span>;
-    },
-  },
-  {
     header: '游戏类型',
-    width: '5%',
+    width: '7%',
     accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? String(r.distributionType ?? ''),
     render: (r) => {
       const meta = PC_GAME_TYPE_META[r.distributionType];
@@ -269,7 +266,7 @@ export const PC_ONLINE_TOP20_COLUMNS = [
     align: 'center',
     width: '10%',
     accessor: (r) => r.typeContribution,
-    help: '游戏类型占比 = 在线人数 / 该游戏来源的总在线人数（PC=pc_online_players；模拟器=pc_emulator_online_players；小游戏=creative_online_players）',
+    help: '游戏类型占比 = 在线人数 / 该游戏类型（distribution_type）在同一统计窗口的在线人数合计',
     render: (r) => <PercentBar value={r.typeContribution} color="#9CAF9F" />,
   },
 ];

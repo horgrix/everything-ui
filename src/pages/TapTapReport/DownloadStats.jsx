@@ -4,6 +4,7 @@ import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 import UpdateTag from './UpdateTag';
+import AppHourTrendTip from './components/AppHourTrendTip';
 import { nextUpdateTime, formatNextUpdate } from './updateTime';
 import {
   buildAggregateSql,
@@ -13,6 +14,7 @@ import {
   buildTop25DetailSql,
   buildGameNameSql,
   buildNewestDateSql,
+  HOURLY_TABLE,
 } from './sql';
 import {
   transformAggregate,
@@ -23,15 +25,13 @@ import {
   transformGameNameMap,
   transformNewestDate,
 } from './transforms';
-import { useSqlQuery } from './queries';
+import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
 import { AD_MATERIAL_COLORS, APP_AD_TAG_COLORS, GameIcon, taptapAppUrl } from './shared';
 
-/** 下载Top25明细窗口类型 */
+/** 下载Top25明细窗口类型（只保留小时；日/月统计已按业务要求去掉） */
 const WINDOW_TYPES = [
-  { label: '小时', table: 'dws_taptap_download_hourly', granularity: 'hour' },
-  { label: '日', table: 'dws_taptap_download_daily', granularity: 'day' },
-  { label: '月', table: 'dws_taptap_download_monthly', granularity: 'month' },
+  { label: '小时', table: HOURLY_TABLE, granularity: 'hour' },
 ];
 
 /** 当前时间按窗口粒度格式化（hour: %Y-%m-%d %H，day: %Y-%m-%d，month: %Y-%m） */
@@ -63,8 +63,8 @@ const DISTRIBUTION_CHARTS = [
 const PLATFORM_DOWNLOAD_COLORS = ['#7A8B99', '#9CAF9F'];
 /** 「下载平台」标签配色：APP / PC / APP+PC 各自区分（取自同一色库） */
 const PLATFORM_BADGE_COLORS = { app: '#7A8B99', pc: '#9CAF9F', 'app+pc': '#B08B8B' };
-/** 游戏类型标签文案与配色（1=非Maker独立小游戏、2=Maker独立小游戏；0=商业游戏保留文案兜底） */
-const DISTRIBUTION_TYPE_LABELS = { 0: '商业游戏', 1: '非Maker独立小游戏', 2: 'Maker独立小游戏' };
+/** 游戏类型标签文案与配色（1=独立小游戏、2=Maker小游戏；0=商业游戏保留文案兜底） */
+const DISTRIBUTION_TYPE_LABELS = { 0: '商业游戏', 1: '独立小游戏', 2: 'Maker小游戏' };
 const DISTRIBUTION_TYPE_BADGE_COLORS = { 0: '#8FA3B0', 1: '#C9B79C', 2: '#9B93A8' };
 /** 游戏类型联动筛选项：null=全部；顺序与饼图扇区一致 */
 const TYPE_FILTER_OPTIONS = [
@@ -95,7 +95,7 @@ function buildSliceStrokeColors(labels, isSelected) {
   if (!labels || !labels.length) return null;
   return labels.map((label) => (isSelected(label) ? SELECTED_SLICE_STROKE : '#FFFFFF'));
 }
-/** 月趋势两个拆分图各自的配色（APP/PC、非Maker/Maker独立小游戏） */
+/** 月趋势两个拆分图各自的配色（APP/PC、独立小游戏/Maker小游戏） */
 const MONTHLY_BREAKDOWN_COLORS = {
   platform: ['#7A8B99', '#9CAF9F'],
   gameType: ['#8FA3B0', '#9B93A8'],
@@ -107,7 +107,7 @@ const DISTRIBUTION_COLORS = AD_MATERIAL_COLORS;
 const TOP25_DETAIL_TABLES = {
   // 平台版：按饼图选中的 refer 查 Top25（app / pc；全部 = app+pc 全平台）
   platform: { title: '下载Top25明细(平台)', limit: 25, referDriven: true, withPlatform: true, rankWidth: '5%' },
-  // 小游戏版：按饼图选中的 distribution_type 查 Top25（1=非Maker独立小游戏、2=Maker独立小游戏；全部则两类都查）
+  // 小游戏版：按饼图选中的 distribution_type 查 Top25（1=独立小游戏、2=Maker小游戏；全部则两类都查）
   gameType: { title: '下载Top25明细(小游戏)', limit: 25, typeDriven: true, withType: true, rankWidth: '5%' },
 };
 
@@ -119,15 +119,28 @@ const ONESEARCH_REPORT_PATH = '/one-search/report';
  * @param {Object} gameMap app_id -> { name, icon, tags }
  * @param {boolean} withOneSearch 是否在「下载数」后追加 OneSearch 跳转列（仅 APP / PC 两张宽表）
  */
-const TOP25_DETAIL_COLUMNS = (gameMap, { withOneSearch = false, withPlatform = false, withType = false } = {}) => {
-  // 列宽分摊（rank 列宽由调用方传入）：平台表 5/10/30/10/25/10/10；小游戏表标签更长，让出 3%
+/** 取一行的名称/图标/标签：优先用明细行自带（v2 小时表），否则回落到 gameMap（日/月表） */
+function rowMeta(r, gameMap) {
+  const fromMap = gameMap?.[String(r.appId)];
+  return {
+    name: r.appName || fromMap?.name || '',
+    icon: r.icon || fromMap?.icon || '',
+    tags: r.tags?.length ? r.tags : (fromMap?.tags || []),
+  };
+}
+
+const TOP25_DETAIL_COLUMNS = (
+  gameMap,
+  { withOneSearch = false, withPlatform = false, withType = false, trend = null } = {}
+) => {
+  // 列宽分摊（rank 列宽由调用方传入）：带趋势列后重新分配
   const W = withType
-    ? { appId: '10%', tags: '25%', extra: '15%', name: '25%', count: '10%', search: '10%' }
+    ? { appId: '9%', tags: '24%', extra: '13%', name: '22%', count: '10%', trend: '6%', search: '10%' }
     : withPlatform
-      ? { appId: '10%', tags: '30%', extra: '10%', name: '25%', count: '10%', search: '10%' }
+      ? { appId: '9%', tags: '27%', extra: '9%', name: '24%', count: '10%', trend: '6%', search: '9%' }
       : withOneSearch
-        ? { appId: '13%', tags: '18%', name: '30%', count: '16%', search: '17%' }
-        : { appId: '15%', tags: '23%', name: '36%', count: '20%' };
+        ? { appId: '13%', tags: '18%', name: '30%', count: '16%', trend: '6%', search: '17%' }
+        : { appId: '15%', tags: '23%', name: '36%', count: '20%', trend: '6%' };
 
   return [
     {
@@ -150,9 +163,9 @@ const TOP25_DETAIL_COLUMNS = (gameMap, { withOneSearch = false, withPlatform = f
     {
       header: '标签',
       width: W.tags,
-      accessor: (r) => (gameMap?.[String(r.appId)]?.tags || []).join(' '),
+      accessor: (r) => rowMeta(r, gameMap).tags.join(' '),
       render: (r) => {
-        const tags = gameMap?.[String(r.appId)]?.tags || [];
+        const tags = rowMeta(r, gameMap).tags;
         if (!tags.length) return <span className="text-muted">-</span>;
         return (
           <div className="d-flex flex-wrap gap-1">
@@ -229,13 +242,13 @@ const TOP25_DETAIL_COLUMNS = (gameMap, { withOneSearch = false, withPlatform = f
     {
       header: '游戏名称',
       width: W.name,
-      accessor: (r) => gameMap?.[String(r.appId)]?.name || '',
+      accessor: (r) => rowMeta(r, gameMap).name,
       render: (r) => {
-        const meta = gameMap?.[String(r.appId)];
-        const name = meta?.name || '';
+        const meta = rowMeta(r, gameMap);
+        const name = meta.name || '';
         return (
           <span className="d-inline-flex align-items-center gap-2" title={name || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
-            <GameIcon src={meta?.icon} size={20} alt={name ? `${name} 图标` : ''} />
+            <GameIcon src={meta.icon} size={20} alt={name ? `${name} 图标` : ''} />
             <span className="fw-semibold" style={{ display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
               {name || '-'}
             </span>
@@ -244,6 +257,24 @@ const TOP25_DETAIL_COLUMNS = (gameMap, { withOneSearch = false, withPlatform = f
       },
     },
     { header: '下载数', align: 'end', width: W.count, accessor: (r) => r.downloadCount, render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> },
+    ...(trend
+      ? [
+          {
+            header: '趋势',
+            align: 'center',
+            width: W.trend,
+            render: (r) => (
+              <AppHourTrendTip
+                appId={r.appId}
+                appName={rowMeta(r, gameMap).name}
+                metric={trend.metric}
+                metricLabel={trend.label}
+                day={trend.day}
+              />
+            ),
+          },
+        ]
+      : []),
     ...(withOneSearch
       ? [
           {
@@ -297,7 +328,7 @@ const WEEKLY_TREND_CHARTS = {
     key: 'miniGame',
     title: '热门游戏TopN下载日趋势(小游戏)',
     colors: ['#8FA3B0', '#9B93A8'],
-    names: ['非Maker独立小游戏下载数', 'Maker独立小游戏下载数'],
+    names: ['独立小游戏下载数', 'Maker小游戏下载数'],
     pairs: (d) => [
       [d?.miniGame?.current?.nonMaker, d?.miniGame?.previous?.nonMaker],
       [d?.miniGame?.current?.maker, d?.miniGame?.previous?.maker],
@@ -453,7 +484,7 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice }
 }
 
 export default function DownloadStats() {
-  const [selectedTable, setSelectedTable] = useState('dws_taptap_download_hourly');
+  const [selectedTable, setSelectedTable] = useState(HOURLY_TABLE);
   const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
   // 饼图 ↔ 明细表联动：平台默认选中 APP（refer='app'），游戏类型默认选中 TapMaker（distribution_type=2）
   const [platformFilter, setPlatformFilter] = useState('app');
@@ -473,8 +504,10 @@ export default function DownloadStats() {
     windowGranularity === 'day' ? nextUpdateLabelMin6 : windowGranularity === 'month' ? nextUpdateLabelMin7 : nextUpdateLabelMin5;
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
-  const weeklyTrendQuery = useSqlQuery('taptap-weekly-trend', buildWeeklyTrendSql, [], transformWeeklyTrend, { enabled: true });
-  const monthlyBreakdownQuery = useSqlQuery('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
+  // 周趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_daily
+  const weeklyTrendQuery = useSqlQueryV09('taptap-weekly-trend', buildWeeklyTrendSql, [], transformWeeklyTrend, { enabled: true });
+  // 月趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_monthly
+  const monthlyBreakdownQuery = useSqlQueryV09('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow, { enabled: true });
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
 
@@ -507,7 +540,8 @@ export default function DownloadStats() {
     () => buildGameNameSql(detailAppIds),
     [detailAppIds.join(',')],
     transformGameNameMap,
-    { enabled: detailReady && detailAppIds.length > 0, placeholderData: (prev) => prev }
+    // 小时窗口的名称/图标/标签由 v2 明细表自带，只有日/月表才需要查 dws_taptap_game
+    { enabled: selectedTable !== HOURLY_TABLE && detailReady && detailAppIds.length > 0, placeholderData: (prev) => prev }
   );
 
   // 明细按饼图选中项过滤（Top50 已在 SQL 里各取，这里只做客户端筛选）
@@ -545,17 +579,41 @@ export default function DownloadStats() {
 
   // 数据最新时间加载后，小时选项的统计窗口默认值同步到最新数据时间，避免数据更新期间空白
   useEffect(() => {
-    if (selectedTable === 'dws_taptap_download_hourly' && newestDateQuery.data) {
+    if (selectedTable === HOURLY_TABLE && newestDateQuery.data) {
       setSelectedWindow(newestDateQuery.data);
     }
   }, [newestDateQuery.data, selectedTable]);
+
+  // 近 24 小时堆叠柱 tooltip：列出三个游戏类型以及合计
+  const deltaTooltip = ({ series, dataPointIndex }) => {
+    const rows = (series || []).map((arr) => Number(arr?.[dataPointIndex] ?? 0));
+    const total = rows.reduce((a, b) => a + (Number.isNaN(b) ? 0 : b), 0);
+    const list = [...(hotListQuery.data?.series || []).map((sr, i) => ({
+      name: sr.name,
+      color: sr.color,
+      value: rows[i],
+    })), { name: '合计', color: '#A7B0B8', value: total }];
+    const html = list
+      .map(({ name, color, value }) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;${name === '合计' ? 'margin-top:2px;padding-top:3px;border-top:1px solid #EDF0F2;' : ''}">
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span>
+          <span>${name}</span>
+        </span>
+        <span style="font-weight:600;">${Number.isNaN(Number(value)) ? '-' : formatNumber(Number(value))}</span>
+      </div>`)
+      .join('');
+    return `<div style="padding:6px 4px;font-size:12px;line-height:1.7;min-width:200px;">
+      <div style="font-weight:600;margin-bottom:4px;">${hotListQuery.data?.categories?.[dataPointIndex] ?? ''}</div>
+      ${html}
+    </div>`;
+  };
 
   return (
     <>
       {/* 热门游戏TopN下载趋势（聚合） */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0">
-          <div className="fw-semibold">热门游戏TopN下载趋势 — 近24小时（增量）</div>
+          <div className="fw-semibold">追踪游戏下载趋势(游戏类型) — 近24小时（增量）</div>
           <div className="mt-1">
             <UpdateTag text={nextUpdateLabelMin5} />
           </div>
@@ -567,15 +625,20 @@ export default function DownloadStats() {
             error={hotListQuery.error?.message}
             height={675}
             stacked
-            colors={PLATFORM_DOWNLOAD_COLORS}
             totalLabels
-            xaxisOverrides={hotListQuery.data?.categories ? { categories: hotListQuery.data.categories, labels: { rotate: -45 } } : {}}
+            columnWidth="45%"
+            colors={['#8FA3B0', '#B08B8B', '#9B93A8']}
+            tooltipCustom={deltaTooltip}
+            xaxisOverrides={
+              hotListQuery.data?.categories
+                ? { type: 'category', categories: hotListQuery.data.categories, labels: { rotate: -45 } }
+                : {}
+            }
             yaxisOverrides={{
               title: { text: '增量下载数' },
-              labels: {
-                formatter: (v) => formatCompactNumber(v),
-              },
-            }} />
+              labels: { formatter: (v) => formatCompactNumber(v) },
+            }}
+          />
         </div>
       </div>
 
@@ -611,7 +674,7 @@ export default function DownloadStats() {
           loading={weeklyTrendQuery.isLoading}
           error={weeklyTrendQuery.error?.message}
           updateLabel={nextUpdateLabelMin6}
-          notice="小游戏口径由于 11 月 3 日开始上游的调整，要进行调整，预计 11 月 7 号开始数据统计才有参考意义"
+          notice="11 月 3 日 - 11 月 7 日数据口径调整，所显示数据没有参考意义"
         />
       </div>
 
@@ -635,12 +698,15 @@ export default function DownloadStats() {
               </button>
             ))}
             <span className="ms-3 text-muted small">统计窗口</span>
+            {/* 只读：窗口值跟随最新数据时间自动同步，避免手输与数据不一致 */}
             <input
               type="text"
               className="form-control form-control-sm"
-              style={{ width: 180 }}
+              style={{ width: 180, backgroundColor: '#F7F9FA', cursor: 'default' }}
               value={selectedWindow}
-              onChange={(e) => setSelectedWindow(e.target.value)}
+              readOnly
+              aria-readonly="true"
+              title="统计窗口跟随数据最新时间自动同步"
             />
           </div>
         </div>
@@ -731,6 +797,26 @@ export default function DownloadStats() {
                     withOneSearch: true,
                     withPlatform: !!TOP25_DETAIL_TABLES[tableKey].withPlatform,
                     withType: !!TOP25_DETAIL_TABLES[tableKey].withType,
+                    // 趋势图取值口径与当前明细口径一致
+                    trend: {
+                      metric:
+                        tableKey === 'platform'
+                          ? platformFilter === 'pc'
+                            ? 'pc_download_count'
+                            : platformFilter === 'app'
+                              ? 'app_download_count'
+                              : 'download_count'
+                          : 'download_count',
+                      label:
+                        tableKey === 'platform'
+                          ? platformFilter === 'pc'
+                            ? 'PC下载数'
+                            : platformFilter === 'app'
+                              ? 'APP下载数'
+                              : '总下载数'
+                          : '小游戏下载数',
+                      day: String(selectedWindow || '').slice(0, 10),
+                    },
                   })}
                   tableClassName="top25-table"
                   fixedLayout
