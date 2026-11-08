@@ -191,19 +191,19 @@ export const PC_GAME_SOURCE_META = {
   app_hot_creative: { label: '小游戏', color: '#B08B8B' },
 };
 
-/** TapPC在线人数Top100游戏列表：游戏类型（distribution_type）→ 标签/配色 */
+/** TapPC在线人数Top80游戏列表：游戏类型（distribution_type）→ 标签/配色 */
 export const PC_GAME_TYPE_META = {
   0: { label: '商业游戏', color: '#8FA3B0' },
   1: { label: '独立小游戏', color: '#C9B79C' },
   2: { label: 'Maker小游戏', color: '#B9A2AE' },
 };
 
-/** TapPC在线人数Top100游戏列表列配置 */
-export const PC_ONLINE_TOP100_COLUMNS = [
-  { header: 'APPID', width: '6%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small">{r.appId}</span> },
+/** TapPC在线人数Top80游戏列表列配置 */
+export const PC_ONLINE_TOP80_COLUMNS = [
+  { header: 'APPID', width: '10%', accessor: (r) => r.appId, render: (r) => <span className="text-muted small" style={{ whiteSpace: 'nowrap' }}>{r.appId}</span> },
   {
     header: '游戏名称',
-    width: '15%',
+    width: '25%',
     accessor: (r) => r.appName,
     render: (r) => (
       <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
@@ -216,7 +216,7 @@ export const PC_ONLINE_TOP100_COLUMNS = [
   },
   {
     header: '标签',
-    width: '15%',
+    width: '18%',
     accessor: (r) => [r.tag1, r.tag2, r.tag3].filter(Boolean).join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -229,7 +229,7 @@ export const PC_ONLINE_TOP100_COLUMNS = [
   },
   {
     header: '游戏类型',
-    width: '7%',
+    width: '10%',
     accessor: (r) => PC_GAME_TYPE_META[r.distributionType]?.label ?? String(r.distributionType ?? ''),
     render: (r) => {
       const meta = PC_GAME_TYPE_META[r.distributionType];
@@ -237,37 +237,13 @@ export const PC_ONLINE_TOP100_COLUMNS = [
       return <span className="badge" style={{ backgroundColor: meta.color, color: '#fff' }}>{meta.label}</span>;
     },
   },
-  { header: '在线人数', align: 'end', width: '6%', accessor: (r) => r.onlinePlayers, render: (r) => <span>{formatNumber(r.onlinePlayers)}</span> },
+  { header: '在线人数', align: 'end', width: '10%', accessor: (r) => r.onlinePlayers, render: (r) => <span>{formatNumber(r.onlinePlayers)}</span> },
   {
-    header: '最近24小时平均在线人数',
-    align: 'end',
-    width: '11%',
-    accessor: (r) => r.avgOnlinePlayers,
-    help: '为最近24小时内每小时 online_players 的平均值（仅统计有记录的窗口），四舍五入取整数',
-    render: (r) => (r.avgOnlinePlayers == null ? <span className="text-muted">-</span> : <span>{formatNumber(r.avgOnlinePlayers)}</span>),
-  },
-  {
-    header: '最近24小时在线人数',
+    header: '近24h趋势',
     align: 'center',
-    width: '16%',
+    width: '15%',
     help: '为最近24小时内每小时的在线人数趋势，x轴为小时，y轴为该小时的在线人数',
-    render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} />,
-  },
-  {
-    header: '在线人数贡献度',
-    align: 'center',
-    width: '10%',
-    accessor: (r) => r.dauContribution,
-    help: '在线人数贡献度 = 在线人数 / 总在线人数（总在线人数取 dws_taptap_pc_online_peak_players_hourly 最新窗口的 online_players）',
-    render: (r) => <PercentBar value={r.dauContribution} color="#8FA3B0" />,
-  },
-  {
-    header: '游戏类型占比',
-    align: 'center',
-    width: '10%',
-    accessor: (r) => r.typeContribution,
-    help: '游戏类型占比 = 在线人数 / 该游戏类型（distribution_type）在同一统计窗口的在线人数合计',
-    render: (r) => <PercentBar value={r.typeContribution} color="#9CAF9F" />,
+    render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={100} height={30} />,
   },
 ];
 

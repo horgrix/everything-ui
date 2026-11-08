@@ -14,9 +14,8 @@ import {
   buildPcOnlinePeakSourceSql,
   buildPcOnlinePeakKpisSql,
   buildPcOnlinePeakNewestSql,
-  buildPcOnlinePeakRankSql,
-  buildPcOnlineTop100ListSql,
-  buildPcOnlineTop100TrendSql,
+  buildPcOnlineTop80ListSql,
+  buildPcOnlineTop80TrendSql,
 } from './sql';
 import {
   transformOnlinePlayersTrend,
@@ -26,16 +25,13 @@ import {
   transformOnlinePlayersSourceGames,
   transformPcOnlinePeakSource,
   transformPcOnlinePeakKpis,
-  transformPcOnlinePeakRank,
-  transformPcOnlineTop100List,
-  transformPcOnlineTop100Trend,
-  PC_SOURCE_COLORS,
-  PC_SOURCE_TYPES,
+  transformPcOnlineTop80List,
+  transformPcOnlineTop80Trend,
   ONLINE_PLAYERS_BUCKETS,
 } from './transforms';
 import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
-import { PC_ONLINE_TOP100_COLUMNS, PC_GAME_TYPE_META } from './shared';
+import { PC_ONLINE_TOP80_COLUMNS, PC_GAME_TYPE_META } from './shared';
 
 /** TapPC 峰值在线 KPI 图标与配色 */
 const PC_KPI_META = {
@@ -59,27 +55,20 @@ export default function OnlineStats() {
     transformPcOnlinePeakSource,
     { enabled: !!pcSourceNewestQuery.data }
   );
-  const pcSourceGamesOnlinePlayersGamesQuery = useSqlQuery(
-    'taptap-pc-online-peak-rank',
-    () => buildPcOnlinePeakRankSql(pcSourceNewestQuery.data),
+  const pcOnlineTop80ListQuery = useSqlQuery(
+    'taptap-pc-online-top80-list',
+    () => buildPcOnlineTop80ListSql(pcSourceNewestQuery.data),
     [pcSourceNewestQuery.data],
-    transformPcOnlinePeakRank,
+    transformPcOnlineTop80List,
     { enabled: !!pcSourceNewestQuery.data }
   );
-  const pcOnlineTop100ListQuery = useSqlQuery(
-    'taptap-pc-online-top100-list',
-    () => buildPcOnlineTop100ListSql(pcSourceNewestQuery.data),
-    [pcSourceNewestQuery.data],
-    transformPcOnlineTop100List,
-    { enabled: !!pcSourceNewestQuery.data }
-  );
-  const pcOnlineTop100TrendQuery = useSqlQuery('taptap-pc-online-top100-trend', buildPcOnlineTop100TrendSql, [], transformPcOnlineTop100Trend, { enabled: true });
+  const pcOnlineTop80TrendQuery = useSqlQuery('taptap-pc-online-top80-trend', buildPcOnlineTop80TrendSql, [], transformPcOnlineTop80Trend, { enabled: true });
   // KPI 走 MySQL（v09 接口）的 dws_taptap_pc_online_peak_players_v2_hourly
   const pcOnlinePeakKpisQuery = useSqlQueryV09('taptap-pc-online-peak-kpis', buildPcOnlinePeakKpisSql, [], transformPcOnlinePeakKpis, { enabled: true });
-  const pcOnlineTop100Rows = useMemo(() => {
-    const list = pcOnlineTop100ListQuery.data?.rows || [];
-    const labels = pcOnlineTop100TrendQuery.data?.labels || [];
-    const byKey = pcOnlineTop100TrendQuery.data?.byKey || {};
+  const pcOnlineTop80Rows = useMemo(() => {
+    const list = pcOnlineTop80ListQuery.data?.rows || [];
+    const labels = pcOnlineTop80TrendQuery.data?.labels || [];
+    const byKey = pcOnlineTop80TrendQuery.data?.byKey || {};
     // 各游戏类型（distribution_type）在同一窗口的在线人数合计：来自来源分布图的第一层数据
     const typeTotals = {};
     (pcSourceGamesOnlinePlayersQuery.data?.data || []).forEach((d) => {
@@ -103,14 +92,14 @@ export default function OnlineStats() {
         typeContribution: typeTotal > 0 ? (r.onlinePlayers / typeTotal) * 100 : null,
       };
     });
-  }, [pcOnlineTop100ListQuery.data, pcOnlineTop100TrendQuery.data, pcSourceGamesOnlinePlayersQuery.data]);
+  }, [pcOnlineTop80ListQuery.data, pcOnlineTop80TrendQuery.data, pcSourceGamesOnlinePlayersQuery.data]);
 
   const trendCategories = onlinePlayersTrendQuery.data?.categories || [];
   const trendRangeStart = trendCategories[0] || '';
   const trendRangeEnd = trendCategories[trendCategories.length - 1] || '';
   // TapPC 在线人数 KPI 与趋势/分布图：每 2 小时第 15 分钟更新
   const pcUpdateLabel = nextUpdateLabel(15);
-  // 在线人数Top100游戏列表：每 2 小时第 14 分钟更新
+  // 在线人数Top80游戏列表：每 2 小时第 14 分钟更新
   const pcUpdateTop20Label = nextUpdateLabel(14);
 
   return (
@@ -176,49 +165,9 @@ export default function OnlineStats() {
         </div>
       </div>
 
-      {/* TapPC游戏在线人数来源分布图（左，50%） + TapPC游戏在线人数分布图（右，50%） */}
-      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-        <div style={{ flex: '1 1 0', minWidth: 0 }}>
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-header bg-white border-0">
-              <div className="fw-semibold">TapPC游戏在线人数来源分布图</div>
-              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-                <span className="text-muted small">
-                  最新统计窗口为 - {pcSourceNewestQuery.data || ''}（按游戏类型：商业游戏 / 独立小游戏 / Maker小游戏，面积=在线人数）
-                </span>
-                <UpdateTag text={pcUpdateLabel} />
-              </div>
-            </div>
-            <div className="card-body">
-              <TreemapChart
-                key={pcSourceNewestQuery.data}
-                series={[{ name: '在线人数', data: pcSourceGamesOnlinePlayersQuery.data?.data || [] }]}
-                loading={pcSourceGamesOnlinePlayersQuery.isLoading}
-                error={pcSourceGamesOnlinePlayersQuery.error?.message}
-                height={500}
-                colors={pcSourceGamesOnlinePlayersQuery.data?.colors || []}
-                distributed
-                drilldown={{
-                  enabled: true,
-                  breadcrumb: { show: true, position: 'top-left', rootLabel: '在线人数来源' },
-                  series: PC_SOURCE_TYPES.map((t, idx) => {
-                    const games = pcSourceGamesOnlinePlayersGamesQuery.data?.[t.type] || [];
-                    const max = games.length ? Math.max(...games.map((g) => g.y || 0), 1) : 1;
-                    return {
-                      id: t.type,
-                      name: t.label,
-                      data: games,
-                      colors: [PC_SOURCE_COLORS[idx]],
-                      plotOptions: { treemap: { distributed: false, enableShades: true, colorScale: { min: 0, max } } },
-                    };
-                  }),
-                }}
-              />
-            </div>
-          </div>
-        </div>
-        {/* TapPC游戏在线人数分布图（右，50%） */}
-        <div style={{ flex: '1 1 0', minWidth: 0 }}>
+      {/* 第一行：TapPC游戏在线人数分布图（35%） + 在线人数Top80游戏列表（65%） */}
+      <div className="row g-3 mb-4 align-items-stretch">
+        <div className="col-12 tt-split-35">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-header bg-white border-0">
               <div className="fw-semibold">TapPC游戏在线人数分布图</div>
@@ -251,19 +200,18 @@ export default function OnlineStats() {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* 在线人数Top100游戏列表 */}
-      <div className="mb-4">
-        <div className="card border-0 shadow-sm">
-          <div className="card-header bg-white border-0">
-            <div className="fw-semibold">在线人数Top100游戏列表</div>
-            <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-              <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（按 online_players 取前 100）</span>
-              <UpdateTag text={pcUpdateTop20Label} />
+        <div className="col-12 tt-split-65">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-header bg-white border-0">
+              <div className="fw-semibold">在线人数Top80游戏列表</div>
+              <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
+                <span className="text-muted small">最新统计窗口为 - {pcSourceNewestQuery.data || ''}（按 online_players 取前 80）</span>
+                <UpdateTag text={pcUpdateTop20Label} />
+              </div>
             </div>
+            <DataTable rows={pcOnlineTop80Rows} columns={PC_ONLINE_TOP80_COLUMNS} pageSize={8} fixedLayout rankColWidth="5%" />
           </div>
-          <DataTable rows={pcOnlineTop100Rows} columns={PC_ONLINE_TOP100_COLUMNS} pageSize={10} fixedLayout rankColWidth="3%" />
         </div>
       </div>
 

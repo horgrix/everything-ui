@@ -321,7 +321,7 @@ export function transformPcOnlinePeakTotals(rows) {
 }
 
 /** TapPC在线人数Top20游戏列表（最新统计窗口，list_type_rk<=20，按在线人数降序） */
-export function transformPcOnlineTop100List(rows) {
+export function transformPcOnlineTop80List(rows) {
   if (!rows || !rows.length) return { rows: [] };
   return {
     rows: rows.map((r) => ({
@@ -337,8 +337,8 @@ export function transformPcOnlineTop100List(rows) {
   };
 }
 
-/** TapPC在线人数Top100游戏最近24小时趋势（按 app_id 分组，输出共享时间轴 + 各 app 的时序） */
-export function transformPcOnlineTop100Trend(rows) {
+/** TapPC在线人数Top80游戏最近24小时趋势（按 app_id 分组，输出共享时间轴 + 各 app 的时序） */
+export function transformPcOnlineTop80Trend(rows) {
   if (!rows || !rows.length) return { labels: [], byKey: {} };
   const labelSet = new Set();
   const byKey = {};

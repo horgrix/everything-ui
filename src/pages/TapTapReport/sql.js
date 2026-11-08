@@ -692,8 +692,8 @@ export function buildPcOnlinePeakRankSql(dateStr) {
   `;
 }
 
-/** 构建TapPC在线人数Top100游戏列表 SQL（最新窗口，按 online_players 取前 100） */
-export function buildPcOnlineTop100ListSql(dateStr) {
+/** 构建TapPC在线人数Top80游戏列表 SQL（最新窗口，按 online_players 取前 80） */
+export function buildPcOnlineTop80ListSql(dateStr) {
   const where = dateStr
     ? `crawled_at = '${dateStr}'`
     : `crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_details_hourly)`;
@@ -710,12 +710,12 @@ export function buildPcOnlineTop100ListSql(dateStr) {
     FROM dws_taptap_pc_online_peak_players_details_hourly
     WHERE ${where}
     ORDER BY online_players DESC
-    LIMIT 100
+    LIMIT 80
   `;
 }
 
-/** 构建TapPC在线人数Top100游戏最近24小时趋势 SQL（仅取最新窗口 Top100 的 app_id） */
-export function buildPcOnlineTop100TrendSql() {
+/** 构建TapPC在线人数Top80游戏最近24小时趋势 SQL（仅取最新窗口 Top80 的 app_id） */
+export function buildPcOnlineTop80TrendSql() {
   const dateStr = recentHoursWhere(24);
   return `
     SELECT
@@ -729,7 +729,7 @@ export function buildPcOnlineTop100TrendSql() {
         FROM dws_taptap_pc_online_peak_players_details_hourly
         WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_pc_online_peak_players_details_hourly)
         ORDER BY online_players DESC
-        LIMIT 100
+        LIMIT 80
       )
     ORDER BY d.app_id, d.crawled_at
   `;
