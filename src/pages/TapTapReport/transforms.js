@@ -72,6 +72,7 @@ export function transformReserveTop(rows) {
       icon: r.icon || '',
       tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
       distributionType: r.distribution_type,
+      hints: r.hints != null ? String(r.hints) : '',
       totalReserveCount: r.total_reserve_count != null ? Number(r.total_reserve_count) : null,
       dailyReserveCount: r.daily_reserve_count != null ? Number(r.daily_reserve_count) : null,
       pointCount: r.point_cnt != null ? Number(r.point_cnt) : 0,

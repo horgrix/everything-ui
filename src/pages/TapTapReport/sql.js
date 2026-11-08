@@ -542,7 +542,7 @@ export function buildReserveTopSql(limit = 50, ref = new Date()) {
       WHERE crawled_at >= '${today} 00' AND crawled_at <= '${today} 23'
     ),
     latest AS (
-      SELECT app_id, total_reserve_count, app_name, icon, tag_1, tag_2, tag_3, distribution_type
+      SELECT app_id, total_reserve_count, app_name, icon, tag_1, tag_2, tag_3, distribution_type, hints
       FROM today_rows
       WHERE crawled_at = (SELECT MAX(crawled_at) FROM today_rows)
     ),
@@ -559,6 +559,7 @@ export function buildReserveTopSql(limit = 50, ref = new Date()) {
       l.tag_2,
       l.tag_3,
       l.distribution_type,
+      l.hints,
       l.total_reserve_count,
       a.daily_reserve_count,
       a.point_cnt

@@ -13,7 +13,7 @@ import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 const RESERVE_TOP_COLUMNS = [
   {
     header: 'APPID',
-    width: '12%',
+    width: '8%',
     accessor: (r) => r.appId,
     render: (r) => (
       <a
@@ -30,7 +30,7 @@ const RESERVE_TOP_COLUMNS = [
   },
   {
     header: '标签',
-    width: '24%',
+    width: '15%',
     accessor: (r) => r.tags.join(' '),
     render: (r) => {
       if (!r.tags.length) return <span className="text-muted">-</span>;
@@ -51,7 +51,7 @@ const RESERVE_TOP_COLUMNS = [
   },
   {
     header: '游戏名称',
-    width: '30%',
+    width: '19%',
     accessor: (r) => r.appName,
     render: (r) => (
       <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
@@ -63,16 +63,31 @@ const RESERVE_TOP_COLUMNS = [
     ),
   },
   {
+    header: 'HINTS',
+    width: '15%',
+    accessor: (r) => r.hints || '',
+    render: (r) => {
+      const text = r.hints || '';
+      if (!text) return <span className="text-muted">-</span>;
+      const shown = text.length > HINTS_MAX_LEN ? `${text.slice(0, HINTS_MAX_LEN)}…` : text;
+      return (
+        <span title={text} style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+          {shown}
+        </span>
+      );
+    },
+  },
+  {
     header: '历史总预约数',
     align: 'end',
-    width: '15%',
+    width: '12%',
     accessor: (r) => r.totalReserveCount,
     render: (r) => (r.totalReserveCount == null ? <span className="text-muted">-</span> : <span className="text-muted">{formatNumber(r.totalReserveCount)}</span>),
   },
   {
     header: '新增预约数',
     align: 'end',
-    width: '14%',
+    width: '11%',
     help: '按天聚合：今天各快照 reserve_count 之和',
     accessor: (r) => r.dailyReserveCount,
     render: (r) => <span className="fw-semibold">{r.dailyReserveCount == null ? '-' : formatNumber(r.dailyReserveCount)}</span>,
@@ -80,11 +95,14 @@ const RESERVE_TOP_COLUMNS = [
   {
     header: '本日趋势',
     align: 'center',
-    width: '20%',
+    width: '15%',
     help: '今天各抓取时点的 reserve_count 走势',
     render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} />,
   },
 ];
+
+/** HINTS 展示长度上限（超出截断 + 省略号，悬浮显示全文） */
+const HINTS_MAX_LEN = 20;
 
 /** 预约排行榜分页大小 */
 const TOP_PAGE_SIZE = 10;
