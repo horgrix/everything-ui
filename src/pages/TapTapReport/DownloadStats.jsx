@@ -9,6 +9,7 @@ import { nextUpdateTime, formatNextUpdate } from './updateTime';
 import {
   buildAggregateSql,
   buildWeeklyTrendSql,
+  buildTodayRealtimeSummarySql,
   buildMonthlyBreakdownSql,
   buildDistributionByWindowSql,
   buildTop25DetailSql,
@@ -19,6 +20,7 @@ import {
 import {
   transformAggregate,
   transformWeeklyTrend,
+  transformTodayRealtime,
   transformMonthlyBreakdown,
   transformDistributionByWindow,
   transformTop25Detail,
@@ -135,12 +137,12 @@ const TOP25_DETAIL_COLUMNS = (
 ) => {
   // 列宽分摊（rank 列宽由调用方传入）：带趋势列后重新分配
   const W = withType
-    ? { appId: '9%', tags: '24%', extra: '13%', name: '22%', count: '10%', trend: '6%', search: '10%' }
+    ? { appId: '8%', tags: '20%', extra: '12%', name: '19%', total: '10%', count: '10%', trend: '6%', search: '10%' }
     : withPlatform
-      ? { appId: '9%', tags: '27%', extra: '9%', name: '24%', count: '10%', trend: '6%', search: '9%' }
+      ? { appId: '8%', tags: '21%', extra: '8%', name: '20%', total: '10%', count: '10%', trend: '6%', search: '9%' }
       : withOneSearch
-        ? { appId: '13%', tags: '18%', name: '30%', count: '16%', trend: '6%', search: '17%' }
-        : { appId: '15%', tags: '23%', name: '36%', count: '20%', trend: '6%' };
+        ? { appId: '12%', tags: '15%', name: '26%', total: '10%', count: '14%', trend: '6%', search: '15%' }
+        : { appId: '14%', tags: '20%', name: '32%', total: '10%', count: '18%', trend: '6%' };
 
   return [
     {
@@ -256,6 +258,18 @@ const TOP25_DETAIL_COLUMNS = (
         );
       },
     },
+    {
+      header: '历史下载数',
+      align: 'end',
+      width: W.total,
+      accessor: (r) => r.totalDownloadCount,
+      render: (r) =>
+        r.totalDownloadCount == null ? (
+          <span className="text-muted">-</span>
+        ) : (
+          <span className="text-muted">{formatNumber(r.totalDownloadCount)}</span>
+        ),
+    },
     { header: '下载数', align: 'end', width: W.count, accessor: (r) => r.downloadCount, render: (r) => <span className="fw-semibold">{formatNumber(r.downloadCount)}</span> },
     ...(trend
       ? [
@@ -319,6 +333,8 @@ const WEEKLY_TREND_CHARTS = {
     title: '热门游戏TopN下载日趋势(平台)',
     colors: PLATFORM_DOWNLOAD_COLORS,
     names: ['APP下载数', 'PC端下载数'],
+    // 今日那一点优先用 SQLite 实时数据覆盖（MySQL 日表当天数据不完整）
+    realtimeKeys: ['app', 'pc'],
     pairs: (d) => [
       [d?.platform?.current?.app, d?.platform?.previous?.app],
       [d?.platform?.current?.pc, d?.platform?.previous?.pc],
@@ -329,6 +345,8 @@ const WEEKLY_TREND_CHARTS = {
     title: '热门游戏TopN下载日趋势(小游戏)',
     colors: ['#8FA3B0', '#9B93A8'],
     names: ['独立小游戏下载数', 'Maker小游戏下载数'],
+    // 今日那一点优先用 SQLite 实时数据覆盖（MySQL 日表当天数据不完整）
+    realtimeKeys: ['nonMaker', 'maker'],
     pairs: (d) => [
       [d?.miniGame?.current?.nonMaker, d?.miniGame?.previous?.nonMaker],
       [d?.miniGame?.current?.maker, d?.miniGame?.previous?.maker],
@@ -391,7 +409,7 @@ function MonthlyBreakdownCard({ chartKey, data, loading, error, updateLabel }) {
 }
 
 /** 热门游戏TopN下载日趋势卡片（上周 vs 本周，本周加粗实线、上周虚线，占剩余 65%） */
-function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice }) {
+function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice, realtime }) {
   const cfg = WEEKLY_TREND_CHARTS[chartKey];
   const categories = data?.categories || [];
   // 数据点用 [x=0~6, y] 数值对，缺数据的日期直接不画点（参照【广告大盘】日趋势的做法）。
@@ -399,8 +417,16 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice }
   const toPairs = (arr) => (arr || []).map((v, i) => (v == null ? null : [i, Number(v)])).filter(Boolean);
   const series = [];
   const colorList = [];
+  const rt = realtime && realtime.weekdayIdx != null ? realtime : null;
   cfg.pairs(data).forEach(([cur, prev], i) => {
-    series.push({ name: `${cfg.names[i]}（本周）`, data: toPairs(cur) });
+    // 今天这一点的本周值用 SQLite 实时汇总覆盖（MySQL 日表当天数据不完整）
+    let current = cur;
+    const rtKey = cfg.realtimeKeys?.[i];
+    if (rt && rtKey && rt[rtKey] != null) {
+      current = (cur || []).slice();
+      current[rt.weekdayIdx] = rt[rtKey];
+    }
+    series.push({ name: `${cfg.names[i]}（本周）`, data: toPairs(current) });
     series.push({ name: `${cfg.names[i]}（上周）`, data: toPairs(prev) });
     colorList.push(cfg.colors[i], cfg.colors[i]);
   });
@@ -442,8 +468,13 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice }
         <div className="card-header bg-white border-0 d-flex align-items-start justify-content-between gap-2 flex-wrap">
           <div>
             <div className="fw-semibold">{cfg.title}</div>
-            <div className="mt-1">
+            <div className="mt-1 d-flex align-items-center flex-wrap gap-2">
               <UpdateTag text={updateLabel} />
+              {rt && (
+                <span className="text-muted" style={{ fontSize: 11 }}>
+                  今日（{categories[rt.weekdayIdx] || '今天'}）为实时数据，截至 {String(rt.latestHour).slice(11)}:00
+                </span>
+              )}
             </div>
           </div>
           {notice ? (
@@ -486,9 +517,9 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice }
 export default function DownloadStats() {
   const [selectedTable, setSelectedTable] = useState(HOURLY_TABLE);
   const [selectedWindow, setSelectedWindow] = useState(() => formatNowWindow('hour'));
-  // 饼图 ↔ 明细表联动：平台默认选中 APP（refer='app'），游戏类型默认选中 TapMaker（distribution_type=2）
-  const [platformFilter, setPlatformFilter] = useState('app');
-  const [typeFilter, setTypeFilter] = useState(2);
+  // 饼图 ↔ 明细表联动：两张饼图默认都选「全部」（平台 = APP+PC，小游戏 = distribution_type 1+2）
+  const [platformFilter, setPlatformFilter] = useState(null);
+  const [typeFilter, setTypeFilter] = useState(null);
 
   // 提示性文案，仅在渲染时计算一次（不轮询、不额外请求）
   const nowRef = new Date();
@@ -504,8 +535,13 @@ export default function DownloadStats() {
     windowGranularity === 'day' ? nextUpdateLabelMin6 : windowGranularity === 'month' ? nextUpdateLabelMin7 : nextUpdateLabelMin5;
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
-  // 周趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_daily
+  // 周趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_daily（历史数据）
   const weeklyTrendQuery = useSqlQueryV09('taptap-weekly-trend', buildWeeklyTrendSql, [], transformWeeklyTrend, { enabled: true });
+  // 今日实时：SQLite 的 dws_taptap_download_summary_hourly 聚合当天，覆盖「今天」那一点
+  const todayRealtimeQuery = useSqlQuery('taptap-today-realtime', buildTodayRealtimeSummarySql, [], transformTodayRealtime, {
+    enabled: true,
+    staleTime: 60 * 1000,
+  });
   // 月趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_monthly
   const monthlyBreakdownQuery = useSqlQueryV09('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow, { enabled: true });
@@ -657,6 +693,7 @@ export default function DownloadStats() {
           loading={weeklyTrendQuery.isLoading}
           error={weeklyTrendQuery.error?.message}
           updateLabel={nextUpdateLabelMin6}
+          realtime={todayRealtimeQuery.data}
         />
       </div>
 
@@ -674,6 +711,7 @@ export default function DownloadStats() {
           loading={weeklyTrendQuery.isLoading}
           error={weeklyTrendQuery.error?.message}
           updateLabel={nextUpdateLabelMin6}
+          realtime={todayRealtimeQuery.data}
           notice="11 月 3 日 - 11 月 7 日数据口径调整，所显示数据没有参考意义"
         />
       </div>

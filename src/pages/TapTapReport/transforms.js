@@ -63,6 +63,66 @@ export function transformWeeklyTrend(rows, ref) {
   return result;
 }
 
+/** 热门预约榜在榜游戏「本日预约新增 TopN」列表（新增预约数按天聚合） */
+export function transformReserveTop(rows) {
+  return {
+    rows: (rows || []).map((r) => ({
+      appId: r.app_id,
+      appName: r.app_name != null ? String(r.app_name) : '',
+      icon: r.icon || '',
+      tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
+      distributionType: r.distribution_type,
+      totalReserveCount: r.total_reserve_count != null ? Number(r.total_reserve_count) : null,
+      dailyReserveCount: r.daily_reserve_count != null ? Number(r.daily_reserve_count) : null,
+      pointCount: r.point_cnt != null ? Number(r.point_cnt) : 0,
+    })),
+  };
+}
+
+/** 本日预约新增趋势（按 app_id 分组，供 sparkline 用） */
+export function transformReserveTopTrend(rows) {
+  const labelSet = new Set();
+  const byApp = {};
+  (rows || []).forEach((r) => {
+    const key = String(r.app_id);
+    labelSet.add(String(r.crawled_at).slice(11, 16));
+    if (!byApp[key]) byApp[key] = {};
+    byApp[key][String(r.crawled_at).slice(11, 16)] = Number(r.reserve_count || 0);
+  });
+  const labels = [...labelSet].sort();
+  return { labels, byApp };
+}
+
+/** 热门预约榜在榜游戏预约趋势（预约数走左轴、在榜游戏数走右轴） */
+export function transformReserveTrend(rows) {
+  if (!rows || !rows.length) return { categories: [], series: [] };
+  const sorted = [...rows].sort((a, b) => (a.crawled_at < b.crawled_at ? -1 : 1));
+  return {
+    categories: sorted.map((r) => r.crawled_at),
+    series: [
+      { name: '预约数', color: '#7A8B99', data: sorted.map((r) => Number(r.reserve_count || 0)) },
+      { name: '游戏数', color: '#9CAF9F', data: sorted.map((r) => Number(r.game_conut || 0)) },
+    ],
+  };
+}
+
+/** 今日实时汇总（SQLite 小时表当天聚合）：返回周几索引 + APP/PC 下载数，供日趋势图覆盖「今天」那一点 */
+export function transformTodayRealtime(rows, ref) {
+  const base = ref instanceof Date ? ref : new Date();
+  const r = (rows || [])[0];
+  if (!r || r.latest_hour == null) return null;
+  const today = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  const mondayOffset = (today.getDay() + 6) % 7;
+  return {
+    weekdayIdx: mondayOffset,
+    latestHour: String(r.latest_hour),
+    app: Number(r.app_download_count || 0),
+    pc: Number(r.pc_download_count || 0),
+    nonMaker: Number(r.mini_download_count || 0),
+    maker: Number(r.tmk_download_count || 0),
+  };
+}
+
 /** 追踪的游戏分布（平台/AI/TapMaker 三个拆分视图，受窗口查询条件约束） */
 export function transformDistributionByWindow(rows) {
   if (!rows || !rows.length) return { platform: null, ai: null, tapmaker: null };
@@ -126,6 +186,7 @@ export function transformTop25Detail(rows) {
       appName: r.app_name != null ? r.app_name : null,
       icon: r.icon != null ? r.icon : null,
       tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
+      totalDownloadCount: r.total_download_count != null ? Number(r.total_download_count) : null,
       downloadCount: r.download_count != null ? Number(r.download_count) : null,
       refer: r.refer != null ? String(r.refer) : null,
       distributionType: r.distribution_type != null ? Number(r.distribution_type) : null,

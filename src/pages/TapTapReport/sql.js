@@ -1,7 +1,7 @@
 /** 小时窗口数据表（v2：每行一个游戏，自带 app/pc/总下载数与游戏类型） */
 export const HOURLY_TABLE = 'dws_taptap_download_v2_hourly';
 
-/** v2 小时表自带的名称 / 图标 / 标签列（明细表直接用，不用再查 dws_taptap_game） */
+/** v2 小时表自带的名称 / 图标 / 标签列（明细表直接用，不用再查 taptap_game_info_hourly） */
 const HOURLY_META_COLS = 'app_name, icon, tag_1, tag_2, tag_3';
 
 /** 最近 N 天 */
@@ -52,7 +52,7 @@ export function currentHourKey(graceMinutes = SNAPSHOT_GRACE_MINUTES) {
  * 行带 platform（ios / android；PC 为空），供前端在行尾标平台图标。
  *   keyword 关键词广告：taptap_app_{ios,android}_search_{discovery,hot_search,hot_spot}_ad_hourly，仅 is_ad='ad'
  *   pc      PC广告：taptap_pc_ad_top_hourly + taptap_pc_ad_discovery_hourly，仅 is_ad='True'
- * 名称/图标统一走 dim（各抓取表 + dws_taptap_game + 广告聚合表），弥补关键词表只有 app_id 没有名称。
+ * 名称/图标统一走 dim（各抓取表 + taptap_game_info_hourly + 广告聚合表），弥补关键词表只有 app_id 没有名称。
  */
 export function buildCurrentHourAdSnapshotSql(hour = currentHourKey()) {
   const h = hour;
@@ -67,8 +67,11 @@ export function buildCurrentHourAdSnapshotSql(hour = currentHourKey()) {
         UNION ALL SELECT app_id, app_name, icon FROM taptap_app_android_landing_ad_hourly
         UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_top_hourly
         UNION ALL SELECT app_id, app_name, icon FROM taptap_pc_ad_discovery_hourly
-        UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_game
+        -- 本时段只看最新一小时：名称兜底表只取最新快照即可，避免加载整周无用数据
+        UNION ALL SELECT app_id, app_name, icon FROM taptap_game_info_hourly
+          WHERE crawled_at = (SELECT MAX(crawled_at) FROM taptap_game_info_hourly)
         UNION ALL SELECT app_id, app_name, icon FROM dws_taptap_ad_aggr_v6_daily
+          WHERE crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_ad_aggr_v6_daily)
       )
       WHERE app_id IS NOT NULL AND app_id > 0
       GROUP BY app_id
@@ -97,21 +100,27 @@ export function buildCurrentHourAdSnapshotSql(hour = currentHourKey()) {
  * @param {string[]} extraTables 额外参与补全的表（需要有 app_id / app_name / icon 三列）
  */
 function adGameDimCte(extraTables = []) {
-  // 表可用字符串（默认有 tag_1~3），或用 { table, tags: false } 声明没有标签列的表
+  // 表可用字符串（默认有 tag_1~3），或用 { table, tags: false, where } 声明没有标签列 / 需要附加过滤的表
   const normalize = (t) => (typeof t === 'string' ? { table: t, tags: true } : { tags: true, ...t });
+  /**
+   * 兜底字典表限定在本周窗口内，避免整表扫描（小时级表持续增长）。
+   * 注意不能用「只取最新快照」：最新一次抓取只覆盖当期游戏，本周早些时候出现过的游戏会丢名称。
+   */
+  const sinceThisWeek = (table) => ({ table, where: `crawled_at >= '${thisWeekWhere(0)}'` });
   const tables = [
     'taptap_app_ios_landing_ad_hourly',
     'taptap_app_android_landing_ad_hourly',
     'taptap_pc_ad_top_hourly',
     'taptap_pc_ad_discovery_hourly',
-    'dws_taptap_game',
-    'dws_taptap_ad_aggr_v6_daily',
+    sinceThisWeek('taptap_game_info_hourly'),
+    sinceThisWeek('dws_taptap_ad_aggr_v6_daily'),
     ...extraTables,
   ].map(normalize);
   const union = tables
     .map((t, i) => {
       const cols = t.tags ? 'tag_1, tag_2, tag_3' : 'NULL AS tag_1, NULL AS tag_2, NULL AS tag_3';
-      return `${i === 0 ? 'SELECT' : 'UNION ALL SELECT'} app_id, app_name, icon, ${cols} FROM ${t.table}`;
+      const where = t.where ? ` WHERE ${t.where}` : '';
+      return `${i === 0 ? 'SELECT' : 'UNION ALL SELECT'} app_id, app_name, icon, ${cols} FROM ${t.table}${where}`;
     })
     .join(`
         `);
@@ -187,7 +196,7 @@ ${adGameDimCte()}
  * 构建 TapPC 广告本周明细 SQL（dws_taptap_ad_landing_pc_v4_daily，本周一起逐日）
  * 只取 top_ad_views / discovery_ad_views 至少有一个 > 0 的日行（纯曝光不计入广告明细）；
  * 输出按 (app_id, 日期) 聚合的橱窗(Top)广告投放次数与发现位(每日新发现)广告投放次数，
- * 名称/图标优先取本表，缺失时由 dim（各抓取表 + dws_taptap_game + 广告聚合表）按 app_id 补齐
+ * 名称/图标优先取本表，缺失时由 dim（各抓取表 + taptap_game_info_hourly + 广告聚合表）按 app_id 补齐
  * （本表 icon 基本全为 NULL）。
  */
 export function buildPcAdWeeklyDetailSql() {
@@ -384,6 +393,7 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
           crawled_at,
           '${referValue}' as refer,
           distribution_type,
+          total_download_count,
           ${referCol} as download_count,
           ${HOURLY_META_COLS}
         FROM ${table}
@@ -403,6 +413,7 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         crawled_at,
         ${referExpr} as refer,
         distribution_type,
+        total_download_count,
         download_count,
         ${HOURLY_META_COLS}
       FROM ${table}
@@ -440,6 +451,7 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         app_id,
         crawled_at,
         ${typeValue} as distribution_type,
+        total_download_count,
         ${typeCol} as download_count
       FROM ${table}
       WHERE crawled_at = '${windowStr}'
@@ -456,6 +468,7 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         app_id,
         crawled_at,
         '${referValue}' as refer,
+        total_download_count,
         ${referCol} as download_count
       FROM ${table}
       WHERE crawled_at = '${windowStr}'
@@ -501,6 +514,102 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
   `;
 }
 
+/** 热门预约榜在榜游戏预约趋势 SQL（近 24 小时，SQLite 的 dws_taptap_reserve_summary_v2_hourly） */
+export function buildReserveTrendSql() {
+  return `
+    SELECT
+      crawled_at,
+      reserve_count,
+      game_conut
+    FROM dws_taptap_reserve_summary_v2_hourly
+    WHERE crawled_at >= '${recentHoursWhere(24)}'
+    ORDER BY crawled_at
+  `;
+}
+
+/**
+ * 热门预约榜在榜游戏「本日预约新增 TopN」SQL
+ * 数据源 SQLite 的 dws_taptap_reserve_v2_hourly：
+ *   新增预约数按「今天」聚合 = SUM(reserve_count)；历史总预约数取今天最后一次快照的 total_reserve_count
+ */
+export function buildReserveTopSql(limit = 50, ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const today = fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()));
+  return `
+    WITH today_rows AS (
+      SELECT *
+      FROM dws_taptap_reserve_v2_hourly
+      WHERE crawled_at >= '${today} 00' AND crawled_at <= '${today} 23'
+    ),
+    latest AS (
+      SELECT app_id, total_reserve_count, app_name, icon, tag_1, tag_2, tag_3, distribution_type
+      FROM today_rows
+      WHERE crawled_at = (SELECT MAX(crawled_at) FROM today_rows)
+    ),
+    agg AS (
+      SELECT app_id, SUM(reserve_count) AS daily_reserve_count, COUNT(*) AS point_cnt
+      FROM today_rows
+      GROUP BY app_id
+    )
+    SELECT
+      a.app_id,
+      l.app_name,
+      l.icon,
+      l.tag_1,
+      l.tag_2,
+      l.tag_3,
+      l.distribution_type,
+      l.total_reserve_count,
+      a.daily_reserve_count,
+      a.point_cnt
+    FROM agg a
+    JOIN latest l ON l.app_id = a.app_id
+    ORDER BY a.daily_reserve_count DESC
+    LIMIT ${limit}
+  `;
+}
+
+/** 本日预约新增趋势 SQL（TopN 名单在今天各快照下的 reserve_count） */
+export function buildReserveTopTrendSql(limit = 50, ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const today = fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()));
+  return `
+    WITH today_rows AS (
+      SELECT *
+      FROM dws_taptap_reserve_v2_hourly
+      WHERE crawled_at >= '${today} 00' AND crawled_at <= '${today} 23'
+    ),
+    top_ids AS (
+      SELECT app_id, SUM(reserve_count) AS daily_reserve_count
+      FROM today_rows
+      GROUP BY app_id
+      ORDER BY daily_reserve_count DESC
+      LIMIT ${limit}
+    )
+    SELECT t.app_id, t.crawled_at, t.reserve_count
+    FROM today_rows t
+    JOIN top_ids i ON i.app_id = t.app_id
+    ORDER BY t.app_id, t.crawled_at
+  `;
+}
+
+/** 今日实时汇总 SQL（SQLite 的 dws_taptap_download_summary_hourly，聚合当天已入库小时；含平台与小游戏） */
+export function buildTodayRealtimeSummarySql(ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const today = fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()));
+  return `
+    SELECT
+      MAX(crawled_at) AS latest_hour,
+      SUM(app_download_count) AS app_download_count,
+      SUM(pc_download_count) AS pc_download_count,
+      SUM(mini_download_count) AS mini_download_count,
+      SUM(tmk_download_count) AS tmk_download_count
+    FROM dws_taptap_download_summary_hourly
+    WHERE crawled_at >= '${today} 00'
+      AND crawled_at <= '${today} 23'
+  `;
+}
+
 /**
  * 构建「某游戏某日按小时的下载趋势」SQL（明细表下载数后的趋势图标用）
  * @param {string|number} appId 游戏 ID
@@ -534,16 +643,16 @@ export function buildGameNameSql(appIds = []) {
   const ids = (appIds || []).map((v) => String(v).trim()).filter((v) => /^\d+$/.test(v));
   if (!ids.length) {
     // 还没有明细结果时返回空集，避免拉全表
-    return `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3 FROM dws_taptap_game WHERE 1 = 0`;
+    return `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3 FROM taptap_game_info_hourly WHERE 1 = 0`;
   }
   return `
     SELECT app_id, app_name, icon, tag_1, tag_2, tag_3
-    FROM dws_taptap_game h
+    FROM taptap_game_info_hourly h
     WHERE h.crawled_at >= '${monthStr}'
       AND h.app_id IN (${ids.join(',')})
       AND h.crawled_at = (
         SELECT MAX(g.crawled_at)
-        FROM dws_taptap_game g
+        FROM taptap_game_info_hourly g
         WHERE g.app_id = h.app_id AND g.crawled_at >= '${monthStr}'
       )
   `;
