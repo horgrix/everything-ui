@@ -177,7 +177,7 @@ export default function ReserveStats() {
             yaxisRight={{
               seriesName: '游戏数',
               min: 0,
-              max: 500,
+              max: 1500,
               title: { text: '在榜游戏数' },
               labels: { formatter: (v) => formatNumber(v) },
             }}

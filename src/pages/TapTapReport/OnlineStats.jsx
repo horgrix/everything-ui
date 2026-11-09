@@ -153,7 +153,7 @@ export default function OnlineStats() {
                 legendOverrides={{ show: true, position: 'top', horizontalAlign: 'right', fontSize: '12px', itemMargin: { horizontal: 6, vertical: 2 } }}
                 xaxisOverrides={onlinePlayersTrendQuery.data?.categories ? { categories: onlinePlayersTrendQuery.data.categories, labels: { rotate: -45 } } : {}}
                 yaxisOverrides={{ min: 0, seriesName: ['商业游戏-Players', '独立小游戏-Players', 'Maker小游戏-Players'], title: { text: '峰值在线玩家数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-                yaxisRight={{ min: 0, seriesName: ['商业游戏-Cnt', '独立小游戏-Cnt', 'Maker小游戏-Cnt'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
+                yaxisRight={{ min: 0, max: 2100, seriesName: ['商业游戏-Cnt', '独立小游戏-Cnt', 'Maker小游戏-Cnt'], title: { text: '统计游戏数' }, labels: { formatter: (v) => formatNumber(v) } }}
                 annotations={onlinePlayersStatsQuery.data ? [
                   { y: onlinePlayersStatsQuery.data.maxOnlinePlayers, color: '#421243', position: 'center', label: `历史峰值玩家最高值 (${formatNumber(onlinePlayersStatsQuery.data.maxOnlinePlayers)})` },
                   { y: onlinePlayersStatsQuery.data.minOnlinePlayers, color: '#C0ADDB', position: 'center', label: `历史峰值玩家最低值 (${formatNumber(onlinePlayersStatsQuery.data.minOnlinePlayers)})` },
