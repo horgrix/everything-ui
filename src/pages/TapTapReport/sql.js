@@ -1,49 +1,23 @@
+import { recentDaysWhere, recentHoursWhere, thisWeekWhere, weekRange, currentHourKey } from './dates';
+
+/** 日期/窗口工具已迁至 dates.js，这里再导出一次，保持既有 import 路径可用 */
+export {
+  recentDaysWhere,
+  recentHoursWhere,
+  thisWeekWhere,
+  recentMonthsWhere,
+  weekRange,
+  formatNowWindow,
+  SNAPSHOT_GRACE_MINUTES,
+  isCurrentHourReady,
+  currentHourKey,
+} from './dates';
+
 /** 小时窗口数据表（v2：每行一个游戏，自带 app/pc/总下载数与游戏类型） */
 export const HOURLY_TABLE = 'dws_taptap_download_v2_hourly';
 
 /** v2 小时表自带的名称 / 图标 / 标签列（明细表直接用，不用再查 taptap_game_info_hourly） */
 const HOURLY_META_COLS = 'app_name, icon, tag_1, tag_2, tag_3';
-
-/** 最近 N 天 */
-export function recentDaysWhere(days = 3) {
-  const start = new Date(Date.now() - days * 86400000);
-  const y = start.getFullYear();
-  const m = String(start.getMonth() + 1).padStart(2, '0');
-  const d = String(start.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-/** 最近 N 小时 */
-export function recentHoursWhere(hours) {
-  const start = new Date(Date.now() - hours * 3600000);
-  const y = start.getFullYear();
-  const m = String(start.getMonth() + 1).padStart(2, '0');
-  const d = String(start.getDate()).padStart(2, '0');
-  const h = String(start.getHours()).padStart(2, '0');
-  return `${y}-${m}-${d} ${h}`;
-}
-
-/** 快照小时键的宽限分钟：当前小时前 N 分钟抓取数据还没入库，此时回退到上一小时 */
-export const SNAPSHOT_GRACE_MINUTES = 15;
-
-/** 「本时段」是否已过宽限分钟（false 表示展示的是上一小时） */
-export function isCurrentHourReady(graceMinutes = SNAPSHOT_GRACE_MINUTES) {
-  return new Date().getMinutes() >= graceMinutes;
-}
-
-/**
- * 快照小时键（与抓取表 crawled_at 的 'YYYY-MM-DD HH' 格式一致）
- * 当前小时不满 graceMinutes 分钟时（如 11:07）回退到上一小时（10），避免查到空数据。
- */
-export function currentHourKey(graceMinutes = SNAPSHOT_GRACE_MINUTES) {
-  const now = new Date();
-  const at = new Date(now);
-  if (now.getMinutes() < graceMinutes) at.setHours(at.getHours() - 1); // 0 点会自然退到前一天 23 点
-  const m = String(at.getMonth() + 1).padStart(2, '0');
-  const d = String(at.getDate()).padStart(2, '0');
-  const h = String(at.getHours()).padStart(2, '0');
-  return `${at.getFullYear()}-${m}-${d} ${h}`;
-}
 
 /**
  * 构建「本时段抓取到的广告」快照 SQL：[广告大盘] 本周游戏明细卡片用
@@ -217,27 +191,7 @@ ${adGameDimCte()}
     GROUP BY d.app_id, substr(d.crawled_at, 1, 10)
     ORDER BY d.app_id, day
   `;
-}
-
-/** 本周第一天（周一，YYYY-MM-DD）；weeksBack=1 时为上周一 */
-export function thisWeekWhere(weeksBack = 0) {
-  const now = new Date();
-  const diff = (now.getDay() + 6) % 7; // 距周一的天数（周日=0 → 6）
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff - weeksBack * 7);
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, '0');
-  const d = String(monday.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-/** 最近 N 个月的第一天 */
-export function recentMonthsWhere(months) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - months, 1);
-  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-/** 构建聚合下载 SQL（近24小时，按 crawled_at 汇总下载量，忽略0值） */
+}/** 构建聚合下载 SQL（近24小时，按 crawled_at 汇总下载量，忽略0值） */
 /** 近 24 小时增量（堆叠面积：商业 / 独立小游戏 / Maker小游戏），数据源 dws_taptap_download_summary_hourly */
 export function buildAggregateSql() {
   const dateStr = recentHoursWhere(24);
@@ -254,23 +208,6 @@ export function buildAggregateSql() {
     ORDER BY crawled_at
   `;
 }
-
-/**
- * 计算「上周一 ~ 本周日」的日期字符串（本周按周一为首日）
- */
-export function weekRange(ref = new Date()) {
-  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-  const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-  const mondayOffset = (today.getDay() + 6) % 7; // 周一=0
-  const thisMonday = new Date(today);
-  thisMonday.setDate(today.getDate() - mondayOffset);
-  const lastMonday = new Date(thisMonday);
-  lastMonday.setDate(thisMonday.getDate() - 7);
-  const thisSunday = new Date(thisMonday);
-  thisSunday.setDate(thisMonday.getDate() + 6);
-  return { lastMonday: fmt(lastMonday), thisMonday: fmt(thisMonday), thisSunday: fmt(thisSunday) };
-}
-
 /**
  * 构建周趋势 SQL（上周一 ~ 本周日，按天聚合平台 / 小游戏下载数）
  * 数据源为 MySQL 的 dws_taptap_download_v2_daily（走 v09 接口）：
@@ -312,37 +249,19 @@ export function buildMonthlyBreakdownSql() {
   `;
 }
 
-/** 构建追踪的游戏分布 SQL（按窗口类型/统计窗口，受查询条件约束） */
-export function buildDistributionByWindowSql(table, windowStr) {
-  if (table === HOURLY_TABLE) {
-    // v2 小时表：一行一个游戏，平台按 app/pc 下载数是否 >0 判断，小游戏按 distribution_type 1/2
-    return `
-      SELECT
-        crawled_at,
-        COUNT(*) as trace_game_count,
-        SUM(CASE WHEN pc_download_count > 0 THEN 1 ELSE 0 END) as pc_game_count,
-        SUM(CASE WHEN app_download_count > 0 THEN 1 ELSE 0 END) as app_game_count,
-        SUM(CASE WHEN distribution_type = 0 THEN 1 ELSE 0 END) as none_ai_game_count,
-        SUM(CASE WHEN distribution_type IN (1, 2) THEN 1 ELSE 0 END) as ai_game_count,
-        SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as ai_none_maker_game_count,
-        SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as ai_maker_game_count
-      FROM ${table}
-      WHERE crawled_at = '${windowStr}'
-      GROUP BY crawled_at
-      ORDER BY crawled_at
-    `;
-  }
+/** 构建追踪的游戏分布 SQL（小时窗口的统计时点；v2 小时表一行一个游戏） */
+export function buildDistributionByWindowSql(windowStr) {
   return `
     SELECT
       crawled_at,
       COUNT(*) as trace_game_count,
       SUM(CASE WHEN pc_download_count > 0 THEN 1 ELSE 0 END) as pc_game_count,
       SUM(CASE WHEN app_download_count > 0 THEN 1 ELSE 0 END) as app_game_count,
-      SUM(CASE WHEN none_ai_download_count > 0 THEN 1 ELSE 0 END) as none_ai_game_count,
-      SUM(CASE WHEN ai_download_count > 0 THEN 1 ELSE 0 END) as ai_game_count,
-      SUM(CASE WHEN ai_none_maker_download_count > 0 THEN 1 ELSE 0 END) as ai_none_maker_game_count,
-      SUM(CASE WHEN ai_maker_download_count > 0 THEN 1 ELSE 0 END) as ai_maker_game_count
-    FROM ${table}
+      SUM(CASE WHEN distribution_type = 0 THEN 1 ELSE 0 END) as none_ai_game_count,
+      SUM(CASE WHEN distribution_type IN (1, 2) THEN 1 ELSE 0 END) as ai_game_count,
+      SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as ai_none_maker_game_count,
+      SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as ai_maker_game_count
+    FROM ${HOURLY_TABLE}
     WHERE crawled_at = '${windowStr}'
     GROUP BY crawled_at
     ORDER BY crawled_at
@@ -350,117 +269,28 @@ export function buildDistributionByWindowSql(table, windowStr) {
 }
 
 /**
- * 构建下载TopN明细 SQL（受查询条件约束）
- * opts: { dayFilter, orderBy, limit, typeFilter, referFilter }
- * - dayFilter 传空则不加过滤
- * - typeFilter: distribution_type（1=独立小游戏、2=Maker小游戏，其它值按原样用）；
- *   传 'all' 表示「全部小游戏」= distribution_type IN (1,2)；
- *   传入时只查该口径（不再两段合并），日/月表用对应的小游戏下载数列排序
- * - referFilter: 'app' / 'pc' 只查该平台；传 'all' 表示 APP+PC 全平台（日/月表用总下载数排序）
- * - 日/月表按 app_id 聚合、无 refer / distribution_type 列，合并时用常量补列
+ * 构建下载 TopN 明细 SQL（小时窗口的统计时点，数据源 v2 小时表：一行一个游戏）
+ * opts: { limit, typeFilter, referFilter }
+ * - referFilter: 'app' / 'pc' 只查该平台；'all' = APP+PC 全平台（按总下载数排序）
+ * - typeFilter: distribution_type（1=独立小游戏、2=Maker小游戏）；'all' = 全部小游戏 IN (1,2)
  */
-export function buildTop25DetailSql(table, windowStr, opts = {}) {
-  const {
-    dayFilter = null,
-    orderBy = 'download_count',
-    limit = 25,
-    typeFilter = null,
-    referFilter = null,
-  } = opts;
-  const dayWhere = dayFilter ? ` AND ${dayFilter}` : '';
-  // 只查指定平台（饼图选中项）：'all' = APP+PC 全平台
+export function buildTop25DetailSql(windowStr, opts = {}) {
+  const { limit = 25, typeFilter = null, referFilter = null } = opts;
   const referAll = referFilter === 'all';
   const referValue = referAll || referFilter == null ? null : String(referFilter);
-  // 只查指定游戏类型（饼图选中项）：'all' = 全部小游戏（1、2 两类）
   const typeAll = typeFilter === 'all';
   const typeValue = typeFilter == null || typeAll ? null : Number(typeFilter);
-  const typeWhere = typeValue != null ? ` AND distribution_type = ${typeValue}` : typeAll ? ' AND distribution_type IN (1, 2)' : '';
+  const typeWhere = typeValue != null ? `distribution_type = ${typeValue}` : typeAll ? 'distribution_type IN (1, 2)' : null;
 
-  if (table === HOURLY_TABLE) {
-    // v2 小时表：一行一个游戏，没有 refer 列；平台列由 app/pc 下载数推断
-    const referExpr = `CASE
+  // 平台列由 app/pc 下载数推断
+  const referExpr = `CASE
           WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
           WHEN pc_download_count > 0 THEN 'pc'
           WHEN app_download_count > 0 THEN 'app'
           ELSE '-'
         END`;
-    // 指定平台：用该平台的下载数排序并作为「下载数」列
-    if (referValue) {
-      const referCol = referValue === 'pc' ? 'pc_download_count' : 'app_download_count';
-      return `
-        SELECT
-          app_id,
-          crawled_at,
-          '${referValue}' as refer,
-          distribution_type,
-          total_download_count,
-          ${referCol} as download_count,
-          ${HOURLY_META_COLS}
-        FROM ${table}
-        WHERE crawled_at = '${windowStr}'
-          AND ${referCol} > 0
-        ORDER BY ${referCol} DESC
-        LIMIT ${limit}
-      `;
-    }
-    // 指定游戏类型 / 全部小游戏 / 无筛选（全部平台）：都用总下载数 download_count 排序
-    const whereParts = [`crawled_at = '${windowStr}'`];
-    if (typeWhere) whereParts.push(typeWhere.replace(/^ AND /, ''));
-    if (referAll) whereParts.push('download_count > 0');
-    return `
-      SELECT
-        app_id,
-        crawled_at,
-        ${referExpr} as refer,
-        distribution_type,
-        total_download_count,
-        download_count,
-        ${HOURLY_META_COLS}
-      FROM ${table}
-      WHERE ${whereParts.join(' AND ')}
-      ORDER BY download_count DESC
-      LIMIT ${limit}
-    `;
-  }
-  // 日/月表「全部小游戏」：下载数 = 非Maker + Maker 两个小游戏列之和，类型按两列推断（两者都有则留空）
-  if (typeAll) {
-    const miniSum = '(ai_none_maker_download_count + ai_maker_download_count)';
-    return `
-      SELECT
-        app_id,
-        crawled_at,
-        CASE
-          WHEN ai_maker_download_count > 0 AND ai_none_maker_download_count = 0 THEN 2
-          WHEN ai_none_maker_download_count > 0 AND ai_maker_download_count = 0 THEN 1
-          ELSE NULL
-        END as distribution_type,
-        ${miniSum} as download_count
-      FROM ${table}
-      WHERE crawled_at = '${windowStr}'
-        AND ${miniSum} > 0${dayWhere}
-      ORDER BY ${miniSum} DESC
-      LIMIT ${limit}
-    `;
-  }
-  // 日/月表按指定类型查询：用该类型的小游戏下载数排序，类型用常量补上
-  if (typeValue != null) {
-    const typeCol =
-      typeValue === 1 ? 'ai_none_maker_download_count' : typeValue === 2 ? 'ai_maker_download_count' : 'ai_none_maker_download_count';
-    return `
-      SELECT
-        app_id,
-        crawled_at,
-        ${typeValue} as distribution_type,
-        total_download_count,
-        ${typeCol} as download_count
-      FROM ${table}
-      WHERE crawled_at = '${windowStr}'
-        AND ${typeCol} > 0${dayWhere}
-      ORDER BY ${typeCol} DESC
-      LIMIT ${limit}
-    `;
-  }
-  // 日/月表按指定平台查询：用该平台下载数排序，平台用常量补上
+
+  // 指定平台：用该平台的下载数排序并作为「下载数」列
   if (referValue) {
     const referCol = referValue === 'pc' ? 'pc_download_count' : 'app_download_count';
     return `
@@ -468,48 +298,34 @@ export function buildTop25DetailSql(table, windowStr, opts = {}) {
         app_id,
         crawled_at,
         '${referValue}' as refer,
+        distribution_type,
         total_download_count,
-        ${referCol} as download_count
-      FROM ${table}
+        ${referCol} as download_count,
+        ${HOURLY_META_COLS}
+      FROM ${HOURLY_TABLE}
       WHERE crawled_at = '${windowStr}'
-        AND ${referCol} > 0${dayWhere}
+        AND ${referCol} > 0
       ORDER BY ${referCol} DESC
       LIMIT ${limit}
     `;
   }
-  // 日/月表「APP+PC 全平台」：按总下载数排序，平台按两列推断
-  if (referAll) {
-    return `
-      SELECT
-        app_id,
-        crawled_at,
-        CASE
-          WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
-          WHEN pc_download_count > 0 THEN 'pc'
-          WHEN app_download_count > 0 THEN 'app'
-          ELSE '-'
-        END as refer,
-        download_count
-      FROM ${table}
-      WHERE crawled_at = '${windowStr}'${dayWhere}
-      ORDER BY download_count DESC
-      LIMIT ${limit}
-    `;
-  }
+
+  // 指定游戏类型 / 全部小游戏 / 全平台：都按总下载数 download_count 排序
+  const whereParts = [`crawled_at = '${windowStr}'`];
+  if (typeWhere) whereParts.push(typeWhere);
+  if (referAll) whereParts.push('download_count > 0');
   return `
     SELECT
       app_id,
       crawled_at,
-      CASE
-        WHEN app_download_count > 0 AND pc_download_count > 0 THEN 'app+pc'
-        WHEN pc_download_count > 0 THEN 'pc'
-        WHEN app_download_count > 0 THEN 'app'
-        ELSE '-'
-      END as refer,
-      ${orderBy} as download_count
-    FROM ${table}
-    WHERE crawled_at = '${windowStr}'${dayWhere}
-    ORDER BY ${orderBy} DESC
+      ${referExpr} as refer,
+      distribution_type,
+      total_download_count,
+      download_count,
+      ${HOURLY_META_COLS}
+    FROM ${HOURLY_TABLE}
+    WHERE ${whereParts.join(' AND ')}
+    ORDER BY download_count DESC
     LIMIT ${limit}
   `;
 }
@@ -632,33 +448,6 @@ export function buildAppHourTrendSql(appId, day, metric = 'download_count') {
   `;
 }
 
-/**
- * 构建游戏信息映射 SQL（当前月份）：名称 + icon + 三个标签
- * 只按明细里出现的 app_id 捞（IN 列表），并按 app_id 取当月最新快照，避免整月全量回传
- * @param {Array<string|number>} appIds 明细表中的 app_id
- */
-export function buildGameNameSql(appIds = []) {
-  const now = new Date();
-  const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  // 只保留纯数字 ID，防止拼接出非法 SQL
-  const ids = (appIds || []).map((v) => String(v).trim()).filter((v) => /^\d+$/.test(v));
-  if (!ids.length) {
-    // 还没有明细结果时返回空集，避免拉全表
-    return `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3 FROM taptap_game_info_hourly WHERE 1 = 0`;
-  }
-  return `
-    SELECT app_id, app_name, icon, tag_1, tag_2, tag_3
-    FROM taptap_game_info_hourly h
-    WHERE h.crawled_at >= '${monthStr}'
-      AND h.app_id IN (${ids.join(',')})
-      AND h.crawled_at = (
-        SELECT MAX(g.crawled_at)
-        FROM taptap_game_info_hourly g
-        WHERE g.app_id = h.app_id AND g.crawled_at >= '${monthStr}'
-      )
-  `;
-}
-
 /** 构建TapPC在线人数趋势 SQL（最近24小时，分组堆叠柱状数据源） */
 export function buildOnlinePlayersTrendSql() {
   return `
@@ -767,38 +556,11 @@ export function buildPcOnlinePeakKpisSql() {
   ].join('\n    UNION ALL\n    ');
 }
 
-/** 构建TapPC在线人数总量 SQL（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */
-export function buildPcOnlinePeakTotalsSql() {
-  return `
-    SELECT
-      online_players,
-      pc_online_players,
-      pc_emulator_online_players,
-      creative_online_players
-    FROM dws_taptap_pc_online_peak_players_hourly
-    ORDER BY crawled_at DESC
-    LIMIT 1
-  `;
-}
-
 /** 构建TapPC在线峰值来源最新统计窗口 SQL */
 export function buildPcOnlinePeakNewestSql() {
   return `
     SELECT MAX(crawled_at) AS newest_datestr
     FROM dws_taptap_pc_online_peak_players_details_hourly
-  `;
-}
-
-/** 构建TapPC在线峰值来源游戏明细 SQL（最新窗口，按来源分组，游戏按在线人数降序） */
-export function buildPcOnlinePeakRankSql(dateStr) {
-  return `
-    SELECT
-      distribution_type,
-      app_name,
-      online_players
-    FROM dws_taptap_pc_online_peak_players_details_hourly
-    WHERE crawled_at = '${dateStr}'
-    ORDER BY distribution_type, online_players DESC
   `;
 }
 

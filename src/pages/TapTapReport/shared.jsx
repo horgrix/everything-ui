@@ -1,6 +1,7 @@
 /* eslint-disable react/only-export-components */
 // 本文件是共享工具模块：导出常量 + 工具函数 + 小型展示组件 + 列配置，
 // 被 DownloadStats / TapTapAdStats 及广告明细弹框组件复用。
+import { GAME_TYPE_META } from './constants';
 import { useState } from 'react';
 import Sparkline from '../../components/common/Sparkline';
 import { formatNumber } from '../../utils/formatters';
@@ -54,29 +55,6 @@ export const GameIcon = ({ src, size = 20, alt = '' }) => {
   );
 };
 
-/** 广告投放比进度条颜色（分段：<25 / 25-50 / 50-75 / >=75） */
-export const adDeliveryRateColor = (rate) => {
-  if (rate == null) return '#dee2e6';
-  if (rate < 25) return '#9CAF9F';
-  if (rate < 50) return '#D6C9B0';
-  if (rate < 75) return '#D0B4B4';
-  return '#B08B8B';
-};
-
-/** 百分比进度条（分段颜色 + 数字居中显示在进度条上） */
-export const RateBar = ({ rate }) => {
-  if (rate == null) return <span className="text-muted">-</span>;
-  const pct = Math.min(100, Math.max(0, rate));
-  return (
-    <div className="progress position-relative" style={{ height: 18, backgroundColor: '#e9ecef' }}>
-      <div className="progress-bar" style={{ width: `${pct}%`, backgroundColor: adDeliveryRateColor(rate) }} />
-      <span className="position-absolute top-50 start-50 translate-middle" style={{ fontSize: 11, fontWeight: 600, color: '#333', whiteSpace: 'nowrap' }}>
-        {rate}%
-      </span>
-    </div>
-  );
-};
-
 /** 通用百分比进度条（数值居中显示在进度条上，color 缺省用色库中性色） */
 export const PercentBar = ({ value, color = '#8FA3B0' }) => {
   if (value == null || Number.isNaN(Number(value))) return <span className="text-muted">-</span>;
@@ -91,92 +69,6 @@ export const PercentBar = ({ value, color = '#8FA3B0' }) => {
   );
 };
 
-/** 平台堆叠 bar（iOS + Android，总数居中，悬停显示平台明细；分平台缺失时显示整体总数） */
-export const PlatformBar = ({ ios = 0, android = 0, total: totalProp }) => {
-  const [pos, setPos] = useState(null);
-  const i = Number(ios) || 0;
-  const a = Number(android) || 0;
-  const sum = i + a;
-  const total = sum > 0 ? sum : (Number(totalProp) || 0);
-  if (total === 0) return <span className="text-muted">-</span>;
-  if (sum === 0) {
-    return (
-      <div className="position-relative" style={{ height: 18, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundColor: '#9CAF9F' }} />
-        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#333' }}>
-          {total}
-        </span>
-      </div>
-    );
-  }
-  const iosPct = (i / total) * 100;
-  const androidPct = (a / total) * 100;
-  return (
-    <div
-      className="position-relative"
-      style={{ height: 18, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}
-      onMouseEnter={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
-      }}
-      onMouseLeave={() => setPos(null)}
-    >
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${iosPct}%`, backgroundColor: '#A9BAC4' }} />
-      <div style={{ position: 'absolute', left: `${iosPct}%`, top: 0, bottom: 0, width: `${androidPct}%`, backgroundColor: '#9CAF9F' }} />
-      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#333', pointerEvents: 'none' }}>
-        {total}
-      </span>
-      {pos && (
-        <div style={{
-          position: 'fixed', left: pos.x, top: pos.y, transform: 'translateX(-50%)',
-          background: 'rgba(33,37,41,0.95)', color: '#fff', padding: '6px 8px',
-          borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'nowrap', zIndex: 2000, pointerEvents: 'none',
-        }}>
-          iOS：{i}　Android：{a}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/** AD/PCE 堆叠 bar（商业推广 + 资源置换，总数居中，悬停显示明细） */
-export const AD_PCE_COLORS = { ad: '#7A8B99', pce: '#B08B8B' };
-export const AdPceBar = ({ ad = 0, pce = 0 }) => {
-  const [pos, setPos] = useState(null);
-  const a = Number(ad) || 0;
-  const p = Number(pce) || 0;
-  const total = a + p;
-  if (total === 0) return <span className="text-muted">-</span>;
-  const adPct = (a / total) * 100;
-  const pcePct = (p / total) * 100;
-  return (
-    <div
-      className="position-relative"
-      style={{ height: 18, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}
-      onMouseEnter={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setPos({ x: rect.left + rect.width / 2, y: rect.bottom + 6 });
-      }}
-      onMouseLeave={() => setPos(null)}
-    >
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${adPct}%`, backgroundColor: AD_PCE_COLORS.ad }} />
-      <div style={{ position: 'absolute', left: `${adPct}%`, top: 0, bottom: 0, width: `${pcePct}%`, backgroundColor: AD_PCE_COLORS.pce }} />
-      <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#333', pointerEvents: 'none' }}>
-        {total}
-      </span>
-      {pos && (
-        <div style={{
-          position: 'fixed', left: pos.x, top: pos.y, transform: 'translateX(-50%)',
-          background: 'rgba(33,37,41,0.95)', color: '#fff', padding: '6px 8px',
-          borderRadius: 6, fontSize: 12, lineHeight: 1.6, whiteSpace: 'nowrap', zIndex: 2000, pointerEvents: 'none',
-        }}>
-          商业推广(AD)：{a}　资源置换(PCE)：{p}
-        </div>
-      )}
-    </div>
-  );
-};
-
 /** TapApp广告素材标签列配色（取自 AD_MATERIAL_COLORS 色库） */
 export const APP_AD_TAG_COLORS = {
   tag1: '#7A8B99',
@@ -184,19 +76,8 @@ export const APP_AD_TAG_COLORS = {
   tag3: '#B08B8B',
 };
 
-/** TapPC在线人数Top20游戏列表：游戏来源（list_type）→ 标签/配色（与来源分布图色一致） */
-export const PC_GAME_SOURCE_META = {
-  pc_played: { label: 'PC', color: '#5C6B7A' },
-  pc_emulator_played: { label: '模拟器', color: '#8A8F6B' },
-  app_hot_creative: { label: '小游戏', color: '#B08B8B' },
-};
-
-/** TapPC在线人数Top80游戏列表：游戏类型（distribution_type）→ 标签/配色 */
-export const PC_GAME_TYPE_META = {
-  0: { label: '商业游戏', color: '#8FA3B0' },
-  1: { label: '独立小游戏', color: '#C9B79C' },
-  2: { label: 'Maker小游戏', color: '#B9A2AE' },
-};
+/** TapPC在线人数Top80游戏列表：游戏类型（distribution_type）→ 标签/配色（统一取自 constants） */
+export const PC_GAME_TYPE_META = GAME_TYPE_META;
 
 /** TapPC在线人数Top80游戏列表列配置 */
 export const PC_ONLINE_TOP80_COLUMNS = [

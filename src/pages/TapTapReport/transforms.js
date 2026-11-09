@@ -1,3 +1,5 @@
+import { GAME_TYPE_META, GAME_TYPE_SERIES_COLORS } from './constants';
+
 /** 热门游戏TopN下载趋势（聚合堆叠柱状） */
 export function transformAggregate(rows) {
   if (!rows || !rows.length) return { series: [], categories: [] };
@@ -171,8 +173,8 @@ export function transformMonthlyBreakdown(rows) {
     ],
     // 小游戏：distribution_type 1=独立小游戏（dist_type_1_download_count）、2=Maker小游戏（dist_type_2_download_count）
     gameType: [
-      { name: '独立小游戏下载数', color: '#8FA3B0', data: sorted.map((r) => Number(r.mini_download_count || 0)) },
-      { name: 'Maker小游戏下载数', color: '#9B93A8', data: sorted.map((r) => Number(r.tmk_download_count || 0)) },
+      { name: '独立小游戏下载数', color: GAME_TYPE_SERIES_COLORS[1], data: sorted.map((r) => Number(r.mini_download_count || 0)) },
+      { name: 'Maker小游戏下载数', color: GAME_TYPE_SERIES_COLORS[2], data: sorted.map((r) => Number(r.tmk_download_count || 0)) },
     ],
   };
 }
@@ -194,20 +196,6 @@ export function transformTop25Detail(rows) {
       crawledAt: r.crawled_at,
     })),
   };
-}
-
-/** 游戏信息映射（app_id -> { name, icon, tags }） */
-export function transformGameNameMap(rows) {
-  const map = {};
-  (rows || []).forEach((r) => {
-    if (r.app_id == null) return;
-    map[String(r.app_id)] = {
-      name: r.app_name != null ? String(r.app_name) : '',
-      icon: r.icon || '',
-      tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean).map(String),
-    };
-  });
-  return map;
 }
 
 /** TapPC热玩游戏榜在线人数趋势（分组堆叠柱状：峰值玩家数 + 统计游戏数双组双轴） */
@@ -304,13 +292,13 @@ export function transformOnlinePlayersSourceGames(rows) {
 
 /** TapPC来源色板（顺序对应 pc_played / pc_emulator_played / app_hot_creative） */
 /** TapPC来源配色（取自 AD_MATERIAL_COLORS 色库） */
-export const PC_SOURCE_COLORS = ['#5C6B7A', '#8A8F6B', '#B08B8B'];
+const PC_SOURCE_COLORS = ['#5C6B7A', '#8A8F6B', '#B08B8B'];
 
 /** TapPC来源定义（明细表 distribution_type 0/1/2，固定顺序与下钻 id） */
-export const PC_SOURCE_TYPES = [
-  { type: '0', label: '商业游戏' },
-  { type: '1', label: '独立小游戏' },
-  { type: '2', label: 'Maker小游戏' },
+const PC_SOURCE_TYPES = [
+  { type: '0', label: GAME_TYPE_META[0].label },
+  { type: '1', label: GAME_TYPE_META[1].label },
+  { type: '2', label: GAME_TYPE_META[2].label },
 ];
 
 /** TapPC在线峰值来源在线人数第一层（下钻入口，按来源在线人数） */
@@ -331,23 +319,8 @@ export function transformPcOnlinePeakSource(rows) {
   return { data, colors };
 }
 
-/** TapPC在线峰值来源第二层（按来源分组的具体游戏明细，按在线人数降序） */
-export function transformPcOnlinePeakRank(rows) {
-  const byType = { 0: [], 1: [], 2: [] };
-  (rows || []).forEach((r) => {
-    const bucket = byType[String(r.distribution_type)];
-    if (bucket) {
-      bucket.push({
-        x: r.app_name != null ? String(r.app_name) : '未知',
-        y: Number(r.online_players || 0),
-      });
-    }
-  });
-  return byType;
-}
-
 /** TapPC 峰值在线 KPI 字段定义（顺序即展示顺序） */
-export const PC_ONLINE_KPI_FIELDS = [
+const PC_ONLINE_KPI_FIELDS = [
   { key: 'online', label: '最高在线人数' },
   { key: 'biz', label: '商业游戏最高在线人数' },
   { key: 'mini', label: '独立小游戏最高在线人数' },
@@ -366,20 +339,6 @@ export function transformPcOnlinePeakKpis(rows) {
     value: byKey[f.key] ? byKey[f.key].value : null,
     at: byKey[f.key] ? byKey[f.key].at : null,
   }));
-}
-
-/** TapPC在线人数总量（最新一行；总在线人数 + 各来源在线人数，用于计算贡献度） */
-export function transformPcOnlinePeakTotals(rows) {
-  if (!rows || !rows.length) return null;
-  const r = rows[0];
-  return {
-    total: Number(r.online_players || 0),
-    byType: {
-      pc_played: Number(r.pc_online_players || 0),
-      pc_emulator_played: Number(r.pc_emulator_online_players || 0),
-      app_hot_creative: Number(r.creative_online_players || 0),
-    },
-  };
 }
 
 /** TapPC在线人数Top20游戏列表（最新统计窗口，list_type_rk<=20，按在线人数降序） */

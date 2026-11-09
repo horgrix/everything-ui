@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import BarChart from '../../components/charts/BarChart';
-import UpdateTag from './UpdateTag';
 import DataTable from './components/DataTable';
+import ChartCard from './components/ChartCard';
 import Sparkline from '../../components/common/Sparkline';
 import { GameIcon, taptapAppUrl, APP_AD_TAG_COLORS, truncateName } from './shared';
 import { useSqlQuery } from './queries';
@@ -146,17 +146,13 @@ export default function ReserveStats() {
 
   return (
     <>
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0">
-          <div className="fw-semibold">热门预约榜在榜游戏预约趋势</div>
-          <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-            <span className="text-muted small">
-              统计时间范围为最近24小时【{rangeStart} - {rangeEnd}】，左轴为预约数、右轴为在榜游戏数（dws_taptap_reserve_summary_v2_hourly）
-            </span>
-            <UpdateTag text="每 2 小时抓取一次" />
-          </div>
-        </div>
-        <div className="card-body">
+      <div className="mb-4">
+        <ChartCard
+          title="热门预约榜在榜游戏预约趋势"
+          subtitle={`统计时间范围为最近24小时【${rangeStart} - ${rangeEnd}】，左轴为预约数、右轴为在榜游戏数（dws_taptap_reserve_summary_v2_hourly）`}
+          updateLabel="每 2 小时抓取一次"
+          body
+        >
           <BarChart
             series={trendQuery.data?.series || []}
             loading={trendQuery.isLoading}
@@ -182,27 +178,24 @@ export default function ReserveStats() {
               labels: { formatter: (v) => formatNumber(v) },
             }}
           />
-        </div>
+        </ChartCard>
       </div>
 
       {/* 热门预约榜在榜游戏预约新增 Top50 */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0">
-          <div className="fw-semibold">热门预约榜在榜游戏预约新增Top50</div>
-          <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
-            <span className="text-muted small">
-              最新统计窗口 {rangeEnd || '-'}；新增预约数按天聚合（今日各快照 reserve_count 之和），按该值降序取前 50；本日趋势为各时点走势（dws_taptap_reserve_v2_hourly）
-            </span>
-            <UpdateTag text="每 2 小时抓取一次" />
-          </div>
-        </div>
-        <DataTable
-          rows={topRows}
-          columns={RESERVE_TOP_COLUMNS}
-          pageSize={TOP_PAGE_SIZE}
-          fixedLayout
-          rankColWidth="5%"
-        />
+      <div className="mb-4">
+        <ChartCard
+          title="热门预约榜在榜游戏预约新增Top50"
+          subtitle={`最新统计窗口 ${rangeEnd || '-'}；新增预约数按天聚合（今日各快照 reserve_count 之和），按该值降序取前 50；本日趋势为各时点走势（dws_taptap_reserve_v2_hourly）`}
+          updateLabel="每 2 小时抓取一次"
+        >
+          <DataTable
+            rows={topRows}
+            columns={RESERVE_TOP_COLUMNS}
+            pageSize={TOP_PAGE_SIZE}
+            fixedLayout
+            rankColWidth="5%"
+          />
+        </ChartCard>
       </div>
     </>
   );

@@ -3,9 +3,11 @@ import BarChart from '../../components/charts/BarChart';
 import LineChart from '../../components/charts/LineChart';
 import PieChart from '../../components/charts/PieChart';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
-import UpdateTag from './UpdateTag';
 import AppHourTrendTip from './components/AppHourTrendTip';
+import { tooltipHtml, tooltipValue } from './components/tooltipHtml';
+import ChartCard from './components/ChartCard';
 import { nextUpdateTime, formatNextUpdate } from './updateTime';
+import { formatNowWindow } from './dates';
 import {
   buildAggregateSql,
   buildWeeklyTrendSql,
@@ -13,7 +15,6 @@ import {
   buildMonthlyBreakdownSql,
   buildDistributionByWindowSql,
   buildTop25DetailSql,
-  buildGameNameSql,
   buildNewestDateSql,
   HOURLY_TABLE,
 } from './sql';
@@ -24,29 +25,18 @@ import {
   transformMonthlyBreakdown,
   transformDistributionByWindow,
   transformTop25Detail,
-  transformGameNameMap,
   transformNewestDate,
 } from './transforms';
 import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
 import { AD_MATERIAL_COLORS, APP_AD_TAG_COLORS, GameIcon, taptapAppUrl } from './shared';
+import { GAME_TYPE_LABELS, GAME_TYPE_BADGE_COLORS, PLATFORM_COLORS, PLATFORM_SERIES_COLORS } from './constants';
 
 /** 下载Top25明细窗口类型（只保留小时；日/月统计已按业务要求去掉） */
 const WINDOW_TYPES = [
   { label: '小时', table: HOURLY_TABLE, granularity: 'hour' },
 ];
 
-/** 当前时间按窗口粒度格式化（hour: %Y-%m-%d %H，day: %Y-%m-%d，month: %Y-%m） */
-function formatNowWindow(granularity) {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const y = now.getFullYear();
-  const m = pad(now.getMonth() + 1);
-  const d = pad(now.getDate());
-  if (granularity === 'hour') return `${y}-${m}-${d} ${pad(now.getHours())}`;
-  if (granularity === 'month') return `${y}-${m}`;
-  return `${y}-${m}-${d}`;
-}
 
 /** 月趋势拆分图（平台 / 小游戏）配置 */
 const MONTHLY_BREAKDOWN_CHARTS = [
@@ -61,13 +51,12 @@ const DISTRIBUTION_CHARTS = [
 ];
 
 /* ===== 图表配色（均取自 AD_MATERIAL_COLORS 色库） ===== */
-/** 平台拆分：APP / PC */
-const PLATFORM_DOWNLOAD_COLORS = ['#7A8B99', '#9CAF9F'];
-/** 「下载平台」标签配色：APP / PC / APP+PC 各自区分（取自同一色库） */
-const PLATFORM_BADGE_COLORS = { app: '#7A8B99', pc: '#9CAF9F', 'app+pc': '#B08B8B' };
-/** 游戏类型标签文案与配色（1=独立小游戏、2=Maker小游戏；0=商业游戏保留文案兜底） */
-const DISTRIBUTION_TYPE_LABELS = { 0: '商业游戏', 1: '独立小游戏', 2: 'Maker小游戏' };
-const DISTRIBUTION_TYPE_BADGE_COLORS = { 0: '#8FA3B0', 1: '#C9B79C', 2: '#9B93A8' };
+/** 平台拆分：APP / PC（色值见 constants.PLATFORM_*） */
+const PLATFORM_DOWNLOAD_COLORS = PLATFORM_SERIES_COLORS;
+const PLATFORM_BADGE_COLORS = PLATFORM_COLORS;
+/** 游戏类型标签文案与配色（统一取自 constants.GAME_TYPE_*） */
+const DISTRIBUTION_TYPE_LABELS = GAME_TYPE_LABELS;
+const DISTRIBUTION_TYPE_BADGE_COLORS = GAME_TYPE_BADGE_COLORS;
 /** 游戏类型联动筛选项：null=全部；顺序与饼图扇区一致 */
 const TYPE_FILTER_OPTIONS = [
   { value: 1, label: DISTRIBUTION_TYPE_LABELS[1] },
@@ -314,13 +303,13 @@ const TOP25_DETAIL_COLUMNS = (
   ];
 };
 
-/** 下载Top25明细查询 hook（按窗口 + 过滤条件） */
-function useTop25DetailQuery(key, table, selectedTable, selectedWindow, enabled, extraOpts = {}) {
+/** 下载Top25明细查询 hook（小时窗口 + 过滤条件） */
+function useTop25DetailQuery(key, table, selectedWindow, enabled, extraOpts = {}) {
   const opts = { ...table, ...extraOpts };
   return useSqlQuery(
     `taptap-top25-${key}`,
-    () => buildTop25DetailSql(selectedTable, selectedWindow, opts),
-    [selectedTable, selectedWindow, JSON.stringify(extraOpts)],
+    () => buildTop25DetailSql(selectedWindow, opts),
+    [selectedWindow, JSON.stringify(extraOpts)],
     transformTop25Detail,
     { enabled, placeholderData: (prev) => prev }
   );
@@ -382,15 +371,8 @@ function MonthlyBreakdownCard({ chartKey, data, loading, error, updateLabel }) {
   const cfg = MONTHLY_BREAKDOWN_CHARTS.find((c) => c.key === chartKey);
   return (
     <div className="col-12 tt-split-35">
-      <div className="card border-0 shadow-sm h-100">
-        <div className="card-header bg-white border-0">
-          <div className="fw-semibold">{cfg?.title || ''}</div>
-          <div className="mt-1">
-            <UpdateTag text={updateLabel} />
-          </div>
-        </div>
-        <div className="card-body">
-          <BarChart
+      <ChartCard title={cfg?.title || ''} updateLabel={updateLabel} body>
+        <BarChart
             series={data?.[chartKey] || []}
             loading={loading}
             error={error}
@@ -401,9 +383,8 @@ function MonthlyBreakdownCard({ chartKey, data, loading, error, updateLabel }) {
             shared
             xaxisOverrides={data?.categories ? { categories: data.categories, labels: { rotate: -45 } } : {}}
             yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
-          />
-        </div>
-      </div>
+        />
+      </ChartCard>
     </div>
   );
 }
@@ -443,47 +424,30 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice, 
     const firstPoint = rawSeries?.[0]?.[dataPointIndex];
     const xValue = Array.isArray(firstPoint) ? firstPoint[0] : dataPointIndex;
     const xLabel = categories[Math.round(xValue)] ?? '';
-    const rows = series
-      .map((s, i) => {
-        const raw = valueAt(rawSeries?.[i], dataPointIndex);
-        const value = raw == null || Number.isNaN(Number(raw)) ? '-' : formatNumber(Number(raw));
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
-          <span style="display:inline-flex;align-items:center;gap:6px;">
-            <span style="width:8px;height:8px;border-radius:2px;background:${colorList[i]};display:inline-block;"></span>
-            <span>${s.name}</span>
-          </span>
-          <span style="font-weight:600;">${value}</span>
-        </div>`;
-      })
-      .join('');
-    return `<div style="padding:6px 4px;font-size:12px;line-height:1.7;min-width:210px;">
-      <div style="font-weight:600;margin-bottom:4px;">${xLabel}</div>
-      ${rows}
-    </div>`;
+    return tooltipHtml({
+      title: xLabel,
+      minWidth: 210,
+      rows: series.map((s, i) => ({
+        name: s.name,
+        color: colorList[i],
+        value: tooltipValue(valueAt(rawSeries?.[i], dataPointIndex), formatNumber),
+      })),
+    });
   };
+
+  const realtimeNote = rt
+    ? `今日（${categories[rt.weekdayIdx] || '今天'}）为实时数据，截至 ${String(rt.latestHour).slice(11)}:00`
+    : null;
 
   return (
     <div className="col-12 tt-split-65">
-      <div className="card border-0 shadow-sm h-100">
-        <div className="card-header bg-white border-0 d-flex align-items-start justify-content-between gap-2 flex-wrap">
-          <div>
-            <div className="fw-semibold">{cfg.title}</div>
-            <div className="mt-1 d-flex align-items-center flex-wrap gap-2">
-              <UpdateTag text={updateLabel} />
-              {rt && (
-                <span className="text-muted" style={{ fontSize: 11 }}>
-                  今日（{categories[rt.weekdayIdx] || '今天'}）为实时数据，截至 {String(rt.latestHour).slice(11)}:00
-                </span>
-              )}
-            </div>
-          </div>
-          {notice ? (
-            <div className="ms-auto">
-              <ChartNotice compact>{notice}</ChartNotice>
-            </div>
-          ) : null}
-        </div>
-        <div className="card-body">
+      <ChartCard
+        title={cfg.title}
+        subtitle={realtimeNote}
+        updateLabel={updateLabel}
+        notice={notice ? <ChartNotice compact>{notice}</ChartNotice> : null}
+        body
+      >
           <LineChart
             series={series}
             loading={loading}
@@ -508,8 +472,7 @@ function WeeklyTrendCard({ chartKey, data, loading, error, updateLabel, notice, 
             }}
             yaxisOverrides={{ title: { text: '下载数' }, labels: { formatter: (v) => formatCompactNumber(v) } }}
           />
-        </div>
-      </div>
+      </ChartCard>
     </div>
   );
 }
@@ -544,41 +507,19 @@ export default function DownloadStats() {
   });
   // 月趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_monthly
   const monthlyBreakdownQuery = useSqlQueryV09('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
-  const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedTable, selectedWindow), [selectedTable, selectedWindow], transformDistributionByWindow, { enabled: true });
+  const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedWindow), [selectedWindow], transformDistributionByWindow, { enabled: true });
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
 
   const top25DetailQueries = {
-    platform: useTop25DetailQuery('platform', TOP25_DETAIL_TABLES.platform, selectedTable, selectedWindow, true, {
+    platform: useTop25DetailQuery('platform', TOP25_DETAIL_TABLES.platform, selectedWindow, true, {
       // 全部 = APP+PC 全平台
       referFilter: platformFilter == null ? 'all' : platformFilter,
     }),
-    gameType: useTop25DetailQuery('gameType', TOP25_DETAIL_TABLES.gameType, selectedTable, selectedWindow, true, {
+    gameType: useTop25DetailQuery('gameType', TOP25_DETAIL_TABLES.gameType, selectedWindow, true, {
       // 全部 = 全部小游戏（distribution_type IN (1,2)），不是「所有游戏类型」
       typeFilter: typeFilter == null ? 'all' : typeFilter,
     }),
   };
-
-  // 两份明细里实际出现的 app_id（去重），名称/图标/标签只按这些 ID 捞，减少查询体量
-  const detailAppIds = useMemo(() => {
-    const set = new Set();
-    [top25DetailQueries.platform.data, top25DetailQueries.gameType.data].forEach((d) => {
-      (d?.rows || []).forEach((r) => {
-        if (r.appId != null) set.add(String(r.appId));
-      });
-    });
-    return [...set];
-  }, [top25DetailQueries.platform.data, top25DetailQueries.gameType.data]);
-
-  // 两份明细都回来后再一次性捞名称，避免先按一份明细发请求、随后再补一次
-  const detailReady = top25DetailQueries.platform.isSuccess && top25DetailQueries.gameType.isSuccess;
-  const gameNameQuery = useSqlQuery(
-    'taptap-game-name-map',
-    () => buildGameNameSql(detailAppIds),
-    [detailAppIds.join(',')],
-    transformGameNameMap,
-    // 小时窗口的名称/图标/标签由 v2 明细表自带，只有日/月表才需要查 dws_taptap_game
-    { enabled: selectedTable !== HOURLY_TABLE && detailReady && detailAppIds.length > 0, placeholderData: (prev) => prev }
-  );
 
   // 明细按饼图选中项过滤（Top50 已在 SQL 里各取，这里只做客户端筛选）
   // 平台明细由 SQL 按饼图选中平台取 Top25，这里不再做客户端筛选
@@ -624,37 +565,23 @@ export default function DownloadStats() {
   const deltaTooltip = ({ series, dataPointIndex }) => {
     const rows = (series || []).map((arr) => Number(arr?.[dataPointIndex] ?? 0));
     const total = rows.reduce((a, b) => a + (Number.isNaN(b) ? 0 : b), 0);
-    const list = [...(hotListQuery.data?.series || []).map((sr, i) => ({
-      name: sr.name,
-      color: sr.color,
-      value: rows[i],
-    })), { name: '合计', color: '#A7B0B8', value: total }];
-    const html = list
-      .map(({ name, color, value }) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;${name === '合计' ? 'margin-top:2px;padding-top:3px;border-top:1px solid #EDF0F2;' : ''}">
-        <span style="display:inline-flex;align-items:center;gap:6px;">
-          <span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span>
-          <span>${name}</span>
-        </span>
-        <span style="font-weight:600;">${Number.isNaN(Number(value)) ? '-' : formatNumber(Number(value))}</span>
-      </div>`)
-      .join('');
-    return `<div style="padding:6px 4px;font-size:12px;line-height:1.7;min-width:200px;">
-      <div style="font-weight:600;margin-bottom:4px;">${hotListQuery.data?.categories?.[dataPointIndex] ?? ''}</div>
-      ${html}
-    </div>`;
+    return tooltipHtml({
+      title: hotListQuery.data?.categories?.[dataPointIndex] ?? '',
+      minWidth: 200,
+      rows: (hotListQuery.data?.series || []).map((sr, i) => ({
+        name: sr.name,
+        color: sr.color,
+        value: tooltipValue(rows[i], formatNumber),
+      })),
+      total: { name: '合计', color: '#A7B0B8', value: formatNumber(total) },
+    });
   };
 
   return (
     <>
       {/* 热门游戏TopN下载趋势（聚合） */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-header bg-white border-0">
-          <div className="fw-semibold">追踪游戏下载趋势(游戏类型) — 近24小时（增量）</div>
-          <div className="mt-1">
-            <UpdateTag text={nextUpdateLabelMin5} />
-          </div>
-        </div>
-        <div className="card-body">
+      <div className="mb-4">
+        <ChartCard title="追踪游戏下载趋势(游戏类型) — 近24小时（增量）" updateLabel={nextUpdateLabelMin5} body>
           <BarChart
             series={hotListQuery.data?.series || []}
             loading={hotListQuery.isLoading}
@@ -674,8 +601,8 @@ export default function DownloadStats() {
               title: { text: '增量下载数' },
               labels: { formatter: (v) => formatCompactNumber(v) },
             }}
-          />
-        </div>
+        />
+        </ChartCard>
       </div>
 
       {/* 月趋势 / 日趋势：平台一组、小游戏一组 */}
@@ -762,16 +689,14 @@ export default function DownloadStats() {
           <div className="row g-3 mb-4" key={`${distKey}-${tableKey}`}>
             {/* 追踪的游戏分布（宽 35%） */}
             <div className="col-12 tt-split-35">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-header bg-white border-0">
-                  <div className="fw-semibold">{dist?.title || ''}</div>
-                  <div className="mt-1">
-                    <UpdateTag text={windowUpdateLabel} />
-                  </div>
-                  <div className="d-flex align-items-center gap-1 mt-2 flex-wrap">
-                    <span className="text-muted" style={{ fontSize: 11 }}>
-                      明细筛选
-                    </span>
+              <ChartCard
+                title={dist?.title || ''}
+                updateLabel={windowUpdateLabel}
+                body
+                bodyClassName="d-flex flex-column align-items-center justify-content-center"
+                actions={
+                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                    <span className="text-muted" style={{ fontSize: 11 }}>明细筛选</span>
                     <button
                       type="button"
                       className={`btn btn-sm ${filter.selected == null ? 'btn-primary' : 'btn-outline-secondary'}`}
@@ -792,8 +717,8 @@ export default function DownloadStats() {
                       </button>
                     ))}
                   </div>
-                </div>
-                <div className="card-body d-flex flex-column align-items-center justify-content-center">
+                }
+              >
                   <PieChart
                     series={distributionByWindowQuery.data?.[distKey]?.series || []}
                     labels={distributionByWindowQuery.data?.[distKey]?.labels || []}
@@ -815,23 +740,16 @@ export default function DownloadStats() {
                       // 再点一次已选中的扇区即取消筛选（回到全部）
                       filter.setSelected((prev) => (prev === value ? null : value));
                     }}
-                  />
-                </div>
-              </div>
+              />
+              </ChartCard>
             </div>
 
             {/* 下载TopN明细（占剩余 65%） */}
             <div className="col-12 tt-split-65">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-header bg-white border-0">
-                  <div className="fw-semibold">{TOP25_DETAIL_TABLES[tableKey].title}</div>
-                  <div className="mt-1">
-                    <UpdateTag text={windowUpdateLabel} />
-                  </div>
-                </div>
+              <ChartCard title={TOP25_DETAIL_TABLES[tableKey].title} updateLabel={windowUpdateLabel}>
                 <DataTable
                   rows={tableKey === 'gameType' ? gameTypeRows : platformRows}
-                  columns={TOP25_DETAIL_COLUMNS(gameNameQuery.data, {
+                  columns={TOP25_DETAIL_COLUMNS(null, {
                     withOneSearch: true,
                     withPlatform: !!TOP25_DETAIL_TABLES[tableKey].withPlatform,
                     withType: !!TOP25_DETAIL_TABLES[tableKey].withType,
@@ -860,7 +778,7 @@ export default function DownloadStats() {
                   fixedLayout
                   rankColWidth={TOP25_DETAIL_TABLES[tableKey].rankWidth || '6%'}
                 />
-              </div>
+              </ChartCard>
             </div>
           </div>
         );
