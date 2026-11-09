@@ -8,16 +8,20 @@ import { HOURLY_TABLE, HOURLY_META_COLS } from './shared';
 /** 近 24 小时增量（堆叠面积：商业 / 独立小游戏 / Maker小游戏），数据源 dws_taptap_download_summary_hourly */
 export function buildAggregateSql() {
   const dateStr = recentHoursWhere(24);
+  // 直接按分销类型从 v2 小时表聚合：负增量视为脏数据按 0 计，
+  // 避免单条负值把整小时的 SUM 拉成负数、又被 HAVING 过滤掉（表现为「取不到最新数据」）
+  const sum = (type) =>
+    `SUM(CASE WHEN distribution_type = ${type} AND download_count > 0 THEN download_count ELSE 0 END)`;
   return `
     SELECT
       crawled_at,
-      SUM(biz_download_count) as biz_download_count,
-      SUM(mini_download_count) as mini_download_count,
-      SUM(tmk_download_count) as tmk_download_count
-    FROM dws_taptap_download_summary_hourly
+      ${sum(0)} as biz_download_count,
+      ${sum(1)} as mini_download_count,
+      ${sum(2)} as tmk_download_count
+    FROM ${HOURLY_TABLE}
     WHERE crawled_at >= '${dateStr}'
     GROUP BY crawled_at
-    HAVING SUM(biz_download_count + mini_download_count + tmk_download_count) > 0
+    HAVING ${sum(0)} + ${sum(1)} + ${sum(2)} > 0
     ORDER BY crawled_at
   `;
 }
@@ -144,18 +148,23 @@ export function buildTop25DetailSql(windowStr, opts = {}) {
   `;
 }
 
-/** 今日实时汇总 SQL（SQLite 的 dws_taptap_download_summary_hourly，聚合当天已入库小时；含平台与小游戏） */
+/** 今日实时汇总 SQL（SQLite 的 dws_taptap_download_v2_hourly，聚合当天已入库小时；负增量按 0 计） */
 export function buildTodayRealtimeSummarySql(ref = new Date()) {
   const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
   const today = fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()));
+  // 与「追踪游戏下载趋势」同口径：走 v2 小时表明细，负增量按 0 计，
+  // 避免单条负值把今日合计拉低（summary 表已被脏数据聚合进去，不用它）
+  const sumPositive = (col) => `SUM(CASE WHEN ${col} > 0 THEN ${col} ELSE 0 END)`;
+  // v2 小时表没有 mini/tmk 列，用 distribution_type + download_count 折算（负增量按 0）
+  const sumType = (type) => `SUM(CASE WHEN distribution_type = ${type} AND download_count > 0 THEN download_count ELSE 0 END)`;
   return `
     SELECT
       MAX(crawled_at) AS latest_hour,
-      SUM(app_download_count) AS app_download_count,
-      SUM(pc_download_count) AS pc_download_count,
-      SUM(mini_download_count) AS mini_download_count,
-      SUM(tmk_download_count) AS tmk_download_count
-    FROM dws_taptap_download_summary_hourly
+      ${sumPositive('app_download_count')} AS app_download_count,
+      ${sumPositive('pc_download_count')} AS pc_download_count,
+      ${sumType(1)} AS mini_download_count,
+      ${sumType(2)} AS tmk_download_count
+    FROM dws_taptap_download_v2_hourly
     WHERE crawled_at >= '${today} 00'
       AND crawled_at <= '${today} 23'
   `;

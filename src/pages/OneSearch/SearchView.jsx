@@ -116,6 +116,17 @@ function buildBrushSeries(rows, defs, keepLast, xOf = DATE_X) {
   };
 }
 
+/** 本月窗口：月初 00 点 ~ 下月月初 00 点（crawled_at 为 'YYYY-MM-DD HH' 本地时间） */
+function monthRange(month) {
+  const [y, m] = month.split('-').map(Number);
+  const next = new Date(y, m, 1);
+  const pad = (x) => String(x).padStart(2, '0');
+  return {
+    startHour: `${month}-01 00`,
+    endDate: `${next.getFullYear()}-${pad(next.getMonth() + 1)}-01 00`,
+  };
+}
+
 /** 本月（YYYY-MM） */
 function currentMonth() {
   const d = new Date();
@@ -636,12 +647,13 @@ export default function SearchView() {
     { enabled: !!appId, transform: (rows) => buildBrushSeries(rows, PC_AD_SERIES, 7) }
   );
 
+  // 【游戏下载趋势】本年逐日下载（MySQL v09 的 dws_taptap_download_v2_daily）
   const downloadQuery = useChartData(
     `one-search-download-${appId ?? 'none'}`,
     () =>
       querySqlV09(
         `SELECT crawled_at, download_count, pc_download_count, app_download_count
-         FROM dws_taptap_download_daily
+         FROM dws_taptap_download_v2_daily
          WHERE app_id = ${appId}
            AND crawled_at >= '${thisYear.start}' AND crawled_at < '${thisYear.end}'
          ORDER BY crawled_at ASC`
@@ -669,12 +681,14 @@ export default function SearchView() {
   );
 
   // 【峰值人数在线趋势】本月，按 app_id（同小时多来源先求和）
+  // 数据源：SQLite 的 dws_taptap_pc_online_peak_players_details_hourly
+  const range = monthRange(month);
   const onlineTrendQuery = useChartData(
     `one-search-online-trend-${appId ?? 'none'}-${month}`,
     () =>
-      querySqlV09(
+      querySql(
         `SELECT crawled_at, SUM(online_players) AS players
-         FROM dws_taptap_pc_online_peak_players_rank_hourly
+         FROM dws_taptap_pc_online_peak_players_details_hourly
          WHERE app_id = ${appId}
            AND crawled_at >= '${range.startHour}' AND crawled_at < '${range.endDate}'
          GROUP BY crawled_at
