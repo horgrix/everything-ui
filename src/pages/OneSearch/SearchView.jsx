@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useChartData from '../../hooks/useChartData';
-import { querySqlV09 } from '../../api/query';
+import { querySql, querySqlV09 } from '../../api/query';
 import BrushLineChart from '../../components/charts/BrushLineChart';
-import DashboardCard from '../../components/layout/DashboardCard';
+import Sparkline from '../../components/common/Sparkline';
+import { recentDaysWhere, recentHoursWhere } from '../TapTapReport/dates';
 import { PC_GAME_TYPE_META } from '../TapTapReport/shared';
 import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 import SearchLoadingOverlay from './SearchLoadingOverlay';
@@ -55,13 +56,6 @@ function GameAvatar({ appId, name, icon, size = 60 }) {
 
 /** 标签底色（与其它页面一致） */
 const TAG_COLORS = ['#7A8B99', '#7D8F7B', '#B08B8B'];
-
-/** 下载排名卡的三个周期（日 / 周 / 月）及其徽标底色 */
-const RANK_PERIODS = [
-  { key: 'daily', label: '日榜', color: '#7A8B99' },
-  { key: 'weekly', label: '周榜', color: '#8FA3B0' },
-  { key: 'monthly', label: '月榜', color: '#C4A4A4' },
-];
 
 /** 下载趋势的系列定义 */
 const DOWNLOAD_SERIES = [
@@ -128,26 +122,59 @@ function currentMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** 指定月份的起止边界（起含、止不含）；startHour 供小时级表，startDate 供日期级表 */
-function monthRange(ym) {
-  const [y, m] = ym.split('-').map(Number);
-  const ny = m === 12 ? y + 1 : y;
-  const nm = m === 12 ? 1 : m + 1;
-  const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
-  return { startHour: `${ym}-01 00`, startDate: `${ym}-01`, endDate };
+/** 秒级时间戳 → 'YYYY-MM-DD HH:mm:ss'（本地时区）；无效值返回空串 */
+function formatTimestamp(ts) {
+  const n = Number(ts);
+  if (!n) return '';
+  const d = new Date(n * 1000);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-/** 本年（起含、止不含） */
-function yearRange() {
-  const y = new Date().getFullYear();
-  return { start: `${y}-01-01`, end: `${y + 1}-01-01` };
+/** 单个信息块：标签在上、值在下（数字用等宽感更强的加粗） */
+function InfoCell({ label, value, hint = null }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div className="text-muted" style={{ fontSize: 11, lineHeight: 1.3 }}>{label}</div>
+      <div className="fw-semibold" style={{ fontSize: 13.5, lineHeight: 1.5, color: '#1F272E' }}>
+        {value}
+        {hint ? <span className="text-muted fw-normal ms-1" style={{ fontSize: 11 }}>{hint}</span> : null}
+      </div>
+    </div>
+  );
 }
 
-/** 【游戏基本信息】简洁卡片 */
-function GameInfoCard({ game, ranks = [] }) {
+/** 星级分布：5★ → 1★ 每行「几星 + 细条形 + 数量」 */
+function StarBars({ votes }) {
+  const total = votes.reduce((a, v) => a + (v.count || 0), 0);
+  const rows = [...votes].sort((a, b) => b.star - a.star);
+  return (
+    <div className="d-flex flex-column" style={{ gap: 3 }}>
+      {rows.map((v) => {
+        const pct = total > 0 ? (v.count / total) * 100 : 0;
+        return (
+          <div key={v.star} className="d-flex align-items-center gap-2" style={{ fontSize: 11 }}>
+            <span className="text-muted flex-shrink-0" style={{ width: 22 }}>{v.star}★</span>
+            <span className="flex-grow-1 rounded-pill" style={{ height: 5, backgroundColor: '#EDF0F2', minWidth: 40 }}>
+              <span
+                className="d-block rounded-pill"
+                style={{ width: `${pct}%`, height: 5, backgroundColor: '#C9B79C' }}
+              />
+            </span>
+            <span className="text-muted text-end flex-shrink-0" style={{ width: 46 }}>{formatNumber(v.count)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 【游戏基本信息】简洁卡片：身份信息 + 发布/评分 + 星级分布 */
+function GameInfoCard({ game }) {
   const name = String(game.appName || '未知');
   const tags = [game.tag1, game.tag2, game.tag3].filter(Boolean);
   const typeMeta = PC_GAME_TYPE_META[game.distributionType];
+  const votes = game.votes || [];
 
   return (
     <div className="card border-0 shadow-sm h-100">
@@ -156,7 +183,6 @@ function GameInfoCard({ game, ranks = [] }) {
           <GameAvatar appId={game.appId} name={name} icon={game.icon} />
 
           <div className="flex-grow-1" style={{ minWidth: 0 }}>
-            {/* 游戏名称 + 游戏类型（紧跟在名称后） */}
             <div className="d-flex align-items-center gap-2 mb-1" style={{ minWidth: 0 }}>
               <span className="fw-semibold text-truncate" style={{ fontSize: 17 }} title={name}>
                 {name}
@@ -190,227 +216,142 @@ function GameInfoCard({ game, ranks = [] }) {
           </div>
         </div>
 
-        {/* 排名：数字 + 底色（图标风格） */}
-        {ranks.length > 0 && (
-          <div className="d-flex flex-wrap gap-3 mt-3 pt-3 border-top">
-            {ranks.map((r) => (
-              <div key={r.label} className="d-flex align-items-center gap-2" style={{ minWidth: 0 }} title={`${r.fullLabel || r.label}：第 ${r.rank ?? '-'} 名`}>
-                <span
-                  className="rounded-3 d-inline-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
-                  style={{ minWidth: 30, height: 30, padding: '0 5px', fontSize: 13, lineHeight: 1, backgroundColor: r.color }}
-                >
-                  {r.rank != null ? r.rank : '-'}
-                </span>
-                <span className="text-muted" style={{ fontSize: 11, lineHeight: 1.25 }}>
-                  {r.label}
-                </span>
-              </div>
-            ))}
+        {/* 总预约 / 总APP下载 / 总PC下载 / 总PC售卖 */}
+        <div className="row g-2 mt-3 pt-3 border-top">
+          <div className="col-3">
+            <InfoCell label="总预约数" value={game.reserveCount != null ? formatNumber(game.reserveCount) : '-'} />
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** 排名徽标行：日 / 周 / 月 三块「底色数字 + 小标签」（与游戏基本信息卡的排名块同款） */
-function RankBadgeRow({ ranks, rankField, valueField, valueLabel = '下载' }) {
-  return (
-    <div className="d-flex flex-wrap gap-3 mt-2 pt-2 border-top">
-      {RANK_PERIODS.map((p) => {
-        const row = ranks?.[p.key] ?? null;
-        const rank = row ? row[rankField] : null;
-        const val = row ? row[valueField] : null;
-        const tip = `${p.label}：第 ${rank != null ? rank : '-'} 名${val != null ? ` · ${valueLabel} ${formatNumber(val)}` : ''}`;
-        return (
-          <div key={p.key} className="d-flex align-items-center gap-2" style={{ minWidth: 0 }} title={tip}>
-            <span
-              className="rounded-3 d-inline-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
-              style={{ minWidth: 30, height: 30, padding: '0 5px', fontSize: 13, lineHeight: 1, backgroundColor: p.color }}
-            >
-              {rank != null ? rank : '-'}
-            </span>
-            <span className="text-muted" style={{ fontSize: 11, lineHeight: 1.25 }}>
-              {p.label}
-            </span>
+          <div className="col-3">
+            <InfoCell label="总APP下载数" value={game.appDownloadCount != null ? formatNumber(game.appDownloadCount) : '-'} />
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 带排名图标块的统计卡：排名块（数字 + 底色） + 数值 + 统计时间 */
-function RankedStatCard({ title, value, subtitle, rank, rankLabel, color = '#8FA3B0', extra = null, icon = null, rankRow = null }) {
-  // 传了 icon 时左侧色块显示图标，排名并入副标题（信息不丢失）
-  const rankText = rank != null ? `${rankLabel || '排名'} 第 ${rank} 名` : null;
-  const subText = [subtitle, icon ? rankText : null].filter(Boolean).join(' · ');
-
-  return (
-    <div className="card border-0 shadow-sm h-100">
-      <div className="card-body">
-        <p className="text-muted small mb-1">{title}</p>
-        <div className="d-flex align-items-center gap-2 mb-1">
-          {icon ? (
-            <span
-              className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
-              style={{ width: 32, height: 32, backgroundColor: color }}
-              title={rankText || undefined}
-            >
-              <i className={`bi ${icon}`} style={{ fontSize: 16 }}></i>
-            </span>
-          ) : rank != null ? (
-            <span
-              className="rounded-3 d-inline-flex align-items-center justify-content-center fw-bold text-white flex-shrink-0"
-              style={{ minWidth: 32, height: 32, padding: '0 6px', fontSize: 13, lineHeight: 1, backgroundColor: color }}
-              title={`${rankLabel}：第 ${rank} 名`}
-            >
-              {rank}
-            </span>
-          ) : null}
-          <div className="fw-bold" style={{ fontSize: 22, lineHeight: 1.2 }}>
-            {value}
+          <div className="col-3">
+            <InfoCell label="总PC下载数" value={game.pcDownloadCount != null ? formatNumber(game.pcDownloadCount) : '-'} />
+          </div>
+          <div className="col-3">
+            <InfoCell label="总PC售卖数" value={game.pcSaleCount != null ? formatNumber(game.pcSaleCount) : '-'} />
           </div>
         </div>
-        {extra ? <div className="mb-2">{extra}</div> : null}
-        {subText && <small className="text-muted">{subText}</small>}
-        {rankRow}
+
+        {/* 发布 / 评分 */}
+        <div className="row g-2 mt-2">
+          <div className="col-12">
+            <InfoCell label="发布时间" value={game.releasedAt || '-'} />
+          </div>
+          <div className="col-6">
+            <InfoCell
+              label="总评分"
+              value={game.ratingScore != null ? game.ratingScore.toFixed(1) : '-'}
+              hint={game.ratingMax != null ? `/ ${game.ratingMax}` : null}
+            />
+          </div>
+          <div className="col-6">
+            <InfoCell
+              label="最近评分"
+              value={game.ratingLatest != null ? game.ratingLatest.toFixed(1) : '-'}
+              hint={game.ratingMax != null ? `/ ${game.ratingMax}` : null}
+            />
+          </div>
+        </div>
+
+        {/* 星级分布 */}
+        <div className="mt-3 pt-3 border-top">
+          <div className="text-muted mb-1" style={{ fontSize: 11 }}>星级分布</div>
+          <StarBars votes={votes} />
+        </div>
       </div>
     </div>
   );
 }
 
-/** 昨天日期，'YYYY-MM-DD' */
-function yesterdayStr() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
+/** 本年（起含、止不含） */
+function yearRange() {
+  const y = new Date().getFullYear();
+  return { start: `${y}-01-01`, end: `${y + 1}-01-01` };
+}
+
+/** 离线数据截至日期：09:05 之前 → 2 天前，否则 1 天前（YYYY-MM-DD） */
+function offlineCutoffStr(from = new Date()) {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const beforeGrace = from.getHours() < 9 || (from.getHours() === 9 && from.getMinutes() < 5);
+  d.setDate(d.getDate() - (beforeGrace ? 2 : 1));
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** 概览周期：昨日 / 本周 / 本月 → 活跃游戏统计的 period_type */
-const OVERVIEW_PERIODS = [
-  { key: 'daily', label: '昨日' },
-  { key: 'weekly', label: '本周' },
-  { key: 'monthly', label: '本月' },
-];
-
-/**
- * 整体数据概览（dws_taptap_active_game_stat）：各周期内有下载 / 有投放记录的游戏数
- */
-function DataOverviewPanel({ data }) {
-  const groups = [
-    { key: 'download', title: '下载概览：有下载数据游戏数量', field: 'download', icon: 'bi-download', color: '#7D8F7B' },
-    { key: 'ad', title: '投放概览：有投放统计游戏数量', field: 'ad', icon: 'bi-bullseye', color: '#BFAE8E' },
-  ];
-
-  return (
-    <div className="card border-0 shadow-sm h-100">
-      <div className="card-body d-flex flex-column">
-        <div className="d-flex align-items-center gap-2 mb-3">
-          <span
-            className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
-            style={{ width: 38, height: 38, backgroundColor: '#9B93A8' }}
-          >
-            <i className="bi bi-bar-chart-line" style={{ fontSize: 18 }}></i>
-          </span>
-          <div>
-            <div className="fw-semibold" style={{ fontSize: 15 }}>
-              整体数据概览
-            </div>
-            <div className="text-muted" style={{ fontSize: 11 }}>
-              各周期内有记录的游戏数
-            </div>
-          </div>
-        </div>
-
-        {groups.map((g, gi) => (
-          <div key={g.key} className={gi === groups.length - 1 ? '' : 'mb-3'}>
-            <div className="d-flex align-items-center gap-2 mb-2">
-              <span
-                className="rounded-2 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
-                style={{ width: 20, height: 20, backgroundColor: g.color }}
-              >
-                <i className={`bi ${g.icon}`} style={{ fontSize: 11 }}></i>
-              </span>
-              <span className="fw-semibold" style={{ fontSize: 12 }}>
-                {g.title}
-              </span>
-            </div>
-            <div className="row g-2">
-              {OVERVIEW_PERIODS.map((p) => {
-                const value = data?.[p.key]?.[g.field];
-                return (
-                  <div className="col-4" key={p.key}>
-                    <div className="rounded-3 px-2 py-2 text-center" style={{ background: '#F5F7F9' }}>
-                      <div className="text-muted" style={{ fontSize: 11, lineHeight: 1.4 }}>
-                        {p.label}
-                      </div>
-                      <div className="fw-bold" style={{ fontSize: 18, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
-                        {value != null ? formatNumber(value) : '-'}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+/** 'YYYY-MM-DD HH' → 'YYYY-MM-DD HH:00'（小时表时间粒度） */
+function hourLabel(ts) {
+  const v = String(ts || '');
+  return /^\d{4}-\d{2}-\d{2} \d{2}/.test(v) ? `${v.slice(0, 13)}:00` : v;
 }
 
-/** 数据口径说明面板（放在「游戏基本信息」卡片右侧） */
-function DataNotePanel() {
-  const cutoff = yesterdayStr();
-  const notes = { daily: '代表昨日', weekly: '代表本周截至昨日', monthly: '代表本月截至昨日' };
+/**
+ * 数据口径说明面板：离线数据截至日期 / 实时数据 并排展示
+ * - 离线：09:05 前 → 前天，否则昨天（离线数据不含今日）
+ * - 实时：今日 00:00 ~ taptap_game_info_hourly 最新时刻
+ */
+function DataNotePanel({ realtimeHour }) {
+  const offlineCutoff = offlineCutoffStr();
+  const latest = hourLabel(realtimeHour);
+  const todayStr = (() => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
+  const realtimeReady = latest && latest.slice(0, 10) === todayStr;
 
   return (
-    <div className="card border-0 shadow-sm h-100">
+    <div className="card border-0 shadow-sm">
       <div className="card-body">
-        {/* 数据截至日 */}
-        <div className="d-flex align-items-center gap-3 mb-3">
-          <span
-            className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
-            style={{ width: 38, height: 38, backgroundColor: '#7A8B99' }}
-          >
-            <i className="bi bi-calendar-check" style={{ fontSize: 18 }}></i>
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              数据截至日
+        <div className="row g-3">
+          {/* 离线数据 */}
+          <div className="col-12 col-md-6 d-flex flex-column">
+            <div className="d-flex align-items-center gap-3">
+              <span
+                className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
+                style={{ width: 38, height: 38, backgroundColor: '#7A8B99' }}
+              >
+                <i className="bi bi-calendar-check" style={{ fontSize: 18 }}></i>
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>离线数据截至日期</div>
+                <div className="fw-bold" style={{ fontSize: 20, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                  {offlineCutoff}
+                </div>
+              </div>
             </div>
-            <div className="fw-bold" style={{ fontSize: 20, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
-              {cutoff}
+            <div
+              className="d-flex align-items-start gap-2 rounded-3 px-2 py-2 mt-2"
+              style={{ background: '#F5F7F9', color: '#6C757D', fontSize: 12, lineHeight: 1.6 }}
+            >
+              <i className="bi bi-info-circle mt-1 flex-shrink-0"></i>
+              <span>离线计算数据，不包含今日最新的实时数据</span>
             </div>
           </div>
-        </div>
 
-        {/* 数据说明 */}
-        <div
-          className="d-flex align-items-start gap-2 rounded-3 px-2 py-2 mb-3"
-          style={{ background: '#F5F7F9', color: '#6C757D', fontSize: 12, lineHeight: 1.6 }}
-        >
-          <i className="bi bi-info-circle mt-1 flex-shrink-0"></i>
-          <span>本页面是离线计算数据，不包含今日最新的实时数据</span>
-        </div>
-
-        {/* 榜单口径 */}
-        <div className="d-flex flex-column gap-2 pt-3 border-top">
-          {RANK_PERIODS.map((p) => (
-            <div key={p.key} className="d-flex align-items-center gap-2">
+          {/* 实时数据 */}
+          <div className="col-12 col-md-6 d-flex flex-column">
+            <div className="d-flex align-items-center gap-3">
               <span
-                className="badge rounded-3 flex-shrink-0 fw-semibold"
-                style={{ backgroundColor: p.color, color: '#fff', minWidth: 44, fontSize: 11, padding: '4px 6px' }}
+                className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
+                style={{ width: 38, height: 38, backgroundColor: '#9CAF9F' }}
               >
-                {p.label}
+                <i className="bi bi-broadcast" style={{ fontSize: 18 }}></i>
               </span>
-              <span className="text-muted" style={{ fontSize: 12 }}>
-                {notes[p.key]}
-              </span>
+              <div style={{ minWidth: 0 }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>实时数据</div>
+                <div className="fw-bold" style={{ fontSize: 16, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}>
+                  {realtimeReady ? `${todayStr} 00:00 ~ ${latest.slice(11)}` : '-'}
+                </div>
+              </div>
             </div>
-          ))}
+            <div
+              className="d-flex align-items-start gap-2 rounded-3 px-2 py-2 mt-2"
+              style={{ background: '#F1F6F2', color: '#5C6873', fontSize: 12, lineHeight: 1.6 }}
+            >
+              <i className="bi bi-info-circle mt-1 flex-shrink-0"></i>
+              <span>实时计算数据，仅包含今日数据</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -466,17 +407,19 @@ export default function SearchView() {
   const appId = isAppId ? Number(keyword) : null;
   const month = currentMonth();
 
+  // 【游戏基本信息】SQLite 的 taptap_game_info_hourly，只取最新一份快照
   const infoQuery = useChartData(
-    `one-search-info-game-${keyword}-${month}`,
+    `one-search-info-game-${keyword}`,
     () =>
-      querySqlV09(
-        `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3, distribution_type
-         FROM dws_taptap_game
+      querySql(
+        `SELECT app_id, app_name, icon, tag_1, tag_2, tag_3, distribution_type,
+                released_time, rating_score, rating_max, rating_latest_score,
+                vote_1, vote_2, vote_3, vote_4, vote_5,
+                reserve_count, hits_total, pc_download_count, pc_sale_count
+         FROM taptap_game_info_hourly
          WHERE app_id = ${appId}
-           AND crawled_at = COALESCE(
-             (SELECT MAX(crawled_at) FROM dws_taptap_game WHERE crawled_at = '${month}'),
-             (SELECT MAX(crawled_at) FROM dws_taptap_game)
-           )`
+           AND crawled_at = (SELECT MAX(crawled_at) FROM taptap_game_info_hourly)
+         LIMIT 1`
       ),
     {},
     {
@@ -490,24 +433,46 @@ export default function SearchView() {
           tag2: r.tag_2,
           tag3: r.tag_3,
           distributionType: r.distribution_type,
+          releasedAt: formatTimestamp(r.released_time),
+          reserveCount: r.reserve_count != null ? Number(r.reserve_count) : null,
+          appDownloadCount: r.hits_total != null ? Number(r.hits_total) : null,
+          pcDownloadCount: r.pc_download_count != null ? Number(r.pc_download_count) : null,
+          pcSaleCount: r.pc_sale_count != null ? Number(r.pc_sale_count) : null,
+          ratingScore: r.rating_score != null ? Number(r.rating_score) : null,
+          ratingMax: r.rating_max != null ? Number(r.rating_max) : null,
+          ratingLatest: r.rating_latest_score != null ? Number(r.rating_latest_score) : null,
+          votes: [1, 2, 3, 4, 5].map((star) => ({
+            star,
+            count: Number(r[`vote_${star}`] || 0),
+          })),
         })),
+    }
+  );
+
+  // 【实时数据】taptap_game_info_hourly 最新一份快照的时间（今日 0 点 ~ 该时刻）
+  const realtimeHourQuery = useChartData(
+    'one-search-realtime-hour',
+    () => querySql('SELECT MAX(crawled_at) AS latest FROM taptap_game_info_hourly'),
+    {},
+    {
+      enabled: true,
+      staleTime: 5 * 60 * 1000,
+      transform: (rows) => (rows && rows[0] ? rows[0].latest : null),
     }
   );
 
   const games = infoQuery.data || [];
   const targetApp = games[0] || (appId ? { appId, appName: '' } : null);
 
-  // 【在线人数】本月最大/平均在线（按小时汇总各来源后再统计）
-  const range = monthRange(month);
-  const thisYear = yearRange();
-  const peakQuery = useChartData(
-    `one-search-peak-${keyword}-${month}`,
+  // 【当前在线人数】SQLite 的 dws_taptap_pc_online_peak_players_details_hourly：最新一小时的值 + 最近 24 小时趋势
+  const currentOnlineQuery = useChartData(
+    `one-search-current-online-${keyword}`,
     () =>
-      querySqlV09(
+      querySql(
         `SELECT crawled_at, SUM(online_players) AS players
-         FROM dws_taptap_pc_online_peak_players_rank_hourly
+         FROM dws_taptap_pc_online_peak_players_details_hourly
          WHERE app_id = ${appId}
-           AND crawled_at >= '${range.startHour}' AND crawled_at < '${range.endDate}'
+           AND crawled_at >= '${recentHoursWhere(24)}'
          GROUP BY crawled_at
          ORDER BY crawled_at ASC`
       ),
@@ -515,187 +480,110 @@ export default function SearchView() {
     {
       enabled: !!appId,
       transform: (rows) => {
-        if (!rows || rows.length === 0) return null;
-        let maxVal = null;
-        let maxAt = null;
-        let sum = 0;
-        let cnt = 0;
-        for (const r of rows) {
-          const v = r.players == null ? null : Number(r.players);
-          if (v == null || Number.isNaN(v)) continue;
-          sum += v;
-          cnt += 1;
-          if (maxVal == null || v > maxVal) {
-            maxVal = v;
-            maxAt = r.crawled_at;
-          }
-        }
-        if (!cnt) return null;
+        const list = rows || [];
+        if (!list.length) return null;
+        const values = list.map((r) => Number(r.players || 0));
+        const lastIdx = list.length - 1;
+        const sum = values.reduce((a, b) => a + b, 0);
         return {
-          maxVal,
-          maxAt,
-          avgVal: Math.round(sum / cnt),
-          firstAt: rows[0].crawled_at,
-          lastAt: rows[rows.length - 1].crawled_at,
-          cnt,
+          current: values[lastIdx],
+          latestAt: list[lastIdx].crawled_at,
+          series: values,
+          labels: list.map((r) => String(r.crawled_at || '').slice(11, 16)),
+          avg24: Math.round(sum / values.length),
+          max24: Math.max(...values),
+          min24: Math.min(...values),
         };
       },
     }
   );
-  const peak = peakQuery.data;
+  const currentOnline = currentOnlineQuery.data;
+  const thisYear = yearRange();
 
-  // 【整体数据概览】dws_taptap_active_game_stat：日/周/月各自最新快照的「有下载 / 有投放」游戏数
-  const activeStatQuery = useChartData(
-    'one-search-active-game-stat',
+  // 【今日下载量】SQLite 的 dws_taptap_download_v2_hourly：今日累计 + 最近 24 小时逐小时趋势
+  const todayDownloadQuery = useChartData(
+    `one-search-today-download-${keyword}`,
     () =>
-      querySqlV09(
-        `SELECT r.period_type, r.crawled_at, r.ad_app_cnt, r.download_app_cnt
-         FROM dws_taptap_active_game_stat r
-         WHERE r.period_type IN ('daily', 'weekly', 'monthly')
-           AND r.crawled_at = (
-             SELECT MAX(x.crawled_at) FROM dws_taptap_active_game_stat x WHERE x.period_type = r.period_type
-           )`
-      ),
-    {},
-    {
-      enabled: true,
-      staleTime: 5 * 60 * 1000,
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return null;
-        const out = {};
-        for (const r of rows) {
-          out[r.period_type] = {
-            snapshot: r.crawled_at,
-            download: r.download_app_cnt == null ? null : Number(r.download_app_cnt),
-            ad: r.ad_app_cnt == null ? null : Number(r.ad_app_cnt),
-          };
-        }
-        return Object.keys(out).length ? out : null;
-      },
-    }
-  );
-
-  // 【下载量 / 下载排名】dws_taptap_download_rank：一次取 日 / 周 / 月 三个周期的最新快照
-  // 该表 crawled_at 精度随 rank_type 变化：daily=YYYY-MM-DD、weekly=YYYY-WW、monthly=YYYY-MM
-  const downloadRankQuery = useChartData(
-    `one-search-download-rank-${appId ?? 'none'}`,
-    () =>
-      querySqlV09(
-        `SELECT r.rank_type, r.crawled_at, r.download_count, r.app_download_count, r.pc_download_count,
-                r.avg_download, r.rank_no, r.rank_app, r.rank_pc, r.rank_avg
-         FROM dws_taptap_download_rank r
-         WHERE r.app_id = ${appId}
-           AND r.rank_type IN ('daily', 'weekly', 'monthly')
-           AND r.crawled_at = (
-             SELECT MAX(x.crawled_at) FROM dws_taptap_download_rank x WHERE x.rank_type = r.rank_type
-           )`
+      querySql(
+        `SELECT crawled_at, SUM(download_count) AS cnt
+         FROM dws_taptap_download_v2_hourly
+         WHERE app_id = ${appId}
+           AND crawled_at >= '${recentHoursWhere(24)}'
+         GROUP BY crawled_at
+         ORDER BY crawled_at ASC`
       ),
     {},
     {
       enabled: !!appId,
       transform: (rows) => {
-        if (!rows || rows.length === 0) return null;
-        const n = (v) => (v == null ? null : Number(v));
-        const out = {};
-        for (const r of rows) {
-          out[r.rank_type] = {
-            snapshot: r.crawled_at,
-            total: n(r.download_count),
-            mobile: n(r.app_download_count),
-            pc: n(r.pc_download_count),
-            avg: r.avg_download == null ? null : Math.round(Number(r.avg_download)),
-            rankTotal: n(r.rank_no),
-            rankMobile: n(r.rank_app),
-            rankPc: n(r.rank_pc),
-            rankAvg: n(r.rank_avg),
-          };
-        }
-        return Object.keys(out).length ? out : null;
+        const list = rows || [];
+        if (!list.length) return null;
+        const values = list.map((r) => Number(r.cnt || 0));
+        const todayStr = String(recentHoursWhere(0)).slice(0, 10);
+        const todayTotal = list.reduce(
+          (sum, r, idx) => (String(r.crawled_at).slice(0, 10) === todayStr ? sum + values[idx] : sum),
+          0
+        );
+        const sum = values.reduce((a, b) => a + b, 0);
+        const lastIdx = list.length - 1;
+        return {
+          todayTotal,
+          latestAt: list[lastIdx].crawled_at,
+          series: values,
+          labels: list.map((r) => String(r.crawled_at || '').slice(11, 16)),
+          avg24: Math.round(sum / values.length),
+          max24: Math.max(...values),
+          min24: Math.min(...values),
+        };
       },
     }
   );
-  const downloadRanks = downloadRankQuery.data;
-  const downloadMonth = downloadRanks?.monthly ?? null;
-  const downloadKpiSubtitle = downloadMonth
-    ? `本月快照 ${downloadMonth.snapshot}`
-    : downloadRankQuery.isLoading
-      ? '加载中…'
-      : '本月暂无数据';
+  const todayDownload = todayDownloadQuery.data;
 
-  // 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v6_rank，带日/周/月排名）
-  // 该表每行已含各渠道合计（total_views / app_total / kw_total / pc_total）与名次（rank_no / rank_app / rank_kw / rank_pc）
-  const adKpiRankQuery = useChartData(
-    `one-search-ad-aggr-v5-rank-${appId ?? 'none'}`,
+  // 【今日广告曝光】SQLite 的 dws_taptap_ad_aggr_v6_daily（日表，sparkline 取最近 7 天）：
+  //   APP首页 = app_ad_views + app_pcebid_views
+  //   APP关键词 = kw_ad_views + kw_pcebid_views
+  //   PC首页 = pc_ad_views + pc_pcebid_views
+  const adExposureQuery = useChartData(
+    `one-search-ad-exposure-${keyword}`,
     () =>
-      querySqlV09(
-        `SELECT r.rank_type, r.crawled_at, r.total_views, r.app_total, r.kw_total, r.pc_total,
-                r.rank_no, r.rank_app, r.rank_kw, r.rank_pc
-         FROM dws_taptap_ad_aggr_v6_rank r
-         WHERE r.app_id = ${appId}
-           AND r.rank_type IN ('daily', 'weekly', 'monthly')
-           AND r.crawled_at = (
-             SELECT MAX(x.crawled_at) FROM dws_taptap_ad_aggr_v6_rank x WHERE x.rank_type = r.rank_type
-           )`
+      querySql(
+        `SELECT crawled_at,
+                SUM(COALESCE(app_ad_views, 0)) + SUM(COALESCE(app_pcebid_views, 0)) AS app_home,
+                SUM(COALESCE(kw_ad_views, 0)) + SUM(COALESCE(kw_pcebid_views, 0)) AS kw_search,
+                SUM(COALESCE(pc_ad_views, 0)) + SUM(COALESCE(pc_pcebid_views, 0)) AS pc_home
+         FROM dws_taptap_ad_aggr_v6_daily
+         WHERE app_id = ${appId}
+           AND crawled_at >= '${recentDaysWhere(7)}'
+         GROUP BY crawled_at
+         ORDER BY crawled_at ASC`
       ),
     {},
     {
       enabled: !!appId,
       transform: (rows) => {
-        if (!rows || rows.length === 0) return null;
-        const n = (v) => (v == null ? null : Number(v));
-        const out = {};
-        for (const r of rows) {
-          out[r.rank_type] = {
-            snapshot: r.crawled_at,
-            total: n(r.total_views),
-            appHome: n(r.app_total),
-            appKeyword: n(r.kw_total),
-            pcHome: n(r.pc_total),
-            rankTotal: n(r.rank_no),
-            rankApp: n(r.rank_app),
-            rankKw: n(r.rank_kw),
-            rankPc: n(r.rank_pc),
-          };
-        }
-        return Object.keys(out).length ? out : null;
+        const list = rows || [];
+        if (!list.length) return null;
+        const todayStr = String(recentHoursWhere(0)).slice(0, 10);
+        const pick = (field) => list.map((r) => Number(r[field] || 0));
+        const todayOf = (field) => {
+          const idx = list.findIndex((r) => String(r.crawled_at).slice(0, 10) === todayStr);
+          return idx >= 0 ? Number(list[idx][field] || 0) : null;
+        };
+        return {
+          labels: list.map((r) => String(r.crawled_at).slice(5, 10)),
+          latestAt: list[list.length - 1].crawled_at,
+          todayDepth: list.length,
+          appHome: { today: todayOf('app_home'), series: pick('app_home') },
+          kwSearch: { today: todayOf('kw_search'), series: pick('kw_search') },
+          pcHome: { today: todayOf('pc_home'), series: pick('pc_home') },
+        };
       },
     }
   );
-  const adRanks = adKpiRankQuery.data;
-  const adMonth = adRanks?.monthly ?? null;
-  const adKpiSubtitle = adMonth
-    ? `本月快照 ${adMonth.snapshot}`
-    : adKpiRankQuery.isLoading
-      ? '加载中…'
-      : '本月暂无数据';
+  const adExposure = adExposureQuery.data;
 
   // 【在线人数排名】本月峰值/均值排名
-  const onlineRankQuery = useChartData(
-    `one-search-online-rank-${appId ?? 'none'}-${month}`,
-    () =>
-      querySqlV09(
-        `SELECT peak_online_players, peak_rank, avg_online_players, avg_rank, stat_hours, crawled_at
-         FROM dws_taptap_pc_online_peak_players_rank_monthly
-         WHERE app_id = ${appId} AND crawled_at = '${month}'`
-      ),
-    {},
-    {
-      enabled: !!appId,
-      transform: (rows) => {
-        if (!rows || rows.length === 0) return null;
-        const n = (v) => (v == null ? null : Number(v));
-        const r = rows[0];
-        return {
-          peakRank: n(r.peak_rank),
-          peakPlayers: n(r.peak_online_players),
-          avgRank: n(r.avg_rank),
-          avgPlayers: r.avg_online_players == null ? null : Math.round(Number(r.avg_online_players)),
-          month: r.crawled_at,
-        };
-      },
-    }
-  );
-  const onlineRank = onlineRankQuery.data;
 
   // 【APP首页广告投放趋势】本年，按 app_id（dws_taptap_ad_aggr_v6_daily 的 APP 首页渠道）
   const landingTrendQuery = useChartData(
@@ -801,7 +689,7 @@ export default function SearchView() {
 
   // 【加载过场】首屏四块数据（基本信息 / 在线人数 / 下载卡 / 广告卡）就绪进度，
   // 进入页面时播放 0→100% + 玻璃碎裂动画，数据齐了自动收起
-  const bootQueries = [infoQuery, peakQuery, downloadRankQuery, adKpiRankQuery, activeStatQuery];
+  const bootQueries = [infoQuery, currentOnlineQuery, todayDownloadQuery, adExposureQuery];
   const bootDone = bootQueries.filter((q) => !q.isLoading).length;
   const bootReady = bootDone === bootQueries.length;
 
@@ -838,26 +726,22 @@ export default function SearchView() {
           <div className="row g-3">
             {games.map((g) => (
               <div className="col-12 col-md-6 col-xl-4" key={g.appId}>
-                <GameInfoCard
-                  game={g}
-                  ranks={[
-                    { label: '月榜：总下载', fullLabel: '总下载排名（月榜）', rank: downloadMonth ? downloadMonth.rankTotal : null, color: '#7A8B99' },
-                    { label: '月榜：峰值在线', fullLabel: '峰值在线排名（月榜）', rank: onlineRank ? onlineRank.peakRank : null, color: '#8FA3B0' },
-                    { label: '月榜：总投放次数', fullLabel: '总投放次数排名（月榜）', rank: adMonth ? adMonth.rankTotal : null, color: '#C9B79C' },
-                  ]}
-                />
+                <GameInfoCard game={g} />
               </div>
             ))}
-            <div className="col-12 col-md-6 col-xl-4">
-              <DataOverviewPanel data={activeStatQuery.data} />
-            </div>
-            <div className="col-12 col-md-6 col-xl-4">
-              <DataNotePanel />
-            </div>
-            {/* 装饰：脚印 + 放大镜，居中一小条（原占满右侧空白，现让位给说明面板） */}
-            <div className="col-12 d-none d-xl-flex justify-content-center">
-              <div style={{ width: 360, height: 90 }}>
+            <div className="col-12 col-md-6 col-xl-8 d-flex flex-column">
+              <DataNotePanel realtimeHour={realtimeHourQuery.data} />
+              {/* 装饰动画：贴到列底部（mt-auto 吃掉剩余空间），警告紧随其下 */}
+              <div className="d-none d-xl-block mt-auto pt-3" style={{ height: 160 }}>
                 <FootprintTrail />
+              </div>
+              {/* 试验页面提醒 */}
+              <div
+                className="d-flex align-items-center justify-content-center gap-2 rounded-3 px-3 py-2"
+                style={{ background: '#FFF9EC', border: '1px solid #F1E3C3', color: '#7A5C22', fontSize: 12, lineHeight: 1.6 }}
+              >
+                <i className="bi bi-exclamation-triangle-fill flex-shrink-0" style={{ fontSize: 13, color: '#C08A2E' }} aria-hidden="true"></i>
+                <span>该页面为试验页面，可能会随时变更</span>
               </div>
             </div>
           </div>
@@ -875,129 +759,156 @@ export default function SearchView() {
         )}
       </div>
 
-      {/* 【在线人数】最大 / 平均（平均带均值排名图标） */}
+      {/* 【当前在线人数】最新一小时的值 + 最近 24 小时 sparkline */}
       {appId && (
         <div className="row g-3 mb-4">
-          <div className="col-12 col-md-6">
-            <DashboardCard
-              title="最大在线人数"
-              value={peak ? formatNumber(peak.maxVal) : '-'}
-              subtitle={peak && peak.maxAt ? `统计时间 ${peak.maxAt}` : peakQuery.isLoading ? '加载中…' : '本月暂无数据'}
-              icon="bi-people"
-              color="primary"
-            />
-          </div>
-          <div className="col-12 col-md-6">
-            <RankedStatCard
-              title="平均在线人数"
-              value={peak ? formatNumber(peak.avgVal) : '-'}
-              subtitle={
-                peak
-                  ? `统计时间 ${peak.firstAt} ~ ${peak.lastAt}（${peak.cnt} 个采样点）`
-                  : peakQuery.isLoading
-                    ? '加载中…'
-                    : '本月暂无数据'
-              }
-              rank={onlineRank ? onlineRank.avgRank : null}
-              rankLabel="均值在线排名"
-              color="#9B93A8"
-              icon="bi-people"
-            />
+          <div className="col-12">
+            <div className="card border-0 shadow-sm" style={{ height: 120 }}>
+              <div className="card-body d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                <div style={{ minWidth: 0 }}>
+                  <div className="text-muted" style={{ fontSize: 12 }}>当前在线人数</div>
+                  <div className="d-flex align-items-baseline gap-2">
+                    <span className="fw-bold" style={{ fontSize: 28, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                      {currentOnline ? formatNumber(currentOnline.current) : '-'}
+                    </span>
+                    <span className="text-muted" style={{ fontSize: 12 }}>人</span>
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>
+                    {currentOnline
+                      ? `统计时间 ${currentOnline.latestAt}`
+                      : currentOnlineQuery.isLoading
+                        ? '加载中…'
+                        : '最近24小时暂无数据'}
+                  </div>
+                </div>
+
+                {/* 24 小时平均 / 最大 / 最小 */}
+                <div className="d-flex align-items-center gap-4 flex-wrap">
+                  {[
+                    { label: '24H平均在线人数', value: currentOnline?.avg24, color: '#7A8B99' },
+                    { label: '24H最大在线人数', value: currentOnline?.max24, color: '#8FA3B0' },
+                    { label: '24H最小在线人数', value: currentOnline?.min24, color: '#9B93A8' },
+                  ].map((item) => (
+                    <div key={item.label} style={{ minWidth: 0 }}>
+                      <div className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>{item.label}</div>
+                      <div
+                        className="fw-semibold"
+                        style={{ fontSize: 18, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums', color: item.color }}
+                      >
+                        {item.value != null ? formatNumber(item.value) : '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="d-flex flex-column align-items-end gap-1" style={{ minWidth: 0 }}>
+                  <Sparkline
+                    data={currentOnline?.series || []}
+                    labels={currentOnline?.labels || []}
+                    width={260}
+                    height={54}
+                    color="#7A8B99"
+                  />
+                  <span className="text-muted" style={{ fontSize: 11 }}>最近 24 小时趋势</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 【下载量】总下载量 / 日均下载量 / 移动端下载量 / PC端下载量（dws_taptap_download_rank，带日/周/月排名） */}
+      {/* 【今日下载量】今日累计 + 24H 平均/最大/最小 + 最近 24 小时 sparkline */}
       {appId && (
         <div className="row g-3 mb-4">
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="总下载量"
-              value={downloadMonth ? formatNumber(downloadMonth.total) : '-'}
-              subtitle={downloadKpiSubtitle}
-              icon="bi-download"
-              color="#7D8F7B"
-              rankRow={<RankBadgeRow ranks={downloadRanks} rankField="rankTotal" valueField="total" />}
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="日均下载量"
-              value={downloadMonth ? formatNumber(downloadMonth.avg) : '-'}
-              subtitle={downloadKpiSubtitle}
-              icon="bi-download"
-              color="#BFAE8E"
-              rankRow={
-                <RankBadgeRow ranks={downloadRanks} rankField="rankAvg" valueField="avg" valueLabel="日均" />
-              }
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="移动端下载量"
-              value={downloadMonth ? formatNumber(downloadMonth.mobile) : '-'}
-              subtitle={downloadKpiSubtitle}
-              icon="bi-phone"
-              color="#8FA3B0"
-              rankRow={<RankBadgeRow ranks={downloadRanks} rankField="rankMobile" valueField="mobile" />}
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="PC端下载量"
-              value={downloadMonth ? formatNumber(downloadMonth.pc) : '-'}
-              subtitle={downloadKpiSubtitle}
-              icon="bi-pc"
-              color="#9B93A8"
-              rankRow={<RankBadgeRow ranks={downloadRanks} rankField="rankPc" valueField="pc" />}
-            />
+          <div className="col-12">
+            <div className="card border-0 shadow-sm" style={{ height: 120 }}>
+              <div className="card-body d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                <div style={{ minWidth: 0 }}>
+                  <div className="text-muted" style={{ fontSize: 12 }}>今日下载量</div>
+                  <div className="d-flex align-items-baseline gap-2">
+                    <span className="fw-bold" style={{ fontSize: 28, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                      {todayDownload ? formatNumber(todayDownload.todayTotal) : '-'}
+                    </span>
+                    <span className="text-muted" style={{ fontSize: 12 }}>次</span>
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>
+                    {todayDownload
+                      ? `最新数据 ${todayDownload.latestAt}`
+                      : todayDownloadQuery.isLoading
+                        ? '加载中…'
+                        : '最近24小时暂无数据'}
+                  </div>
+                </div>
+
+                {/* 24 小时平均 / 最大 / 最小下载量 */}
+                <div className="d-flex align-items-center gap-4 flex-wrap">
+                  {[
+                    { label: '24H平均下载量', value: todayDownload?.avg24, color: '#7A8B99' },
+                    { label: '24H最大下载量', value: todayDownload?.max24, color: '#8FA3B0' },
+                    { label: '24H最小下载量', value: todayDownload?.min24, color: '#9B93A8' },
+                  ].map((item) => (
+                    <div key={item.label} style={{ minWidth: 0 }}>
+                      <div className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>{item.label}</div>
+                      <div
+                        className="fw-semibold"
+                        style={{ fontSize: 18, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums', color: item.color }}
+                      >
+                        {item.value != null ? formatNumber(item.value) : '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="d-flex flex-column align-items-end gap-1" style={{ minWidth: 0 }}>
+                  <Sparkline
+                    data={todayDownload?.series || []}
+                    labels={todayDownload?.labels || []}
+                    width={260}
+                    height={54}
+                    color="#7D8F7B"
+                  />
+                  <span className="text-muted" style={{ fontSize: 11 }}>最近 24 小时趋势</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 【广告】总投放次数 / APP首页 / APP搜索页关键词 / PC首页（dws_taptap_ad_aggr_v6_rank，带日/周/月排名） */}
+      {/* 【今日广告曝光】APP首页 / APP关键词 / PC首页（SQLite 日表 dws_taptap_ad_aggr_v6_daily） */}
       {appId && (
         <div className="row g-3 mb-4">
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="总投放次数"
-              value={adMonth ? formatNumber(adMonth.total) : '-'}
-              subtitle={adKpiSubtitle}
-              icon="bi-bullseye"
-              color="#7A8B99"
-              rankRow={<RankBadgeRow ranks={adRanks} rankField="rankTotal" valueField="total" valueLabel="投放" />}
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="APP首页广告统计次数"
-              value={adMonth ? formatNumber(adMonth.appHome) : '-'}
-              subtitle={adKpiSubtitle}
-              icon="bi-phone"
-              color="#7D8F7B"
-              rankRow={<RankBadgeRow ranks={adRanks} rankField="rankApp" valueField="appHome" valueLabel="投放" />}
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="APP搜索页关键词广告统计次数"
-              value={adMonth ? formatNumber(adMonth.appKeyword) : '-'}
-              subtitle={adKpiSubtitle}
-              icon="bi-phone"
-              color="#BFAE8E"
-              rankRow={<RankBadgeRow ranks={adRanks} rankField="rankKw" valueField="appKeyword" valueLabel="投放" />}
-            />
-          </div>
-          <div className="col-12 col-sm-6 col-xl-3">
-            <RankedStatCard
-              title="PC首页广告统计次数"
-              value={adMonth ? formatNumber(adMonth.pcHome) : '-'}
-              subtitle={adKpiSubtitle}
-              icon="bi-pc"
-              color="#8FA3B0"
-              rankRow={<RankBadgeRow ranks={adRanks} rankField="rankPc" valueField="pcHome" valueLabel="投放" />}
-            />
-          </div>
+          {[
+            { key: 'appHome', title: '今日APP首页广告曝光次数', color: '#7D8F7B' },
+            { key: 'kwSearch', title: '今日APP关键词广告曝光次数', color: '#BFAE8E' },
+            { key: 'pcHome', title: '今日PC首页广告曝光次数', color: '#8FA3B0' },
+          ].map((cfg) => {
+            const item = adExposure?.[cfg.key];
+            return (
+              <div className="col-12 col-md-6 col-xl-4" key={cfg.key}>
+                <div className="card border-0 shadow-sm h-100">
+                  <div className="card-body d-flex align-items-center justify-content-between gap-2">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="text-muted" style={{ fontSize: 12 }}>{cfg.title}</div>
+                      <div className="fw-bold" style={{ fontSize: 24, lineHeight: 1.25, fontVariantNumeric: 'tabular-nums' }}>
+                        {item?.today != null ? formatNumber(item.today) : '-'}
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 11.5 }}>
+                        {adExposure
+                          ? `最新日期 ${adExposure.latestAt}`
+                          : adExposureQuery.isLoading
+                            ? '加载中…'
+                            : '最近24天暂无数据'}
+                      </div>
+                    </div>
+                    <div className="d-flex flex-column align-items-end" style={{ minWidth: 0 }}>
+                      <Sparkline data={item?.series || []} labels={adExposure?.labels || []} width={104} height={34} color={cfg.color} />
+                      <span className="text-muted" style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>最近7天</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

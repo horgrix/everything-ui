@@ -1,4 +1,4 @@
-import { recentHoursWhere } from '../../dates';
+import { recentHoursWhere, toDateStr } from '../../dates';
 
 /**
  * 预约统计相关 SQL（预约趋势汇总 / 本日预约新增榜）
@@ -81,5 +81,26 @@ export function buildReserveTopTrendSql(limit = 50, ref = new Date()) {
     FROM today_rows t
     JOIN top_ids i ON i.app_id = t.app_id
     ORDER BY t.app_id, t.crawled_at
+  `;
+}
+
+/**
+ * 最近 7 日新增预约量（不含今日）SQL —— MySQL 的 dws_taptap_reserve_v2_daily
+ * 时间范围：7 日前的 00:00 ~ 昨日（不含今日）
+ */
+export function buildReserveSevenDaySql(ref = new Date()) {
+  const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  const start = new Date(today);
+  start.setDate(today.getDate() - 7);
+  const startStr = toDateStr(start);
+  const todayStr = toDateStr(today);
+  return `
+    SELECT
+      app_id,
+      SUM(reserve_count) AS d7_reserve_count
+    FROM dws_taptap_reserve_v2_daily
+    WHERE crawled_at >= '${startStr}'
+      AND crawled_at < '${todayStr}'
+    GROUP BY app_id
   `;
 }

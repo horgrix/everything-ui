@@ -45,3 +45,13 @@ export function transformReserveTrend(rows) {
     ],
   };
 }
+
+/** 最近 7 日新增预约量（不含今日）：app_id -> 数量 */
+export function transformReserveSevenDay(rows) {
+  const map = {};
+  (rows || []).forEach((r) => {
+    if (r.app_id == null) return;
+    map[String(r.app_id)] = Number(r.d7_reserve_count || 0);
+  });
+  return map;
+}

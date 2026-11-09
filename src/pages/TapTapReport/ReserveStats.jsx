@@ -4,16 +4,16 @@ import DataTable from './components/DataTable';
 import ChartCard from './components/ChartCard';
 import Sparkline from '../../components/common/Sparkline';
 import { GameIcon, taptapAppUrl, APP_AD_TAG_COLORS, truncateName } from './shared';
-import { useSqlQuery } from './queries';
-import { buildReserveTrendSql, buildReserveTopSql, buildReserveTopTrendSql } from './sql';
-import { transformReserveTrend, transformReserveTop, transformReserveTopTrend } from './transforms';
+import { useSqlQuery, useSqlQueryV09 } from './queries';
+import { buildReserveTrendSql, buildReserveTopSql, buildReserveTopTrendSql, buildReserveSevenDaySql } from './sql';
+import { transformReserveTrend, transformReserveTop, transformReserveTopTrend, transformReserveSevenDay } from './transforms';
 import { formatNumber, formatCompactNumber } from '../../utils/formatters';
 
 /** 预约新增 Top50 表格列 */
 const RESERVE_TOP_COLUMNS = [
   {
     header: 'APPID',
-    width: '8%',
+    width: '7%',
     accessor: (r) => r.appId,
     render: (r) => (
       <a
@@ -30,7 +30,7 @@ const RESERVE_TOP_COLUMNS = [
   },
   {
     header: '标签',
-    width: '15%',
+    width: '13%',
     accessor: (r) => r.tags.join(' '),
     render: (r) => {
       if (!r.tags.length) return <span className="text-muted">-</span>;
@@ -51,7 +51,7 @@ const RESERVE_TOP_COLUMNS = [
   },
   {
     header: '游戏名称',
-    width: '19%',
+    width: '17%',
     accessor: (r) => r.appName,
     render: (r) => (
       <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ minWidth: 0, maxWidth: '100%' }}>
@@ -64,7 +64,7 @@ const RESERVE_TOP_COLUMNS = [
   },
   {
     header: 'HINTS',
-    width: '15%',
+    width: '13%',
     accessor: (r) => r.hints || '',
     render: (r) => {
       const text = r.hints || '';
@@ -85,9 +85,22 @@ const RESERVE_TOP_COLUMNS = [
     render: (r) => (r.totalReserveCount == null ? <span className="text-muted">-</span> : <span className="text-muted">{formatNumber(r.totalReserveCount)}</span>),
   },
   {
+    header: '最近7日新增',
+    align: 'end',
+    width: '12%',
+    help: '最近 7 日新增预约量（不含今日），汇总自 dws_taptap_reserve_v2_daily',
+    accessor: (r) => r.sevenDayReserve,
+    render: (r) =>
+      r.sevenDayReserve == null ? (
+        <span className="text-muted">-</span>
+      ) : (
+        <span className="text-muted">{formatNumber(r.sevenDayReserve)}</span>
+      ),
+  },
+  {
     header: '新增预约数',
     align: 'end',
-    width: '11%',
+    width: '10%',
     help: '按天聚合：今天各快照 reserve_count 之和',
     accessor: (r) => r.dailyReserveCount,
     render: (r) => <span className="fw-semibold">{r.dailyReserveCount == null ? '-' : formatNumber(r.dailyReserveCount)}</span>,
@@ -95,7 +108,7 @@ const RESERVE_TOP_COLUMNS = [
   {
     header: '本日趋势',
     align: 'center',
-    width: '15%',
+    width: '13%',
     help: '今天各抓取时点的 reserve_count 走势',
     render: (r) => <Sparkline data={r.trend || []} labels={r.trendLabels || []} width={120} height={32} />,
   },
@@ -126,19 +139,25 @@ export default function ReserveStats() {
   const topTrendQuery = useSqlQuery('taptap-reserve-top-trend', () => buildReserveTopTrendSql(50), [], transformReserveTopTrend, {
     staleTime: 5 * 60 * 1000,
   });
+  // 最近 7 日新增预约量（不含今日）—— 走 MySQL 日表 dws_taptap_reserve_v2_daily
+  const sevenDayQuery = useSqlQueryV09('taptap-reserve-seven-day', buildReserveSevenDaySql, [], transformReserveSevenDay, {
+    staleTime: 5 * 60 * 1000,
+  });
   const topRows = useMemo(() => {
     const list = topQuery.data?.rows || [];
     const labels = topTrendQuery.data?.labels || [];
     const byApp = topTrendQuery.data?.byApp || {};
+    const sevenDay = sevenDayQuery.data || {};
     return list.map((r) => {
       const series = byApp[String(r.appId)] || {};
       return {
         ...r,
         trend: labels.map((l) => series[l] ?? null),
         trendLabels: labels,
+        sevenDayReserve: sevenDay[String(r.appId)] ?? null,
       };
     });
-  }, [topQuery.data, topTrendQuery.data]);
+  }, [topQuery.data, topTrendQuery.data, sevenDayQuery.data]);
 
   const categories = trendQuery.data?.categories || [];
   const rangeStart = categories[0] || '';
