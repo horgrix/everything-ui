@@ -97,10 +97,9 @@ export default function OnlineStats() {
   const trendCategories = onlinePlayersTrendQuery.data?.categories || [];
   const trendRangeStart = trendCategories[0] || '';
   const trendRangeEnd = trendCategories[trendCategories.length - 1] || '';
-  // TapPC 在线人数 KPI 与趋势/分布图：每 2 小时第 15 分钟更新
-  const pcUpdateLabel = nextUpdateLabel(15);
-  // 在线人数Top80游戏列表：每 2 小时第 14 分钟更新
-  const pcUpdateTop20Label = nextUpdateLabel(14);
+  // TapPC 在线人数 KPI / 趋势 / 分布图 / Top80 列表：cron「26 */2 * * *」（每 2 小时第 26 分钟）
+  const pcUpdateLabel = nextUpdateLabel(26);
+  const pcUpdateTop20Label = pcUpdateLabel;
 
   return (
     <>

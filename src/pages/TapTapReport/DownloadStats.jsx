@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import HourlyTrendSection from './download/HourlyTrendSection';
 import DistributionRow from './download/DistributionRow';
-import { nextUpdateTime, formatNextUpdate } from './updateTime';
+import { nextUpdateTime, formatNextUpdate, nextDailyUpdateLabel } from './updateTime';
 import { formatNowWindow } from './dates';
 import {
   buildAggregateSql,
@@ -42,16 +42,12 @@ export default function DownloadStats() {
 
   // 提示性文案，仅在渲染时计算一次（不轮询、不额外请求）
   const nowRef = new Date();
-  // 热门游戏TopN下载趋势：cron 分钟=5，每 2 小时一次
-  const nextUpdateLabelMin5 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(5, nowRef))}`;
-  // 月趋势三图：cron 分钟=7，每 2 小时一次
-  const nextUpdateLabelMin7 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(7, nowRef))}`;
-  // 热门游戏TopN下载日趋势（周对比）：cron 分钟=6，每 2 小时一次
-  const nextUpdateLabelMin6 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(6, nowRef))}`;
-  // 下载Top25明细查询条件（小时/日/月）→ 关联图表使用的更新频率：5 / 6 / 7 分钟
-  const windowGranularity = WINDOW_TYPES.find((w) => w.table === selectedTable)?.granularity || 'hour';
-  const windowUpdateLabel =
-    windowGranularity === 'day' ? nextUpdateLabelMin6 : windowGranularity === 'month' ? nextUpdateLabelMin7 : nextUpdateLabelMin5;
+  // 追踪游戏下载趋势 / 日趋势 / 分布 / TopN 明细：cron「18 */2 * * *」（每 2 小时第 18 分钟）
+  const nextUpdateLabelMin18 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(18, nowRef))}`;
+  // 月趋势：cron「5 9 * * *」（每天 09:05）
+  const nextUpdateLabelDaily905 = nextDailyUpdateLabel(5, 9, nowRef);
+  // 分布饼图 + TopN 明细也跟随 18 分钟这一批
+  const windowUpdateLabel = nextUpdateLabelMin18;
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
   // 周趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_daily（历史数据）
@@ -123,7 +119,7 @@ export default function DownloadStats() {
         data={hotListQuery.data}
         loading={hotListQuery.isLoading}
         error={hotListQuery.error?.message}
-        updateLabel={nextUpdateLabelMin5}
+        updateLabel={nextUpdateLabelMin18}
       />
 
       {/* 月趋势 / 日趋势：平台一组、小游戏一组 */}
@@ -133,8 +129,8 @@ export default function DownloadStats() {
         monthly={monthlyBreakdownQuery}
         weekly={weeklyTrendQuery}
         realtime={todayRealtimeQuery.data}
-        monthlyUpdateLabel={nextUpdateLabelMin7}
-        weeklyUpdateLabel={nextUpdateLabelMin6}
+        monthlyUpdateLabel={nextUpdateLabelDaily905}
+        weeklyUpdateLabel={nextUpdateLabelMin18}
       />
       <MonthlyWeeklyRow
         monthlyKey="gameType"
@@ -142,8 +138,8 @@ export default function DownloadStats() {
         monthly={monthlyBreakdownQuery}
         weekly={weeklyTrendQuery}
         realtime={todayRealtimeQuery.data}
-        monthlyUpdateLabel={nextUpdateLabelMin7}
-        weeklyUpdateLabel={nextUpdateLabelMin6}
+        monthlyUpdateLabel={nextUpdateLabelDaily905}
+        weeklyUpdateLabel={nextUpdateLabelMin18}
         notice="11 月 3 日 - 11 月 7 日数据口径调整，所显示数据没有参考意义"
       />
 
