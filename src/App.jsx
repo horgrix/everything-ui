@@ -4,6 +4,7 @@ import Navbar from './components/layout/Navbar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 /* 路由级代码分割：每个页面单独 chunk，/taptap 首屏不再下载全站代码 */
+const Home = lazy(() => import('./pages/Home'));
 const BusinessReport = lazy(() => import('./pages/BusinessReport'));
 const OneSearch = lazy(() => import('./pages/OneSearch'));
 const SearchView = lazy(() => import('./pages/OneSearch/SearchView'));
@@ -31,7 +32,8 @@ export default function App() {
           <ErrorBoundary>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                <Route path="/" element={<Navigate to="/business" replace />} />
+                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/home" element={<Home />} />
                 <Route path="/business" element={<BusinessReport />} />
                 <Route path="/one-search" element={<OneSearch />} />
                 <Route path="/one-search/report" element={<SearchView />} />
@@ -42,7 +44,7 @@ export default function App() {
                 <Route path="/finance" element={<FinanceInfo />} />
                 <Route path="/quant" element={<QuantInfo />} />
                 {/* 已下线的旧路径（含数据大盘 /dashboard）统一回首页，避免书签打开空白 */}
-                <Route path="*" element={<Navigate to="/business" replace />} />
+                <Route path="*" element={<Navigate to="/home" replace />} />
               </Routes>
             </Suspense>
           </ErrorBoundary>

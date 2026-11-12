@@ -34,9 +34,20 @@ export default function Navbar() {
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
               <NavLink
+                to="/home"
+                className={({ isActive }) =>
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
+                }
+              >
+                <i className="bi bi-house-door me-1"></i>
+                首页
+              </NavLink>
+            </li>
+            <li className="nav-item">
+              <NavLink
                 to="/one-search"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-search me-1"></i>
@@ -47,7 +58,7 @@ export default function Navbar() {
               <NavLink
                 to="/business"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-bar-chart me-1"></i>
@@ -58,7 +69,7 @@ export default function Navbar() {
               <NavLink
                 to="/taptap"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-controller me-1"></i>
@@ -69,7 +80,7 @@ export default function Navbar() {
               <NavLink
                 to="/taprep-monthly"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-calendar3 me-1"></i>
@@ -80,7 +91,7 @@ export default function Navbar() {
               <NavLink
                 to="/periodic-report"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
                 title="定期报告（周报 / 月报 / 年报）"
               >
@@ -92,7 +103,7 @@ export default function Navbar() {
               <NavLink
                 to="/finance"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-cash-stack me-1"></i>
@@ -103,7 +114,7 @@ export default function Navbar() {
               <NavLink
                 to="/quant"
                 className={({ isActive }) =>
-                  `nav-link ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
               >
                 <i className="bi bi-calculator me-1"></i>
