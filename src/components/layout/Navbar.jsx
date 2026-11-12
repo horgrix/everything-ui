@@ -31,6 +31,8 @@ export default function Navbar() {
         </button>
 
         <div className="collapse navbar-collapse" id="navbarNav">
+          {/* One Search 首页（搜索框 + 榜单）不再进导航：入口在首页榜单行（直达 SearchView），
+              `/one-search` 与 `/one-search/report?q=` 仍可按 URL 访问 */}
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
               <NavLink
@@ -41,17 +43,6 @@ export default function Navbar() {
               >
                 <i className="bi bi-house-door me-1"></i>
                 首页
-              </NavLink>
-            </li>
-            <li className="nav-item">
-              <NavLink
-                to="/one-search"
-                className={({ isActive }) =>
-                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
-                }
-              >
-                <i className="bi bi-search me-1"></i>
-                One Search
               </NavLink>
             </li>
             <li className="nav-item">
