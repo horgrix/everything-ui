@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { V09_API_ROOT, COMMON_HEADERS } from './config';
+import { V09_API_BASE, COMMON_HEADERS } from './config';
 import { handleResponseError } from './authNotice';
 
 /**
@@ -7,11 +7,12 @@ import { handleResponseError } from './authNotice';
  * - GET {base}/active-apps?month=YYYY-MM  本月采集活跃 APP 数（月度快照 + 每日明细）
  * - GET {base}/type-share?month=YYYY-MM   本月游戏类型占比（下载量 / 在线峰值 / 广告曝光）
  *
- * base 默认 `${V09_API_ROOT}/home`（即 https://api.horgrix.com/api/v09/home，
- * 后端另挂了 /api/home 别名；本地可用 VITE_HOME_API_BASE_URL 覆盖）。
+ * base 默认 `${V09_API_BASE}/home` —— 即 `/api/v09/data/home`，复用现有的
+ * `/api/v09/data → everything-api` nginx 反代，不用为这两个接口单独加 location；
+ * 需要换地址时用 VITE_HOME_API_BASE_URL 覆盖。
  */
 const homeClient = axios.create({
-  baseURL: import.meta.env.VITE_HOME_API_BASE_URL || `${V09_API_ROOT}/home`,
+  baseURL: import.meta.env.VITE_HOME_API_BASE_URL || `${V09_API_BASE.replace(/\/+$/, '')}/home`,
   timeout: 20000,
   headers: COMMON_HEADERS,
 });

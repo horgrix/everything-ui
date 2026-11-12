@@ -23,12 +23,6 @@ export const API_BASE = env.VITE_API_BASE_URL || 'https://horgrix.com/api/data';
 /** v09 数据服务（MySQL，api.horgrix.com/api/v09/data） */
 export const V09_API_BASE = env.VITE_V09_API_BASE_URL || 'https://api.horgrix.com/api/v09/data';
 
-/**
- * v09 服务根（不带 /data）：everything-api 的首页概览等专用聚合接口挂在 `/api/v09/home`，
- * 默认由 V09_API_BASE 去掉尾部 `/data` 得到，也可用 VITE_V09_API_ROOT 单独覆盖。
- */
-export const V09_API_ROOT = env.VITE_V09_API_ROOT || V09_API_BASE.replace(/\/+$/, '').replace(/\/data$/, '');
-
 /** 量化接口（api.horgrix.com/api/v1） */
 export const QUANT_API_BASE = env.VITE_QUANT_API_BASE_URL || 'https://api.horgrix.com/api/v1';
 
