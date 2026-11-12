@@ -7,6 +7,7 @@ import { handleResponseError } from './authNotice';
  * - GET {base}/active-apps?month=YYYY-MM  本月采集活跃 APP 数（月度快照 + 每日明细）
  * - GET {base}/type-share?month=YYYY-MM   本月游戏类型占比（下载量 / 在线峰值 / 广告曝光）
  * - GET {base}/download-rank?month=YYYY-MM&limit=5  本月下载榜 TopN（top / gain / loss）
+ * - GET {base}/ad-rank?month=YYYY-MM&limit=5        本月广告曝光榜 TopN（top / gain / loss）
  *
  * base 默认 `${V09_API_BASE}/home` —— 即 `/api/v09/data/home`，复用现有的
  * `/api/v09/data → everything-api` nginx 反代，不用为这两个接口单独加 location；
@@ -49,6 +50,11 @@ export function fetchActiveApps(month = currentMonthKey()) {
 /** 本月下载榜 TopN：{ month, limit, categories:[{key, items[]}] }，key = top / gain / loss */
 export function fetchDownloadRank(month = currentMonthKey(), limit = 5) {
   return homeClient.get('/download-rank', { params: { month, limit } }).then((r) => r.data);
+}
+
+/** 本月广告曝光榜 TopN：结构同下载榜，数值口径为广告曝光次数 */
+export function fetchAdRank(month = currentMonthKey(), limit = 5) {
+  return homeClient.get('/ad-rank', { params: { month, limit } }).then((r) => r.data);
 }
 
 /** 本月游戏类型占比：{ month, types[], totals, unclassified } */

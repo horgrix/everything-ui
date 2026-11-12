@@ -1,10 +1,11 @@
 import ActiveAppsOverview from './ActiveAppsOverview';
 import TypeShareOverview from './TypeShareOverview';
 import DownloadRankOverview from './DownloadRankOverview';
+import AdRankOverview from './AdRankOverview';
 
 /**
  * 首页：平台数据概览。
- * 依次是「本月采集活跃 APP」4 个模块、「本月游戏类型占比」、「本月下载榜 Top5」——
+ * 依次是「本月采集活跃 APP」4 个模块、「本月游戏类型占比」、下载榜 Top5、广告曝光榜 Top5 ——
  * 数据均来自 everything-api 的 /api/v09/data/home/* 聚合接口。
  */
 export default function Home() {
@@ -29,6 +30,9 @@ export default function Home() {
 
       {/* 本月下载榜 Top5（总量 / 新增 / 下滑） */}
       <DownloadRankOverview />
+
+      {/* 本月广告曝光榜 Top5（总量 / 新增 / 下滑） */}
+      <AdRankOverview />
     </div>
   );
 }
