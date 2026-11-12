@@ -82,6 +82,7 @@ const PLATFORM_COLORS = { app: '#f08c00', pc: '#7209b7', kw: '#d6336c' };
 const SPARK_COLUMNS = [
   {
     header: '商业AD',
+    width: '7%',
     segs: [
       { label: 'APP商业广告', field: 'appAdViews', color: PLATFORM_COLORS.app },
       { label: 'PC商业广告', field: 'pcAdViews', color: PLATFORM_COLORS.pc },
@@ -89,7 +90,8 @@ const SPARK_COLUMNS = [
     ],
   },
   {
-    header: '资源互换AD',
+    header: '资源互换',
+    width: '7%',
     segs: [
       { label: 'APP资源互换', field: 'appPcebidViews', color: PLATFORM_COLORS.app },
       { label: 'PC资源互换', field: 'pcPcebidViews', color: PLATFORM_COLORS.pc },
@@ -98,6 +100,7 @@ const SPARK_COLUMNS = [
   },
   {
     header: '总投放',
+    width: '9%',
     segs: [
       { label: '商业AD', field: 'adViews', color: '#7A8B99' },
       { label: '资源互换AD', field: 'pcebidViews', color: '#B08B8B' },
@@ -155,7 +158,7 @@ const GAME_TOP_COLUMNS = [
   },
   {
     header: '标签',
-    width: '10%',
+    width: '14%',
     accessor: (r) => r.tags.join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -167,9 +170,9 @@ const GAME_TOP_COLUMNS = [
     ),
   },
   {
-    header: '上周投放排名',
+    header: '上周排名',
     align: 'center',
-    width: '7%',
+    width: '5%',
     accessor: (r) => r.lastWeekRank ?? null,
     help: '上周（上一自然周）投放排名：优先取 dws_taptap_ad_rank_v4_daily 的 weekly 快照；该周快照未入库时，按上周总投放倒序推算。app_id 命中显示名次，否则「未上榜」',
     render: (r) => {
@@ -182,7 +185,7 @@ const GAME_TOP_COLUMNS = [
   ...SPARK_COLUMNS.map((col) => ({
     header: col.header,
     align: 'center',
-    width: col.segs.length === 2 ? '9%' : '10%',
+    width: col.width,
     help: col.segs.map((seg) => ({ color: seg.color, text: seg.label })),
     render: (r) => (
       <SparkStackBar segments={col.segs.map((seg) => ({ label: seg.label, value: r[seg.field], color: seg.color }))} />
@@ -215,7 +218,7 @@ const GAME_TOP_COLUMNS = [
     // 与「下载Top25明细」同款跳转：新窗口打开 OneSearch 报告页
     header: 'OneSearch',
     align: 'center',
-    width: '7%',
+    width: '8%',
     help: '在 OneSearch 中查看该游戏的下载 / 在线 / 投放线索（新窗口打开报告页）',
     render: (r) =>
       r.appId === '-' ? (
