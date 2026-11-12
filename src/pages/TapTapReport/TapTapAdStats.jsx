@@ -105,6 +105,9 @@ const SPARK_COLUMNS = [
   },
 ];
 
+/** OneSearch 线索查询路由（站内相对路径，用 APPID 拼 q 参数） */
+const ONESEARCH_REPORT_PATH = '/one-search/report';
+
 /** 本周游戏明细 Top20 列配置 */
 const GAME_TOP_COLUMNS = [
   {
@@ -141,7 +144,7 @@ const GAME_TOP_COLUMNS = [
   },
   {
     header: '游戏名称',
-    width: '12%',
+    width: '11%',
     accessor: (r) => r.appName,
     render: (r) => (
       <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>
@@ -152,7 +155,7 @@ const GAME_TOP_COLUMNS = [
   },
   {
     header: '标签',
-    width: '11%',
+    width: '10%',
     accessor: (r) => r.tags.join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -166,7 +169,7 @@ const GAME_TOP_COLUMNS = [
   {
     header: '上周投放排名',
     align: 'center',
-    width: '8%',
+    width: '7%',
     accessor: (r) => r.lastWeekRank ?? null,
     help: '上周（上一自然周）投放排名：优先取 dws_taptap_ad_rank_v4_daily 的 weekly 快照；该周快照未入库时，按上周总投放倒序推算。app_id 命中显示名次，否则「未上榜」',
     render: (r) => {
@@ -188,7 +191,7 @@ const GAME_TOP_COLUMNS = [
   {
     header: '本周趋势',
     align: 'center',
-    width: '11%',
+    width: '10%',
     help: 'y=每日总投放（商业AD + 资源互换AD），x=周几；本周实线加粗，上周虚线对比',
     render: (r) => (
       <Sparkline data={r.trend} prevData={r.prevTrend} labels={r.trendLabels} currentLabel="本周" prevLabel="上周" width={100} height={32} />
@@ -204,9 +207,32 @@ const GAME_TOP_COLUMNS = [
   {
     header: '广告贡献度',
     align: 'center',
-    width: '9%',
+    width: '8%',
     help: '广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行 total_push，来自 dws_taptap_ad_overview_v5_daily）',
     render: (r) => <PercentBar value={r.share} color="#8FA3B0" />,
+  },
+  {
+    // 与「下载Top25明细」同款跳转：新窗口打开 OneSearch 报告页
+    header: 'OneSearch',
+    align: 'center',
+    width: '7%',
+    help: '在 OneSearch 中查看该游戏的下载 / 在线 / 投放线索（新窗口打开报告页）',
+    render: (r) =>
+      r.appId === '-' ? (
+        <span className="text-muted">-</span>
+      ) : (
+        <a
+          href={`${ONESEARCH_REPORT_PATH}?q=${r.appId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-decoration-none d-inline-flex align-items-center gap-1"
+          style={{ color: '#4361ee', fontSize: 12, whiteSpace: 'nowrap' }}
+          title={`在 OneSearch 查询 ${r.appId} 的下载 / 在线 / 投放数据`}
+        >
+          <i className="bi bi-search" aria-hidden="true"></i>
+          Search
+        </a>
+      ),
   },
 ];
 
