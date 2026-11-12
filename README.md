@@ -223,8 +223,8 @@ VITE_QUANT_API_BASE_URL=https://api.horgrix.com/api/v1
 # VITE_HOME_API_BASE_URL=/api/v09/data/home
 ```
 
-> 首页「本月采集活跃 APP」「本月游戏类型占比」两块走 everything-api 的
-> `GET /api/v09/data/home/active-apps` 与 `GET /api/v09/data/home/type-share`（服务端聚合 MySQL），
+> 首页三块概览（本月采集活跃 APP / 本月游戏类型占比 / 本月下载榜 Top5）走 everything-api 的
+> `GET /api/v09/data/home/active-apps`、`/type-share`、`/download-rank`（服务端聚合 MySQL），
 > 前端不再直接拼 SQL 查 MySQL。
 
 ### 生产环境 (`.env.production`)
