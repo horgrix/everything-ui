@@ -546,16 +546,18 @@ function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts 
   }
   if (withPlayers && info.playersHigh && withCounts) {
     const peak = info.worstRow?.peakOnlinePlayers;
-    // 人数口径的分母就是该分型在线人数，乘以占比就是哨兵值贡献的人数（列定义即真实求和，不依赖哨兵等于 100）
-    const sentinelPlayers = peak ? Math.round(info.playerRatio * peak) : null;
-    const rest = peak && sentinelPlayers != null ? peak - sentinelPlayers : null;
+    // 接口的 placeholderPlayers 是整数口径的「兜底贡献人数」（SUM(值 where 哨兵)），优先用它：
+    // 精确、不依赖「哨兵=100」，也没有 ±1 取整误差；没有这个字段时才用 占比×总数 反推并标「约」。
+    const exactPlayers = typeof info.worstRow?.placeholderPlayers === 'number' ? info.worstRow.placeholderPlayers : null;
+    const sentinelPlayers = exactPlayers ?? (peak ? Math.round(info.playerRatio * peak) : null);
+    const approximate = exactPlayers == null;
+    const rest = peak != null && sentinelPlayers != null ? peak - sentinelPlayers : null;
     parts.push(
-      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${fmtFull(sentinelPlayers)} 人` : ''}（${(info.playerRatio * 100).toFixed(1)}%）来自这些哨兵值`
+      `按人数计${approximate ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${fmtFull(sentinelPlayers)} 人` : ''}（${(info.playerRatio * 100).toFixed(1)}%）来自这些哨兵值`
     );
     if (rest != null && rest >= 0) {
       // 100 对小体量游戏是偏高填充（剔除后约 56 人/款），所以含兜底的那个数是上限，不是下限
-      // 哨兵人数 = 占比 × 总数，是实数除法反推，可能带 ±1 的取整误差（如 18,901 vs 18,900），所以写「约」
-      parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余约 ${fmtFull(rest)} 人`);
+      parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余${approximate ? '约' : ''} ${fmtFull(rest)} 人`);
     }
   }
   if (withPlayers && !withCounts && info.playersHigh && info.playerRatio != null) {
