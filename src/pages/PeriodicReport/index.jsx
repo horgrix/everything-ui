@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPeriods, fetchReport } from '../../api/periodic';
-import { withCoreKpis } from './coreKpis';
+import { withCoreKpis, withLineLabels } from './coreKpis';
 import { Panel, Placeholder, fmtCutoff, fmtDateTime } from './prKit';
 import {
   Cover,
@@ -81,7 +81,7 @@ export default function PeriodicReport() {
   });
 
   // 核心指标读哪 6 个数由 coreKpis.js 的口径清单定序（三款数 + 三总量），其余区块照用接口原值
-  const report = useMemo(() => withCoreKpis(reportQuery.data), [reportQuery.data]);
+  const report = useMemo(() => withLineLabels(withCoreKpis(reportQuery.data)), [reportQuery.data]);
   const meta = report?.meta;
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;

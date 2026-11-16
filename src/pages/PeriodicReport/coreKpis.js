@@ -17,14 +17,62 @@
 
 /** 顺序即网格顺序（一行 3 个：三款数 → 三总量） */
 export const CORE_KPI_SPEC = [
-  { key: 'game_cnt', line: 'download', label: '有下载游戏款数' },
-  { key: 'app_cnt', line: 'ad', label: '有推广游戏款数' },
-  { key: 'online_game_cnt', line: 'online', label: '有在线的游戏款数' },
-  { key: 'download_total', line: 'download' },
-  { key: 'ad_total', line: 'ad' },
+  {
+    key: 'game_cnt',
+    line: 'download',
+    label: '有下载游戏款数',
+    short: '下载款数',
+    note: '整周下载量 > 0 的去重款数（采集覆盖到但下载为 0 的不算）',
+    rosterKey: 'game_cnt_roster',
+    roster: '当周下载量为 0',
+  },
+  {
+    key: 'app_cnt',
+    line: 'ad',
+    label: '有推广游戏款数',
+    short: '推广款数',
+    note: '当周有广告投放的去重款数（广告源表只收有投放的 app）',
+  },
+  {
+    key: 'online_game_cnt',
+    line: 'online',
+    label: '有在线的游戏款数',
+    short: '在线款数',
+    note: '整周出现过真实在线（online_players > 0 且不等于兜底值 100）的去重款数',
+    rosterKey: 'online_game_cnt_roster',
+    roster: '整周没有真实在线小时（只有兜底值）',
+  },
+  { key: 'download_total', line: 'download', label: '下载总量', short: '下载总量' },
+  { key: 'ad_total', line: 'ad', label: '广告曝光', short: '广告曝光' },
   // 在线峰值的对外键名改过一次（online_peak → online_peak_players），两种都认
-  { key: 'online_peak', aliases: ['online_peak_players'], line: 'online' },
+  { key: 'online_peak', aliases: ['online_peak_players'], line: 'online', label: '在线峰值', short: '在线峰值' },
 ];
+
+/**
+ * 「覆盖 X 款里 N 款是 0」那句说明：只在接口真给了 game_cnt_roster 时才出，前端不自己减出结论。
+ * 返回 null 表示这条业务线这次不讲这句（接口还没透出覆盖数）。
+ */
+export function rosterNote(line) {
+  const spec = CORE_KPI_SPEC.find((item) => item.line === line?.key && item.rosterKey);
+  if (!spec) return null;
+  const kpi = (line.kpis || []).find((item) => item.key === spec.key);
+  // 两种送达方式都认：二方 KPI（接口现行的 MetricSpec 做法）或同名指标上的附加字段
+  const rosterKpi = (line.kpis || []).find((item) => item.key === spec.rosterKey);
+  const roster = typeof rosterKpi?.value === 'number' ? rosterKpi.value : kpi?.game_cnt_roster;
+  if (typeof roster !== 'number' || typeof kpi?.value !== 'number') return null;
+  const gap = roster - kpi.value;
+  if (!(gap > 0)) return null;
+  return `采集覆盖 ${fmtCount(roster)} 款，其中 ${fmtCount(gap)} 款${spec.roster}。`;
+}
+
+function fmtCount(value) {
+  return Number(value).toLocaleString('zh-CN');
+}
+
+/** 覆盖款数只是说明用的旁证，不进 03 明细的指标格（免得和「有…款数」并排放成两个数去比） */
+export function isRosterKpi(key) {
+  return CORE_KPI_SPEC.some((spec) => spec.rosterKey && spec.rosterKey === key);
+}
 
 /**
  * 把一期报告里所有 KPI 收进一张表：业务线明细优先，coreKpis 兜底。
@@ -56,7 +104,12 @@ export function withCoreKpis(report) {
     const key = keys.find((k) => pool.has(k));
     if (!key) return null;
     const kpi = pool.get(key);
-    return spec.label ? { ...kpi, label: spec.label } : kpi;
+    return {
+      ...kpi,
+      // 显示名统一由这份清单管（接口只给中性字段名），note 优先用接口的，接口没给才用清单里的
+      ...(spec.label ? { label: spec.label, shortLabel: spec.short || spec.label } : {}),
+      ...(spec.label && !kpi.note && spec.note ? { note: spec.note } : {}),
+    };
   }).filter(Boolean);
 
   if (!resolved.length) return report;
@@ -69,4 +122,22 @@ export function withCoreKpis(report) {
   }
 
   return { ...report, coreKpis: resolved };
+}
+
+/**
+ * 03 业务线明细的长名也跟着这份清单走（同一批 KPI 在两处不该叫两个名字）。
+ * 只覆盖清单里有的键，其余指标仍用接口 label（如「单小时同时在线款数最高」由后端定文案）。
+ */
+export function withLineLabels(report) {
+  if (!report?.lines) return report;
+  const byLine = new Map(CORE_KPI_SPEC.filter((spec) => spec.label).map((spec) => [spec.key, spec.label]));
+  return {
+    ...report,
+    lines: report.lines.map((line) => ({
+      ...line,
+      kpis: (line.kpis || []).map((kpi) =>
+        byLine.has(kpi.key) ? { ...kpi, label: byLine.get(kpi.key) } : kpi
+      ),
+    })),
+  };
 }

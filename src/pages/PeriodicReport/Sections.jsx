@@ -18,7 +18,7 @@ import {
   fmtFull,
   fmtPct,
 } from './prKit';
-import { indexedKpis } from './coreKpis';
+import { indexedKpis, isRosterKpi, rosterNote } from './coreKpis';
 
 /* ================================================================== 封面 */
 
@@ -340,7 +340,7 @@ export function TrendSection({ report, no = '02' }) {
               className={item.key === kpi.key ? 'is-active' : ''}
               onClick={() => setActiveKey(item.key)}
             >
-              {item.label}
+              {item.shortLabel || item.label}
             </button>
           ))}
         </div>
@@ -632,6 +632,13 @@ export function LineBand({ line }) {
   const breakdown = line.breakdown;
   const isOnline = line.key === 'online';
   const items = breakdown?.items || [];
+  const roster = rosterNote(line);
+  // 覆盖款数（game_cnt_roster / online_game_cnt_roster）不进指标格，只在下面用一句话说明
+  const metrics = line.kpis.filter((kpi) => !isRosterKpi(kpi.key));
+  // 03 里两个在线款数（整周去重 / 单小时快照）的区分句用接口 label 拼，
+  // 不写死「峰值小时」——单小时最高值不一定出现在人数峰值那一刻（后端已约定改文案）
+  const onlineDedup = line.kpis.find((kpi) => kpi.key === 'online_game_cnt');
+  const onlineConcurrent = line.kpis.find((kpi) => kpi.key === 'concurrent_game_cnt');
   const sum = items.reduce((acc, item) => acc + (item.value || 0), 0);
   const maxItem = Math.max(...items.map((item) => item.value || 0), 1);
   const consistent = breakdown?.consistency?.consistent;
@@ -642,7 +649,7 @@ export function LineBand({ line }) {
         color={meta.color}
         icon={meta.icon}
         title={meta.label}
-        sub={`${line.kpis.length} 个指标 · 更新于 ${fmtDateTime(line.updatedAt) || '—'}`}
+        sub={`${metrics.length} 个指标 · 更新于 ${fmtDateTime(line.updatedAt) || '—'}`}
         right={
           breakdown && (() => {
             const c = breakdown.consistency || {};
@@ -669,8 +676,8 @@ export function LineBand({ line }) {
         }
       />
       <div className="pr-line-body">
-        <div className={`pr-line-metrics${line.kpis.length % 2 === 1 || line.kpis.length > 4 ? ' is-list' : ''}`}>
-          {line.kpis.map((kpi) => (
+        <div className={`pr-line-metrics${metrics.length % 2 === 1 || metrics.length > 4 ? ' is-list' : ''}`}>
+          {metrics.map((kpi) => (
             <div className="pr-metric" key={kpi.key}>
               <div className="pr-metric-label">
                 {kpi.label}
@@ -695,6 +702,7 @@ export function LineBand({ line }) {
               </div>
             </div>
           ))}
+          {roster && <div className="pr-metrics-note">{roster}</div>}
           {isOnline && (
             <div className="pr-metrics-note">
               {line.coverage ? (
@@ -729,7 +737,9 @@ export function LineBand({ line }) {
               ) : (
                 <>在线链路目前只有 {line.periods?.length || 0} 期，采集密度为每 2 小时一次（每周 84 个采样点）。</>
               )}
-              「本周去重款数」与「峰值小时同时在线款数」是两个口径，不可相减。
+              {onlineDedup && onlineConcurrent
+                ? `「${onlineDedup.label}」按整周去重，「${onlineConcurrent.label}」是单小时快照，两个口径不可相减。`
+                : '整周去重的款数与单小时同时在线款数是两个口径，不可相减。'}
             </div>
           )}
         </div>
