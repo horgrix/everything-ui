@@ -876,7 +876,7 @@ function rankValueText(value) {
   return Math.abs(value) < 100000 ? fmtFull(value) : fmtCompact(value);
 }
 
-export function RankCard({ line, periodType, periodKey, distLabels }) {
+export function RankCard({ line, periodType, periodKey, distLabels, flags }) {
   const meta = LINE_META[line] || LINE_META.download;
   const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
@@ -909,7 +909,18 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   // 返回过全 null，这时 lowSample 即使为 true 也没有可见依据，宁可不提示也不能凭空报警。
   const hoursKnown = items.filter((item) => typeof item.realHours === 'number');
   const sample = data?.sample || null;
-  const lowSample = sample?.lowSample === true && hoursKnown.length > 0;
+  // 覆盖不全的期（如 W45 只有 11-08 一天 8 小时）已有一条 online_partial_coverage 说明，
+  // 再叠「样本不足」等于同一个问题说两遍，按后端建议只留覆盖那条。
+  // 注意 flag 在后续期也会返回（W46 的响应里同样带「2026-45 只采集到 8/84 小时」），
+  // 所以必须确认它讲的是**当前期**，否则会把 W46 合法的低样本提示一起吞掉。
+  const periodKeyOfFlag = (f) => {
+    const m = String(f.detail || '').match(/\d{4}-\d{2}/);
+    return m ? m[0] : null;
+  };
+  const coverageWarned = (flags || []).some(
+    (f) => f.item === 'online_partial_coverage' && periodKeyOfFlag(f) === String(periodKey)
+  );
+  const lowSample = sample?.lowSample === true && hoursKnown.length > 0 && !(line === 'online' && coverageWarned);
   const hoursList = hoursKnown.length ? hoursKnown.map((item) => item.realHours) : [];
   const sampleMin = sample && typeof sample.minRealHours === 'number' ? sample.minRealHours : hoursList.length ? Math.min(...hoursList) : null;
   const sampleMax = sample && typeof sample.maxRealHours === 'number' ? sample.maxRealHours : hoursList.length ? Math.max(...hoursList) : null;
@@ -1054,11 +1065,18 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   );
 }
 
-export function RankGrid({ periodType, periodKey, distLabels }) {
+export function RankGrid({ periodType, periodKey, distLabels, flags }) {
   return (
     <div className="pr-ranks">
       {['download', 'ad', 'online'].map((line) => (
-        <RankCard key={line} line={line} periodType={periodType} periodKey={periodKey} distLabels={distLabels} />
+        <RankCard
+          key={line}
+          line={line}
+          periodType={periodType}
+          periodKey={periodKey}
+          distLabels={distLabels}
+          flags={flags}
+        />
       ))}
     </div>
   );
