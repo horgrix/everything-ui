@@ -692,7 +692,9 @@ export function LineBand({ line }) {
           ))}
           {isOnline && (
             <div className="pr-metrics-note">
-              在线数据自 2026-11-07 起采集，目前 {line.periods?.length || 0} 期；「本周去重款数」与「峰值小时同时在线款数」是两个口径，不可相减。
+              在线链路目前只有 {line.periods?.length || 0} 期，采集密度是每 2 小时一次（每周 84 个采样点，
+              覆盖情况见下方「数据质量」里的 online_partial_coverage）；「本周去重款数」与「峰值小时同时在线款数」
+              是两个口径，不可相减。
             </div>
           )}
         </div>
