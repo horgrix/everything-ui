@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPeriods, fetchReport } from '../../api/periodic';
+import { withCoreKpis } from './coreKpis';
 import { Panel, Placeholder, fmtCutoff, fmtDateTime } from './prKit';
 import {
   Cover,
@@ -52,7 +54,7 @@ function LoadingView() {
  * 定期报告（周报 / 月报）
  *
  * 一个期次一篇「刊」：
- *   封面（两个主数字 + 本期状态）→ 6 个核心指标卡（环比 + 迷你趋势）→ 趋势图 + 本期要点
+ *   封面（两个主数字 + 本期状态）→ 6 个核心指标卡（三款数 + 三总量，环比 + 迷你趋势）→ 趋势图 + 本期要点
  *   → 三条业务线明细（分型拆解）→ 重点游戏 → 榜单 → 数据质量与口径。
  *
  * 所有取值 / 上期 / 环比 / 可用期数 / 质量标记都来自 everything-api 的
@@ -78,7 +80,8 @@ export default function PeriodicReport() {
     retry: 1,
   });
 
-  const report = reportQuery.data;
+  // 核心指标读哪 6 个数由 coreKpis.js 的口径清单定序（三款数 + 三总量），其余区块照用接口原值
+  const report = useMemo(() => withCoreKpis(reportQuery.data), [reportQuery.data]);
   const meta = report?.meta;
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;

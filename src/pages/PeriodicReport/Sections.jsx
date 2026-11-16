@@ -18,6 +18,7 @@ import {
   fmtFull,
   fmtPct,
 } from './prKit';
+import { indexedKpis } from './coreKpis';
 
 /* ================================================================== 封面 */
 
@@ -199,9 +200,10 @@ export function KpiGrid({ coreKpis, totalPeriods }) {
 
 /** 从接口数据里生成「本期要点」：只用已给出的值，不做额外推断 */
 export function buildInsights(report) {
-  const { coreKpis = [], lines = [], flags = [], meta } = report;
+  const { lines, flags = [], meta } = report;
   const out = [];
-  const byKey = Object.fromEntries(coreKpis.map((k) => [k.key, k]));
+  // 下载结构一条要看 APP / PC 下载量，它们已不在核心区（在那里会被三款数挤掉），从业务线明细里拿
+  const byKey = Object.fromEntries(indexedKpis(report));
 
   // 1) 高优先级口径问题永远排第一
   flags
@@ -249,7 +251,7 @@ export function buildInsights(report) {
 
   // 4) 连续上升 / 下降的指标（至少 4 期，避免把两期噪声说成趋势）
   const streak = [];
-  coreKpis.forEach((k) => {
+  (report.coreKpis || []).forEach((k) => {
     const values = (k.trend || []).map((t) => t.value).filter((v) => v != null);
     if (values.length < 4) return;
     const dir = Math.sign(values[values.length - 1] - values[values.length - 2]);
@@ -277,7 +279,7 @@ export function buildInsights(report) {
   }
 
   // 5) 趋势期数不足的提醒
-  const short = coreKpis.filter((k) => k.insufficientHistory && k.hasValue);
+  const short = (report.coreKpis || []).filter((k) => k.insufficientHistory && k.hasValue);
   if (short.length) {
     out.push({
       tone: 'muted',

@@ -512,6 +512,9 @@
 
 .pr-chart-tabs {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   gap: 2px;
   padding: 2px;
   background: #f2f5f7;
