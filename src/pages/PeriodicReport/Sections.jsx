@@ -836,7 +836,8 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
         {degenerate && (
           <div className="pr-rank-empty">
             <i className="bi bi-slash-circle d-block mb-1" style={{ fontSize: 15 }} />
-            该维度 {items.length} 行的数值全部是 {rankValueText(items[0].value)}，疑似源表占位/下限值，已隐藏榜单。
+            该维度 {items.length} 行的数值全部是 {rankValueText(items[0].value)}，是源端占位/下限值而非真实排名，
+            因此不展示名次（等数据侧重算该榜后会自动恢复，不是渲染问题）。
           </div>
         )}
         {!degenerate && items.map((item, index) => {
