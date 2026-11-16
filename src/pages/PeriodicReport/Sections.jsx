@@ -552,12 +552,28 @@ export function LineBand({ line }) {
         title={meta.label}
         sub={`${line.kpis.length} 个指标 · 更新于 ${fmtDateTime(line.updatedAt) || '—'}`}
         right={
-          breakdown && (
-            <span className={`pr-consistency${consistent ? '' : ' is-warn'}`} title={breakdown.consistency && !consistent ? `汇总 ${fmtFull(breakdown.consistency.allValue)} vs 分型合计 ${fmtFull(breakdown.consistency.detailTotal)}（${breakdown.consistency.gapPct > 0 ? '+' : ''}${breakdown.consistency.gapPct}%）` : '分型合计与汇总行一致'}>
-              <i className={`bi ${consistent ? 'bi-check2-circle' : 'bi-exclamation-circle'}`} />
-              {consistent ? '口径一致' : `合计偏差 ${breakdown.consistency.gapPct}%`}
-            </span>
-          )
+          breakdown && (() => {
+            const c = breakdown.consistency || {};
+            // summable=false：分型各自取周内峰值、峰值不在同一小时，相加必然大于总量，
+            // 这时不能挂「口径一致」当作可相加的暗示，要明确写「不可相加」并说明去哪看占比
+            if (c.summable === false) {
+              return (
+                <span className="pr-consistency is-note" title={c.note || '分型峰值不在同一小时，相加不等于总量'}>
+                  <i className="bi bi-slash-circle" />
+                  分型不可相加 · 看峰值小时
+                </span>
+              );
+            }
+            return (
+              <span
+                className={`pr-consistency${consistent ? '' : ' is-warn'}`}
+                title={c.note || (consistent ? '分型合计与汇总行一致' : `汇总 ${fmtFull(c.allValue)} vs 分型合计 ${fmtFull(c.detailTotal)}（${c.gapPct > 0 ? '+' : ''}${c.gapPct}%）`)}
+              >
+                <i className={`bi ${consistent ? 'bi-check2-circle' : 'bi-exclamation-circle'}`} />
+                {consistent ? '口径一致' : `合计偏差 ${c.gapPct}%`}
+              </span>
+            );
+          })()
         }
       />
       <div className="pr-line-body">

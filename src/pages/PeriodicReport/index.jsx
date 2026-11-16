@@ -89,6 +89,7 @@ export default function PeriodicReport() {
   const listed = periodsQuery.data?.periods || [];
   const options = listed.length ? listed : available.map((key) => ({ key, label: key, lines: {} }));
   const labelOf = (key) => options.find((item) => item.key === key)?.label || key;
+  const latestAvailable = periodsQuery.data?.latest || null;
 
   const gotoPeriod = (key) => {
     const next = new URLSearchParams(params);
@@ -191,7 +192,30 @@ export default function PeriodicReport() {
 
       {reportQuery.isLoading && <LoadingView />}
 
-      {reportQuery.error && (
+      {reportQuery.error?.noData && (
+        <Panel style={{ marginTop: 18 }}>
+          <div className="pr-empty-state">
+            <i className="bi bi-calendar-x d-block mb-2" style={{ fontSize: 22, color: '#A7B0B8' }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#3B4750' }}>
+              {keyParam || '所选期次'} 这一期还没有数据
+            </div>
+            <div style={{ fontSize: 11.5, color: '#8A959E', marginTop: 6, lineHeight: 1.7 }}>
+              周期表还没生成这一行（周报每周一产出、月报次月产出），不是接口故障；
+              指标级的「待生成」只用于「本期已生成、个别指标还没到时间」的情况。
+            </div>
+            <button
+              type="button"
+              className="pr-ghost-btn"
+              style={{ marginTop: 12 }}
+              onClick={() => gotoPeriod(null)}
+            >
+              查看最新一期{latestAvailable ? `（${labelOf(latestAvailable)}）` : ''}
+            </button>
+          </div>
+        </Panel>
+      )}
+
+      {reportQuery.error && !reportQuery.error.noData && (
         <div className="pr-error">
           <i className="bi bi-exclamation-octagon" style={{ fontSize: 15, marginTop: 1 }} />
           <div>

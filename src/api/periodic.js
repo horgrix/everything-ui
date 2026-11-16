@@ -24,13 +24,27 @@ client.interceptors.response.use(
   (response) => {
     const body = response.data;
     if (body && body.code !== undefined && body.code !== 0) {
-      return Promise.reject(new Error(body.message || body.msg || `接口错误（code ${body.code}）`));
+      const err = new Error(body.message || body.msg || `接口错误（code ${body.code}）`);
+      // 40000 = 该期还没有数据（周期表尚未生成这一行），页面要区别于「接口挂了」
+      err.code = body.code;
+      err.noData = body.code === 40000;
+      return Promise.reject(err);
     }
     return body?.data;
   },
   (error) => {
+    const status = error.response?.status;
+    const message = error.response?.data?.message || error.message || '请求失败';
+    // 一期完全没有数据时接口回 404 / 40000，属于「还没生成」，不是故障
+    if (status === 404) {
+      const err = new Error(message);
+      err.code = error.response?.data?.code;
+      err.noData = true;
+      handleResponseError(error, 'periodic API');
+      return Promise.reject(err);
+    }
     handleResponseError(error, 'periodic API');
-    return Promise.reject(new Error(error.response?.data?.message || error.message || '请求失败'));
+    return Promise.reject(new Error(message));
   }
 );
 

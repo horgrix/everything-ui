@@ -832,6 +832,18 @@
   background: rgba(154, 122, 53, 0.12);
 }
 
+/* summable=false 的分型（如在线各分型各自周内峰值）：中性色，避免被读成「已校验可相加」 */
+.pr-consistency.is-note {
+  color: #63727e;
+  background: rgba(122, 139, 153, 0.12);
+}
+
+/* 整期无数据（404 / 40000）的空态 */
+.pr-empty-state {
+  padding: 44px 24px 40px;
+  text-align: center;
+}
+
 /* ---------------------------------------------------------------- 按游戏 */
 
 .pr-players {
