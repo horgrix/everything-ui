@@ -521,15 +521,23 @@ function placeholderPeak(items) {
  * 兜底提示文案。百分比必须和口径对齐：
  * 「款数 / app-小时」用 placeholderRatio；「人数」只能用人数口径（接口值或推导值，推导加「约」）。
  */
-function placeholderNoteText(info, extra = '', { withPlayers = true } = {}) {
+function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts = true } = {}) {
   const label = info.worstRow?.label || '该分型';
   const parts = [];
   if (info.rowsHigh && info.worstRow) {
-    const games = info.worstRow.gameCnt;
-    const sentinelGames = games ? Math.round(info.rowRatio * games) : null;
-    parts.push(
-      `${label}${games ? ` ${games} 款里 ` : ' '}${sentinelGames ?? ''}${sentinelGames ? ' 款' : ''}（${(info.rowRatio * 100).toFixed(0)}% 的记录）为源端哨兵值 ${ONLINE_SENTINEL}`
-    );
+    if (withCounts) {
+      // 同小时快照：gameCnt 是该小时这款分型的款数，反推「多少款是哨兵值」是恒等换算
+      const games = info.worstRow.gameCnt;
+      const sentinelGames = games ? Math.round(info.rowRatio * games) : null;
+      parts.push(
+        `${label}${games ? ` ${games} 款里 ` : ' '}${sentinelGames ?? ''}${sentinelGames ? ' 款' : ''}（${(info.rowRatio * 100).toFixed(0)}% 的记录）为源端哨兵值 ${ONLINE_SENTINEL}`
+      );
+    } else {
+      // 并列视图：分母是 app-小时、分子是「款 × 小时」，不能反推款数，只说比例
+      parts.push(
+        `${label}全周约 ${(info.rowRatio * 100).toFixed(0)}% 的记录为源端哨兵值 ${ONLINE_SENTINEL}（按行计）`
+      );
+    }
   }
   if (withPlayers && info.playersHigh) {
     const peak = info.worstRow?.peakOnlinePlayers;
@@ -712,7 +720,7 @@ export function LineBand({ line }) {
                 {placeholderPeak(items) && (
                   <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
                     <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-                    {placeholderNoteText(placeholderPeak(items), '；并列视图同样只作方向参考', { withPlayers: false })}
+                    {placeholderNoteText(placeholderPeak(items), '；排名与均值同样只作方向参考', { withPlayers: false, withCounts: false })}
                   </div>
                 )}
               </>
