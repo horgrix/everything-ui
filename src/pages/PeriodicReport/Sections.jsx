@@ -492,12 +492,15 @@ function placeholderPeak(items) {
   const players = (items || []).filter((item) => typeof item.placeholderPlayerRatio === 'number');
   if (!rows.length && !players.length) return null;
 
-  // 最坏的按行口径分型（后端未透人数口径时，拿它推导人数近似值）
-  const worstRow = rows.length ? rows.reduce((a, b) => (b.placeholderRatio > a.placeholderRatio ? b : a)) : null;
-  const rowRatio = worstRow ? worstRow.placeholderRatio : null;
-  const playerRatioExact = players.length
-    ? players.reduce((m, item) => Math.max(m, item.placeholderPlayerRatio), 0)
-    : null;
+  // 「最坏的分型」按人数口径挑（是否可信就是看人数被稀释多少）；
+  // 没有人人口径时才按行口径挑。绝不能写死分型名——W46 是独立小游戏，W45 是 Maker。
+  const worstRow = players.length
+    ? players.reduce((a, b) => (b.placeholderPlayerRatio > a.placeholderPlayerRatio ? b : a))
+    : rows.length
+      ? rows.reduce((a, b) => (b.placeholderRatio > a.placeholderRatio ? b : a))
+      : null;
+  const rowRatio = worstRow && typeof worstRow.placeholderRatio === 'number' ? worstRow.placeholderRatio : null;
+  const playerRatioExact = worstRow && typeof worstRow.placeholderPlayerRatio === 'number' ? worstRow.placeholderPlayerRatio : null;
 
   // 人数口径：接口给了就直用；否则用「兜底款数 × 哨兵值 / 该分型在线」估算
   let playerRatio = playerRatioExact;
