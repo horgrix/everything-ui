@@ -546,10 +546,16 @@ function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts 
   }
   if (withPlayers && info.playersHigh) {
     const peak = info.worstRow?.peakOnlinePlayers;
-    const sentinelPlayers = peak ? Math.round(info.playerRatio * peak / 100) * 100 : null;
+    // 人数口径的分母就是该分型在线人数，乘以占比就是哨兵值贡献的人数（列定义即真实求和，不依赖哨兵等于 100）
+    const sentinelPlayers = peak ? Math.round(info.playerRatio * peak) : null;
+    const rest = peak && sentinelPlayers != null ? peak - sentinelPlayers : null;
     parts.push(
-      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${sentinelPlayers ? fmtFull(sentinelPlayers) : ''} 人` : ''}（${(info.playerRatio * 100).toFixed(1)}%）来自这些哨兵值`
+      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${fmtFull(sentinelPlayers)} 人` : ''}（${(info.playerRatio * 100).toFixed(1)}%）来自这些哨兵值`
     );
+    if (rest != null && rest >= 0) {
+      // 100 对小体量游戏是偏高填充（剔除后约 56 人/款），所以含兜底的那个数是上限，不是下限
+      parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余 ${fmtFull(rest)} 人`);
+    }
   }
   const head = parts.length ? parts.join('；') : '含采集兜底值';
   const caveat = parts.length > 1 ? '两个百分比口径不同（款数 / 人数），不要互相换算；' : '';
