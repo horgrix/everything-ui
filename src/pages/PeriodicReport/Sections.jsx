@@ -704,8 +704,11 @@ export function LineBand({ line }) {
                     // 进行中期且窗口末日未定稿时，缺口可能只是「昨天还没同步」，不按采集故障表述
                     const pending = line.coverage.gap && line.coverage.windowEndFinal === false;
                     const tone = line.coverage.gap && !pending ? '#9A7A35' : '#8A959E';
+                    const ratio = line.coverage.ratio;
                     const text = !line.coverage.gap
-                      ? '，窗口内完整'
+                      ? ratio != null && ratio < 0.999
+                        ? '，缺口在阈值内（≥90%）'   // 有少量缺口但没到告警线，别说成「完整」
+                        : '，窗口内完整'
                       : pending
                         ? '，窗口末尚未定稿（可能只是日更同步延迟），缺口仅作参考'
                         : '，窗口内采集有缺失';
@@ -956,7 +959,7 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
     typeof coverage?.gap === 'boolean'
       ? coverage.gap === true
       : (flags || []).some((f) => {
-          if (f.item !== 'online_partial_coverage') return false;
+          if (!String(f.item || '').endsWith('_partial_coverage')) return false;
           if (f.scope) return f.scope === 'current';
           return periodKeyOfFlag(f) === String(periodKey);
         });
