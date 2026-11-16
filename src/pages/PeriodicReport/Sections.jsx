@@ -700,9 +700,17 @@ export function LineBand({ line }) {
                   采集覆盖：{line.coverage.windowStart}~{line.coverage.windowEnd} 窗口内{' '}
                   {line.coverage.sampleHours}/{line.coverage.expectedSamples} 个采样点（约{' '}
                   {(line.coverage.ratio * 100).toFixed(0)}%）
-                  <span style={{ color: line.coverage.gap ? '#9A7A35' : '#8A959E' }}>
-                    {line.coverage.gap ? '，窗口内采集有缺失' : '，窗口内完整'}
-                  </span>
+                  {(() => {
+                    // 进行中期且窗口末日未定稿时，缺口可能只是「昨天还没同步」，不按采集故障表述
+                    const pending = line.coverage.gap && line.coverage.windowEndFinal === false;
+                    const tone = line.coverage.gap && !pending ? '#9A7A35' : '#8A959E';
+                    const text = !line.coverage.gap
+                      ? '，窗口内完整'
+                      : pending
+                        ? '，窗口末尚未定稿（可能只是日更同步延迟），缺口仅作参考'
+                        : '，窗口内采集有缺失';
+                    return <span style={{ color: tone }}>{text}</span>;
+                  })()}
                   {line.coverage.periodRatio != null && (
                     <>
                       ；期口径 {line.coverage.sampleHours}/{line.coverage.periodExpectedSamples}（约{' '}
