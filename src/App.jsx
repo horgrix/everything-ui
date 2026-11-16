@@ -13,7 +13,6 @@ const QuantInfo = lazy(() => import('./pages/QuantInfo'));
 const TapTapReport = lazy(() => import('./pages/TapTapReport'));
 const TapRepMonthly = lazy(() => import('./pages/TapRepMonthly'));
 const PeriodicReport = lazy(() => import('./pages/PeriodicReport'));
-const PeriodicReportDetail = lazy(() => import('./pages/PeriodicReport/DetailView'));
 
 function RouteFallback() {
   return (
@@ -40,7 +39,8 @@ export default function App() {
                 <Route path="/taptap" element={<TapTapReport />} />
                 <Route path="/taprep-monthly" element={<TapRepMonthly />} />
                 <Route path="/periodic-report" element={<PeriodicReport />} />
-                <Route path="/periodic-report/detail" element={<PeriodicReportDetail />} />
+                {/* 旧「报告详情」独立页已合并进一期刊（2026-11 改版），书签重定向到整篇报告 */}
+                <Route path="/periodic-report/detail" element={<Navigate to="/periodic-report" replace />} />
                 <Route path="/finance" element={<FinanceInfo />} />
                 <Route path="/quant" element={<QuantInfo />} />
                 {/* 已下线的旧路径（含数据大盘 /dashboard）统一回首页，避免书签打开空白 */}

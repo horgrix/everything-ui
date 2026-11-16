@@ -1,163 +1,310 @@
 import { useSearchParams } from 'react-router-dom';
-import WeekCard from './WeekCard';
-import { useWeeklyReport, useActiveStat, buildStatMap } from './data';
+import { useQuery } from '@tanstack/react-query';
+import { fetchPeriods, fetchReport } from '../../api/periodic';
+import { Panel, Placeholder, fmtDateTime } from './prKit';
+import {
+  Cover,
+  KpiGrid,
+  LineBand,
+  PlayerCards,
+  QualitySection,
+  RankGrid,
+  TrendSection,
+} from './Sections';
+import './periodic.css';
 
-/** 周报最多展示的最新期数 */
-const MAX_WEEKS = 4;
-
-/** 空态 / 加载态面板样式 */
-const PANEL_STYLE = {
-  background: '#fff',
-  border: '1px solid #EDF0F2',
-  borderRadius: 16,
-  boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
-  padding: '18px 22px',
-  fontSize: 12.5,
-};
-
-/** Tab 配置（月报 / 年报的数据源尚未接入） */
 const TABS = [
-  { key: 'weekly', label: '周报', icon: 'bi-calendar-week' },
-  { key: 'monthly', label: '月报', icon: 'bi-calendar-month' },
-  { key: 'yearly', label: '年报', icon: 'bi-calendar-range' },
+  { key: 'weekly', label: '周报' },
+  { key: 'monthly', label: '月报' },
 ];
 
-/** 未接入的 Tab 占位 */
-function PendingTab({ label, table }) {
+/** 区块头：序号 + 标题 + 说明（报告式排版的小节标题） */
+function SectionHead({ no, title, sub, right }) {
   return (
-    <div style={{ ...PANEL_STYLE, textAlign: 'center', padding: '56px 20px' }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#3B4750' }}>{label}数据源尚未接入</div>
-      <div style={{ fontSize: 12, color: '#A7B0B8', marginTop: 6 }}>待接入后自动展示：{table}</div>
-    </div>
+    <>
+      <div className="pr-section-head">
+        <div className="pr-section-title">
+          <span className="pr-section-no">{no}</span>
+          {title}
+          {sub && <span className="pr-section-sub">{sub}</span>}
+        </div>
+        {right && <div className="pr-section-sub">{right}</div>}
+      </div>
+    </>
   );
 }
 
+function LoadingView() {
+  return (
+    <>
+      <div className="pr-skeleton" style={{ height: 178, marginTop: 20, borderRadius: 20 }} />
+      <div className="pr-kpi-grid" style={{ marginTop: 18 }}>
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div className="pr-skeleton" key={index} style={{ height: 150 }} />
+        ))}
+      </div>
+      <div className="pr-skeleton" style={{ height: 260, marginTop: 26 }} />
+    </>
+  );
+}
+
+/**
+ * 定期报告（周报 / 月报）
+ *
+ * 一个期次一篇「刊」：
+ *   封面（两个主数字 + 本期状态）→ 6 个核心指标卡（环比 + 迷你趋势）→ 趋势图 + 本期要点
+ *   → 三条业务线明细（分型拆解）→ 重点游戏 → 榜单 → 数据质量与口径。
+ *
+ * 所有取值 / 上期 / 环比 / 可用期数 / 质量标记都来自 everything-api 的
+ * `GET /api/v09/data/periodic/{periods,report,rank}`，页面不再直连数据库。
+ */
 export default function PeriodicReport() {
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.key === params.get('tab')) ? params.get('tab') : 'weekly';
+  const periodType = params.get('period') === 'monthly' ? 'monthly' : 'weekly';
+  const keyParam = params.get('key') || undefined;
 
-  const weeklyQuery = useWeeklyReport();
-  const activeQuery = useActiveStat();
+  const periodsQuery = useQuery({
+    queryKey: ['pr-periods', periodType],
+    queryFn: () => fetchPeriods(periodType),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
-  const rows = weeklyQuery.data || [];
-  const statMap = buildStatMap(activeQuery.data);
+  const reportQuery = useQuery({
+    queryKey: ['pr-report', periodType, keyParam || 'latest'],
+    queryFn: () => fetchReport(periodType, keyParam),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
 
-  const updatedAtRaw = rows.find((r) => r.updatedAt)?.updatedAt;
-  const updatedAt = updatedAtRaw ? String(updatedAtRaw).replace('T', ' ').slice(0, 16) : null;
+  const report = reportQuery.data;
+  const meta = report?.meta;
+  const available = meta?.availablePeriods || [];
+  const currentKey = meta?.periodKey;
+  const currentIndex = available.indexOf(currentKey);
+  const prevKey = currentIndex > 0 ? available[currentIndex - 1] : null;
+  const nextKey = currentIndex >= 0 && currentIndex < available.length - 1 ? available[currentIndex + 1] : null;
 
-  const setTab = (key) => {
+  const listed = periodsQuery.data?.periods || [];
+  const options = listed.length ? listed : available.map((key) => ({ key, label: key, lines: {} }));
+  const labelOf = (key) => options.find((item) => item.key === key)?.label || key;
+
+  const gotoPeriod = (key) => {
     const next = new URLSearchParams(params);
-    if (key === 'weekly') next.delete('tab');
-    else next.set('tab', key);
+    if (key) next.set('key', key);
+    else next.delete('key');
     setParams(next, { replace: true });
   };
 
+  const switchType = (type) => {
+    const next = new URLSearchParams(params);
+    if (type === 'weekly') next.delete('period');
+    else next.set('period', type);
+    next.delete('key');
+    setParams(next, { replace: true });
+  };
+
+  const title = periodType === 'weekly' ? 'TapTap 数据周报' : 'TapTap 数据月报';
+  const rangeText = meta ? `${meta.periodStart} 至 ${meta.periodEnd}` : '';
+
   return (
-    <div className="container-fluid p-4" style={{ maxWidth: 1440, margin: '0 auto' }}>
-      {/* 页头 */}
-      <div className="d-flex flex-wrap align-items-end justify-content-between gap-3">
+    <div className="pr-page">
+      <header className="pr-head">
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.4, color: '#A7B0B8' }}>PERIODIC REPORT</div>
-          <h1 style={{ fontSize: 27, fontWeight: 650, letterSpacing: -0.3, color: '#1B2228', margin: '4px 0 0' }}>定期报告</h1>
-          <div style={{ fontSize: 12.5, color: '#8A959E', marginTop: 6 }}>
-            周报 · 月报 · 年报 概览
-            {updatedAt && (
-              <span className="ms-2" style={{ color: '#A7B0B8' }}>
-                数据更新于 {updatedAt}
-              </span>
-            )}
+          <div className="pr-overline">TapTap · Periodic Report</div>
+          <h1>
+            {title}
+            {meta && <span className="pr-head-issue">{meta.periodLabel}</span>}
+          </h1>
+          <div className="pr-head-sub">
+            <span>下载 · 广告 · 在线 三条业务线</span>
+            {rangeText && <span>· {rangeText}</span>}
+            {meta?.updatedAt && <span>· 数据更新 {fmtDateTime(meta.updatedAt)}</span>}
+            {meta?.isLatest && <span className="pr-coverage">最新一期</span>}
           </div>
         </div>
-        <a
-          href="https://file.horgrix.com/downloads/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            border: '1px solid #E3E8EC',
-            background: '#fff',
-            color: '#3B4750',
-            fontSize: 12.5,
-            fontWeight: 500,
-            padding: '8px 16px',
-            borderRadius: 10,
-            textDecoration: 'none',
-            boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
-          }}
-        >
-          报告下载中心
-          <i className="bi bi-arrow-up-right ms-1" style={{ fontSize: 11 }}></i>
-        </a>
-      </div>
 
-      {/* 周期切换：胶囊分段控件 */}
-      <div
-        className="d-inline-flex"
-        style={{ background: '#F2F5F7', borderRadius: 12, padding: 4, marginTop: 20, marginBottom: 20 }}
-        role="group"
-        aria-label="定期报告周期切换"
-      >
-        {TABS.map((t) => {
-          const active = tab === t.key;
-          return (
+        <div className="pr-head-actions">
+          <div className="pr-seg" role="tablist" aria-label="报告周期">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={tab.key === periodType}
+                className={tab.key === periodType ? 'is-active' : ''}
+                onClick={() => switchType(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="pr-period">
             <button
-              key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
-              style={{
-                border: 'none',
-                background: active ? '#fff' : 'transparent',
-                boxShadow: active ? '0 1px 3px rgba(16,24,40,0.10)' : 'none',
-                borderRadius: 9,
-                padding: '6px 18px',
-                fontSize: 12.5,
-                fontWeight: active ? 600 : 500,
-                color: active ? '#1F272E' : '#71808A',
-                cursor: 'pointer',
-                transition: 'all .15s',
-              }}
+              className="pr-icon-btn"
+              onClick={() => prevKey && gotoPeriod(prevKey)}
+              disabled={!prevKey}
+              title={prevKey ? `上一期：${labelOf(prevKey)}` : '已是最早一期'}
+              aria-label="上一期"
             >
-              {t.label}
+              <i className="bi bi-chevron-left" />
             </button>
-          );
-        })}
-      </div>
+            <select
+              value={currentKey || ''}
+              onChange={(event) => gotoPeriod(event.target.value)}
+              aria-label="选择期次"
+            >
+              {!currentKey && <option value="">载入中…</option>}
+              {options.map((option) => {
+                const missing = Object.entries(option.lines || {})
+                  .filter(([, has]) => !has)
+                  .map(([line]) => line);
+                return (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                    {missing.length ? `（${missing.length} 条线缺数据）` : ''}
+                  </option>
+                );
+              })}
+            </select>
+            <button
+              type="button"
+              className="pr-icon-btn"
+              onClick={() => nextKey && gotoPeriod(nextKey)}
+              disabled={!nextKey}
+              title={nextKey ? `下一期：${labelOf(nextKey)}` : '已是最新一期'}
+              aria-label="下一期"
+            >
+              <i className="bi bi-chevron-right" />
+            </button>
+          </div>
 
-      {tab === 'weekly' && (
-        <>
-          {weeklyQuery.error ? (
-            <div style={PANEL_STYLE} className="text-danger">
-              <i className="bi bi-exclamation-triangle me-1"></i>
-              周报数据加载失败：{weeklyQuery.error.message}
+          <button type="button" className="pr-ghost-btn" onClick={() => window.print()} title="打印或另存为 PDF">
+            <i className="bi bi-printer" />
+            导出
+          </button>
+        </div>
+      </header>
+
+      {reportQuery.isLoading && <LoadingView />}
+
+      {reportQuery.error && (
+        <div className="pr-error">
+          <i className="bi bi-exclamation-octagon" style={{ fontSize: 15, marginTop: 1 }} />
+          <div>
+            <b>报告加载失败：</b>
+            {reportQuery.error.message}
+            <div style={{ marginTop: 6, color: '#8A6A64' }}>
+              该接口与站内其它数据接口共用网关登录态；如果没有权限或期次已不存在，请换一期查看。
+              {keyParam && (
+                <button
+                  type="button"
+                  className="pr-ghost-btn"
+                  style={{ height: 26, padding: '0 10px', marginLeft: 8, fontSize: 11.5 }}
+                  onClick={() => gotoPeriod(null)}
+                >
+                  查看最新一期
+                </button>
+              )}
             </div>
-          ) : weeklyQuery.isLoading ? (
-            <div style={{ ...PANEL_STYLE, textAlign: 'center', padding: '56px 20px', color: '#A7B0B8' }}>
-              <i className="bi bi-hourglass-split d-block mb-2" style={{ fontSize: 26 }}></i>
-              加载中…
-            </div>
-          ) : rows.length === 0 ? (
-            <div style={{ ...PANEL_STYLE, textAlign: 'center', padding: '56px 20px', color: '#A7B0B8' }}>
-              <i className="bi bi-inbox d-block mb-2" style={{ fontSize: 26 }}></i>
-              暂无周报数据
-            </div>
-          ) : (
-            <div className="row g-3">
-              {rows.slice(0, MAX_WEEKS).map((row, i) => (
-                <div className="col-12 col-xl-6" key={row.weekKey}>
-                  <WeekCard
-                    row={row}
-                    prev={rows[i + 1] || null}
-                    stat={statMap[row.weekKey] || null}
-                    statPrev={statMap[rows[i + 1]?.weekKey] || null}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
 
-      {tab === 'monthly' && <PendingTab label="月报" table="dws_periodic_report_overview_monthly" />}
-      {tab === 'yearly' && <PendingTab label="年报" table="dws_periodic_report_overview_yearly" />}
+      {!reportQuery.isLoading && !reportQuery.error && !report && (
+        <Panel style={{ marginTop: 18 }}>
+          <Placeholder height={220}>暂无这一期的数据</Placeholder>
+        </Panel>
+      )}
+
+      {report && (
+        <>
+          <Cover report={report} periodType={periodType} />
+
+          {meta.isPartial && (
+            <div className="pr-banner">
+              <i className="bi bi-hourglass-split" style={{ marginTop: 1 }} />
+              <span>
+                {meta.periodLabel} 尚未走完（{meta.periodStart} 至 {meta.periodEnd}），数值是累计到当前的进度，
+                与上一完整期不可比；环比已标「参考」。
+              </span>
+            </div>
+          )}
+
+          <section className="pr-section">
+            <SectionHead
+              no="01"
+              title="核心指标"
+              sub={`每期都看的 ${report.coreKpis.length} 个数`}
+              right="趋势点来自同一张业务线周期表，缺值期不补 0"
+            />
+            <KpiGrid coreKpis={report.coreKpis} totalPeriods={meta.availablePeriods.length} />
+          </section>
+
+          <TrendSection report={report} />
+
+          <section className="pr-section">
+            <SectionHead
+              no="03"
+              title="业务线明细"
+              sub="汇总行 + 分型拆解"
+              right={`更新至 ${fmtDateTime(meta.updatedAt) || '—'}`}
+            />
+            {report.lines.map((line) => (
+              <LineBand key={line.key} line={line} />
+            ))}
+          </section>
+
+          {report.players?.length > 0 && (
+            <section className="pr-section">
+              <SectionHead
+                no="04"
+                title="重点游戏"
+                sub="XD 单品本周表现"
+                right="来源：概览周表，与业务线周期表分开核算"
+              />
+              <PlayerCards players={report.players} flags={report.flags} />
+            </section>
+          )}
+
+          <section className="pr-section">
+            <SectionHead
+              no="05"
+              title="榜单"
+              sub="总量 / 增量 / 下滑"
+              right={
+                periodType === 'weekly'
+                  ? '同一期榜单，按 is_active=1 去重后取前 8'
+                  : '月榜按自然月累计'
+              }
+            />
+            <RankGrid periodType={periodType} periodKey={meta.periodKey} />
+          </section>
+
+          <section className="pr-section">
+            <SectionHead
+              no="06"
+              title="数据质量与口径"
+              sub={`${report.flags.length} 条标注`}
+              right="新版报表已不再依赖下线的旧表与旧维度"
+            />
+            <QualitySection report={report} />
+          </section>
+
+          <footer className="pr-footer">
+            <span>
+              数据接口：everything-api · /api/v09/data/periodic · {meta.periodType === 'weekly' ? '周报' : '月报'}
+            </span>
+            <span>
+              共 {meta.availablePeriods.length} 期可回看 · 窗口 {meta.window} 期 · 数据更新{' '}
+              {fmtDateTime(meta.updatedAt) || '—'}
+            </span>
+          </footer>
+        </>
+      )}
     </div>
   );
 }
