@@ -554,7 +554,8 @@ function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts 
     );
     if (rest != null && rest >= 0) {
       // 100 对小体量游戏是偏高填充（剔除后约 56 人/款），所以含兜底的那个数是上限，不是下限
-      parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余 ${fmtFull(rest)} 人`);
+      // 哨兵人数 = 占比 × 总数，是实数除法反推，可能带 ±1 的取整误差（如 18,901 vs 18,900），所以写「约」
+      parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余约 ${fmtFull(rest)} 人`);
     }
   }
   if (withPlayers && !withCounts && info.playersHigh && info.playerRatio != null) {
