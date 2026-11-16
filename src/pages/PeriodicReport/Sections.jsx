@@ -922,9 +922,13 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
     const m = String(f.detail || '').match(/\d{4}-\d{2}/);
     return m ? m[0] : null;
   };
-  const coverageWarned = (flags || []).some(
-    (f) => f.item === 'online_partial_coverage' && periodKeyOfFlag(f) === String(periodKey)
-  );
+  // 优先用接口给的 scope（current / previous），它把「谁的原因」钉死了；
+  // 老接口没有 scope 时才退回「detail 里提到的期次 == 当前期」这种字符串判断。
+  const coverageWarned = (flags || []).some((f) => {
+    if (f.item !== 'online_partial_coverage') return false;
+    if (f.scope) return f.scope === 'current';
+    return periodKeyOfFlag(f) === String(periodKey);
+  });
   // 展示层规则：覆盖不全（flag 指当前期）或本期未走完时，不再叠「样本不足」——
   // 这两种情况本来就已经有更强的说明（覆盖不全 / 进行中），W47 首日那种 max<10 是正常现象。
   const suppressed = line === 'online' && (coverageWarned || isPartial === true);
