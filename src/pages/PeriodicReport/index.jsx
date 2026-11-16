@@ -310,6 +310,7 @@ export default function PeriodicReport() {
               periodKey={meta.periodKey}
               distLabels={meta.distLabels}
               flags={report.flags}
+              isPartial={meta.isPartial === true}
             />
           </section>
 

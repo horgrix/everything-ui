@@ -876,7 +876,7 @@ function rankValueText(value) {
   return Math.abs(value) < 100000 ? fmtFull(value) : fmtCompact(value);
 }
 
-export function RankCard({ line, periodType, periodKey, distLabels, flags }) {
+export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial }) {
   const meta = LINE_META[line] || LINE_META.download;
   const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
@@ -920,7 +920,10 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags }) {
   const coverageWarned = (flags || []).some(
     (f) => f.item === 'online_partial_coverage' && periodKeyOfFlag(f) === String(periodKey)
   );
-  const lowSample = sample?.lowSample === true && hoursKnown.length > 0 && !(line === 'online' && coverageWarned);
+  // 展示层规则：覆盖不全（flag 指当前期）或本期未走完时，不再叠「样本不足」——
+  // 这两种情况本来就已经有更强的说明（覆盖不全 / 进行中），W47 首日那种 max<10 是正常现象。
+  const suppressed = line === 'online' && (coverageWarned || isPartial === true);
+  const lowSample = sample?.lowSample === true && hoursKnown.length > 0 && !suppressed;
   const hoursList = hoursKnown.length ? hoursKnown.map((item) => item.realHours) : [];
   const sampleMin = sample && typeof sample.minRealHours === 'number' ? sample.minRealHours : hoursList.length ? Math.min(...hoursList) : null;
   const sampleMax = sample && typeof sample.maxRealHours === 'number' ? sample.maxRealHours : hoursList.length ? Math.max(...hoursList) : null;
@@ -1065,7 +1068,7 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags }) {
   );
 }
 
-export function RankGrid({ periodType, periodKey, distLabels, flags }) {
+export function RankGrid({ periodType, periodKey, distLabels, flags, isPartial }) {
   return (
     <div className="pr-ranks">
       {['download', 'ad', 'online'].map((line) => (
@@ -1076,6 +1079,7 @@ export function RankGrid({ periodType, periodKey, distLabels, flags }) {
           periodKey={periodKey}
           distLabels={distLabels}
           flags={flags}
+          isPartial={isPartial}
         />
       ))}
     </div>
