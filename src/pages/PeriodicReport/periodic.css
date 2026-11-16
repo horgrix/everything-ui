@@ -879,7 +879,19 @@
 }
 
 .pr-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   padding: 14px 18px 12px;
+}
+
+.pr-player-cell-main {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.pr-player-cell-delta {
+  margin-top: 6px;
 }
 
 .pr-player-cell + .pr-player-cell {
@@ -900,6 +912,7 @@
   font-weight: 650;
   letter-spacing: -0.3px;
   color: var(--pr-ink);
+  white-space: nowrap;
 }
 
 .pr-player-cell-value small {
@@ -908,8 +921,31 @@
   color: var(--pr-faint);
 }
 
+/* 迷你趋势放到数字右侧，视觉重心右移、卡面更平衡 */
 .pr-player-spark {
-  margin-top: 10px;
+  margin-top: 0;
+  flex: 1 1 auto;
+  min-width: 72px;
+  max-width: 168px;
+}
+
+.pr-player-spark .pr-spark {
+  width: 100%;
+  display: block;
+}
+
+/* 窄屏：数字和趋势并排会把数值挤到换行，退回「趋势在数字下方」的原排法 */
+@media (max-width: 575.98px) {
+  .pr-player-cell {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .pr-player-spark {
+    flex: 1 0 100%;
+    max-width: none;
+    min-width: 0;
+  }
 }
 
 .pr-flag-inline {

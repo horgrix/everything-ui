@@ -818,29 +818,33 @@ export function PlayerCards({ players, flags }) {
             </div>
             <div className="pr-player-body">
               <div className="pr-player-cell">
-                <div className="pr-player-cell-label">本周下载量</div>
-                <div className="pr-player-cell-value">
-                  {fmtCompact(player.download)}
-                  <small>次</small>
-                </div>
-                <div style={{ marginTop: 6 }}>
-                  <DeltaChip pct={player.downloadDeltaPct} hasValue={player.download != null} size="sm" />
+                <div className="pr-player-cell-main">
+                  <div className="pr-player-cell-label">本周下载量</div>
+                  <div className="pr-player-cell-value">
+                    {fmtCompact(player.download)}
+                    <small>次</small>
+                  </div>
+                  <div className="pr-player-cell-delta">
+                    <DeltaChip pct={player.downloadDeltaPct} hasValue={player.download != null} size="sm" />
+                  </div>
                 </div>
                 <div className="pr-player-spark">
-                  <Sparkline points={player.downloadTrend || []} color="#7E9B84" height={34} />
+                  <Sparkline points={player.downloadTrend || []} color="#7E9B84" height={40} />
                 </div>
               </div>
               <div className="pr-player-cell">
-                <div className="pr-player-cell-label">周均在线</div>
-                <div className="pr-player-cell-value">
-                  {fmtCompact(player.avgOnline)}
-                  <small>人</small>
-                </div>
-                <div style={{ marginTop: 6 }}>
-                  <DeltaChip pct={player.avgOnlineDeltaPct} hasValue={player.avgOnline != null} size="sm" />
+                <div className="pr-player-cell-main">
+                  <div className="pr-player-cell-label">周均在线</div>
+                  <div className="pr-player-cell-value">
+                    {fmtCompact(player.avgOnline)}
+                    <small>人</small>
+                  </div>
+                  <div className="pr-player-cell-delta">
+                    <DeltaChip pct={player.avgOnlineDeltaPct} hasValue={player.avgOnline != null} size="sm" />
+                  </div>
                 </div>
                 <div className="pr-player-spark">
-                  <Sparkline points={player.avgOnlineTrend || []} color="#5C7F8E" height={34} />
+                  <Sparkline points={player.avgOnlineTrend || []} color="#5C7F8E" height={40} />
                 </div>
               </div>
             </div>
