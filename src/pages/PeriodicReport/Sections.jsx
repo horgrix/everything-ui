@@ -157,6 +157,7 @@ export function KpiCard({ kpi, totalPeriods }) {
           hasValue={kpi.hasValue}
           insufficientHistory={kpi.insufficientHistory}
           blocked={kpi.deltaBlocked}
+          reason={kpi.unavailableReason}
           showAbs
         />
         {kpi.prevValue != null && (
@@ -580,6 +581,7 @@ export function LineBand({ line }) {
                   comparable={kpi.deltaComparable}
                   hasValue={kpi.hasValue}
                   blocked={kpi.deltaBlocked}
+                  reason={kpi.unavailableReason}
                   size="sm"
                 />
               </div>
@@ -931,6 +933,14 @@ export function QualitySection({ report }) {
             <div className="pr-note-block-text">
               某指标某期没有数据就显示「—」，不补 0、不回溯更早的期算环比；可用期数不足 3 期的指标不画趋势线。
               本期未走完时数值是累计进度，环比只作参考。
+            </div>
+          </div>
+          <div>
+            <div className="pr-note-block-title">兜底值说明</div>
+            <div className="pr-note-block-text">
+              在线人数源端对低体量游戏按 <code>100</code> 兜底：峰值小时快照里这类行约占四分之一，
+              独立小游戏 / Maker 分型里比例更高，所以在线分型占比只作方向参考；榜单均值已剔除兜底小时，
+              整周期全为兜底值时该维度不出榜。
             </div>
           </div>
           <div>

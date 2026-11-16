@@ -158,9 +158,16 @@ export function DeltaChip({
   showAbs = false,
   size,
   blocked,
+  /** 接口给的缺值原因（如概览周表当期还没生成）；有值时不出现 */
+  reason,
 }) {
   if (!hasValue) {
-    return <span className="pr-chip is-empty">本期无数据</span>;
+    // 有 unavailableReason 说明「还没生成」而不是「没有这项数据」，别混成同一句
+    return (
+      <span className="pr-chip is-empty" title={reason || '本期该指标没有值'}>
+        {reason ? '待生成' : '本期无数据'}
+      </span>
+    );
   }
   // 接口判定环比不可比（覆盖不全 / 副指标）时连上期值都不给，前端也不自己算
   if (blocked) {
