@@ -125,6 +125,17 @@ export function withCoreKpis(report) {
 }
 
 /**
+ * 671（单小时同时在线款数最高）的取值小时：接口哪天透出 concurrent_game_cnt_at，
+ * 就把「取值于 11-15 22」拼到 note 后面——它不等于 peak_hour（那是人数峰值那一小时，653 款），
+ * 所以这里只读接口给的时间，前端不拿别的字段凑。没这个字段就原样返回。
+ */
+function noteWithHour(kpi) {
+  const at = kpi?.concurrent_game_cnt_at || kpi?.online_game_cnt_hour;
+  if (!at || (kpi.note || '').includes(at)) return kpi?.note;
+  return kpi.note ? `${kpi.note}；取值于 ${at}` : `取值于 ${at}`;
+}
+
+/**
  * 03 业务线明细的长名也跟着这份清单走（同一批 KPI 在两处不该叫两个名字）。
  * 只覆盖清单里有的键，其余指标仍用接口 label（如「单小时同时在线款数最高」由后端定文案）。
  */
@@ -135,9 +146,11 @@ export function withLineLabels(report) {
     ...report,
     lines: report.lines.map((line) => ({
       ...line,
-      kpis: (line.kpis || []).map((kpi) =>
-        byLine.has(kpi.key) ? { ...kpi, label: byLine.get(kpi.key) } : kpi
-      ),
+      kpis: (line.kpis || []).map((kpi) => ({
+        ...kpi,
+        ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
+        ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
+      })),
     })),
   };
 }

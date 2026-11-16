@@ -81,7 +81,7 @@ export default function PeriodicReport() {
   });
 
   // 核心指标读哪 6 个数由 coreKpis.js 的口径清单定序（三款数 + 三总量），其余区块照用接口原值
-  const report = useMemo(() => withLineLabels(withCoreKpis(reportQuery.data)), [reportQuery.data]);
+  const report = useMemo(() => withCoreKpis(withLineLabels(reportQuery.data)), [reportQuery.data]);
   const meta = report?.meta;
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;
