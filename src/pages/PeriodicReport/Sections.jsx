@@ -526,7 +526,7 @@ function placeholderPeak(items) {
  * 兜底提示文案。百分比必须和口径对齐：
  * 「款数 / app-小时」用 placeholderRatio；「人数」只能用人数口径（接口值或推导值，推导加「约」）。
  */
-function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts = true } = {}) {
+function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts = true, window = 'hour' } = {}) {
   const label = info.worstRow?.label || '该分型';
   const parts = [];
   if (info.rowsHigh && info.worstRow) {
@@ -544,7 +544,7 @@ function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts 
       );
     }
   }
-  if (withPlayers && info.playersHigh) {
+  if (withPlayers && info.playersHigh && withCounts) {
     const peak = info.worstRow?.peakOnlinePlayers;
     // 人数口径的分母就是该分型在线人数，乘以占比就是哨兵值贡献的人数（列定义即真实求和，不依赖哨兵等于 100）
     const sentinelPlayers = peak ? Math.round(info.playerRatio * peak) : null;
@@ -556,6 +556,9 @@ function placeholderNoteText(info, extra = '', { withPlayers = true, withCounts 
       // 100 对小体量游戏是偏高填充（剔除后约 56 人/款），所以含兜底的那个数是上限，不是下限
       parts.push(`该分型 ${fmtFull(peak)} 人应视为上限，扣除哨兵值后余 ${fmtFull(rest)} 人`);
     }
+  }
+  if (withPlayers && !withCounts && info.playersHigh && info.playerRatio != null) {
+    parts.push(`按整期在线人数计约 ${(info.playerRatio * 100).toFixed(0)}% 来自哨兵值（含兜底的人数是上限）`);
   }
   const head = parts.length ? parts.join('；') : '含采集兜底值';
   const caveat = parts.length > 1 ? '两个百分比口径不同（款数 / 人数），不要互相换算；' : '';
@@ -731,7 +734,7 @@ export function LineBand({ line }) {
                 {placeholderPeak(items) && (
                   <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
                     <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-                    {placeholderNoteText(placeholderPeak(items), '；排名与均值同样只作方向参考', { withPlayers: false, withCounts: false })}
+                    {placeholderNoteText(placeholderPeak(items), '；排名与均值同样只作方向参考', { withPlayers: true, withCounts: false, window: 'period' })}
                   </div>
                 )}
               </>
@@ -907,16 +910,16 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   const hoursKnown = items.filter((item) => typeof item.realHours === 'number');
   const sample = data?.sample || null;
   const lowSample = sample?.lowSample === true && hoursKnown.length > 0;
-  const sampleMax =
-    sample && typeof sample.maxRealHours === 'number'
-      ? sample.maxRealHours
-      : hoursKnown.length
-        ? Math.max(...hoursKnown.map((item) => item.realHours))
-        : null;
-  const sampleRange =
-    sample && typeof sample.minRealHours === 'number' && typeof sample.maxRealHours === 'number'
-      ? `${sample.minRealHours}~${sample.maxRealHours} 小时`
-      : null;
+  const hoursList = hoursKnown.length ? hoursKnown.map((item) => item.realHours) : [];
+  const sampleMin = sample && typeof sample.minRealHours === 'number' ? sample.minRealHours : hoursList.length ? Math.min(...hoursList) : null;
+  const sampleMax = sample && typeof sample.maxRealHours === 'number' ? sample.maxRealHours : hoursList.length ? Math.max(...hoursList) : null;
+  const sampleMedian = sample && typeof sample.medianRealHours === 'number' ? sample.medianRealHours : null;
+  const sampleText =
+    sampleMin == null && sampleMax == null
+      ? null
+      : `有效在线小时${sampleMedian != null ? `：中位 ${sampleMedian}h` : ''}${sampleMin != null ? ` · 最少 ${sampleMin}h` : ''}${
+          sampleMax != null ? ` · 最多 ${sampleMax}h` : ''
+        }`;
 
   return (
     <Panel>
@@ -975,9 +978,8 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
       {lowSample && (
         <div className="pr-rank-notice">
           <i className="bi bi-exclamation-circle me-1" />
-          样本不足 · 名次仅作参考：该榜每行的有效在线小时
-          {sampleMax != null ? `都 ≤ ${sampleMax}` : '都很少'}
-          {sampleRange ? `（本期 ${sampleRange}）` : ''}，均值区分度有限。
+          样本不足 · 名次仅作参考{sampleText ? `：${sampleText}` : ''}，
+          多数游戏只有几个小时有真值，均值区分度有限。
         </div>
       )}
 
