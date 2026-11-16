@@ -666,7 +666,8 @@ export default function SearchView() {
          ORDER BY crawled_at ASC`
       ),
     {},
-    { enabled: !!appId }
+    // 与卡片显示条件一致：只有「无发布时间」的游戏才查预约趋势
+    { enabled: !!appId && !infoQuery.isLoading && targetApp?.releasedAt === '' }
   );
 
   /** 预约趋势 → LineChart 双轴数据（x=毫秒；累计左轴、当日新增右轴） */
@@ -963,8 +964,8 @@ export default function SearchView() {
         </div>
       )}
 
-      {/* 【游戏预约趋势】最近 30 天 */}
-      {targetApp && (
+      {/* 【游戏预约趋势】最近 30 天 —— 只对「尚未发布时间」的游戏显示（已上线游戏看下载趋势即可） */}
+      {targetApp?.releasedAt === '' && !infoQuery.isLoading && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-header bg-white border-0">
             <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>游戏预约趋势</div>
