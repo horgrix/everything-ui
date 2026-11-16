@@ -82,7 +82,32 @@ export function fetchReport(periodType = 'weekly', key) {
     '/report',
     { period: periodType, ...(key ? { key } : {}) },
     key ? [`report-${periodType}-${key}`, `report-${periodType}-latest`] : [`report-${periodType}-latest`]
-  );
+  ).then((data) => normalizeTrendLabels(data, periodType));
+}
+
+/**
+ * 月报的趋势点 label 目前还是周次格式（2026-10 → "W10"），图表 / 工具提示 / 要点句子都会露出来。
+ * 这里统一改成「10 月」；周报原样不动（接口给的 W40 就是对的）。后端修好后这段是幂等的。
+ */
+function normalizeTrendLabels(data, periodType) {
+  if (!data || periodType !== 'monthly') return data;
+  const monthLabel = (period) => {
+    const month = Number(String(period || '').slice(5, 7));
+    return Number.isFinite(month) && month > 0 ? `${month} 月` : period;
+  };
+  const fixTrend = (series) =>
+    (series || []).map((point) =>
+      point && point.period ? { ...point, label: monthLabel(point.period) } : point
+    );
+  (data.coreKpis || []).forEach((kpi) => {
+    if (kpi.trend) kpi.trend = fixTrend(kpi.trend);
+  });
+  (data.lines || []).forEach((line) => {
+    (line.kpis || []).forEach((kpi) => {
+      if (kpi.trend) kpi.trend = fixTrend(kpi.trend);
+    });
+  });
+  return data;
 }
 
 /** 榜单；line = download | ad | online，category = top | gain | loss */
