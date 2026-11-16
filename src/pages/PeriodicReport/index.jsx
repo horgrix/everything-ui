@@ -311,6 +311,7 @@ export default function PeriodicReport() {
               distLabels={meta.distLabels}
               flags={report.flags}
               isPartial={meta.isPartial === true}
+              coverage={report.lines?.find((item) => item.key === 'online')?.coverage || null}
             />
           </section>
 

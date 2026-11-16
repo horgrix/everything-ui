@@ -695,9 +695,28 @@ export function LineBand({ line }) {
           ))}
           {isOnline && (
             <div className="pr-metrics-note">
-              在线链路目前只有 {line.periods?.length || 0} 期，采集密度是每 2 小时一次（每周 84 个采样点，
-              覆盖情况见下方「数据质量」里的 online_partial_coverage）；「本周去重款数」与「峰值小时同时在线款数」
-              是两个口径，不可相减。
+              {line.coverage ? (
+                <>
+                  采集覆盖：{line.coverage.windowStart}~{line.coverage.windowEnd} 窗口内{' '}
+                  {line.coverage.sampleHours}/{line.coverage.expectedSamples} 个采样点（约{' '}
+                  {(line.coverage.ratio * 100).toFixed(0)}%）
+                  <span style={{ color: line.coverage.gap ? '#9A7A35' : '#8A959E' }}>
+                    {line.coverage.gap ? '，窗口内采集有缺失' : '，窗口内完整'}
+                  </span>
+                  {line.coverage.periodRatio != null && (
+                    <>
+                      ；期口径 {line.coverage.sampleHours}/{line.coverage.periodExpectedSamples}（约{' '}
+                      {(line.coverage.periodRatio * 100).toFixed(0)}%
+                      {line.coverage.sourceStartsLate ? '，含期初无源的日子' : ''}，只作参考）
+                    </>
+                  )}
+                  {line.coverage.sourceStartsLate && `；在线数据自 ${line.coverage.sourceStart} 起才有，更早日期无源数据`}
+                  。
+                </>
+              ) : (
+                <>在线链路目前只有 {line.periods?.length || 0} 期，采集密度为每 2 小时一次（每周 84 个采样点）。</>
+              )}
+              「本周去重款数」与「峰值小时同时在线款数」是两个口径，不可相减。
             </div>
           )}
         </div>
@@ -881,7 +900,7 @@ function rankValueText(value) {
   return Math.abs(value) < 100000 ? fmtFull(value) : fmtCompact(value);
 }
 
-export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial }) {
+export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial, coverage }) {
   const meta = LINE_META[line] || LINE_META.download;
   const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
@@ -924,11 +943,15 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
   };
   // 优先用接口给的 scope（current / previous），它把「谁的原因」钉死了；
   // 老接口没有 scope 时才退回「detail 里提到的期次 == 当前期」这种字符串判断。
-  const coverageWarned = (flags || []).some((f) => {
-    if (f.item !== 'online_partial_coverage') return false;
-    if (f.scope) return f.scope === 'current';
-    return periodKeyOfFlag(f) === String(periodKey);
-  });
+  // 首选接口的 lines[online].coverage.gap（窗口内是否真有洞），没有这个结构时退回 flag 判断
+  const coverageWarned =
+    typeof coverage?.gap === 'boolean'
+      ? coverage.gap === true
+      : (flags || []).some((f) => {
+          if (f.item !== 'online_partial_coverage') return false;
+          if (f.scope) return f.scope === 'current';
+          return periodKeyOfFlag(f) === String(periodKey);
+        });
   // 展示层规则：覆盖不全（flag 指当前期）或本期未走完时，不再叠「样本不足」——
   // 这两种情况本来就已经有更强的说明（覆盖不全 / 进行中），W47 首日那种 max<10 是正常现象。
   const suppressed = line === 'online' && (coverageWarned || isPartial === true);
@@ -1077,7 +1100,7 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
   );
 }
 
-export function RankGrid({ periodType, periodKey, distLabels, flags, isPartial }) {
+export function RankGrid({ periodType, periodKey, distLabels, flags, isPartial, coverage }) {
   return (
     <div className="pr-ranks">
       {['download', 'ad', 'online'].map((line) => (
@@ -1089,6 +1112,7 @@ export function RankGrid({ periodType, periodKey, distLabels, flags, isPartial }
           distLabels={distLabels}
           flags={flags}
           isPartial={isPartial}
+          coverage={coverage}
         />
       ))}
     </div>
