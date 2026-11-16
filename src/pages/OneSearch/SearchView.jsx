@@ -65,11 +65,8 @@ const DOWNLOAD_SERIES = [
   { name: '移动端下载数', field: 'app_download_count', color: '#C4A4A4' },
 ];
 
-/** 游戏预约趋势系列（最近 30 天）：累计总量走左轴，当日新增走右轴（两者量级差一个数量级） */
-const RESERVE_SERIES = [
-  { name: '累计预约数', field: 'total_reserve_count', color: '#7A8B99', axis: 0 },
-  { name: '当日新增预约', field: 'reserve_count', color: '#9CAF9F', axis: 1 },
-];
+/** 游戏预约趋势系列（最近 30 天）：只看当日新增预约（累计数已在基本信息卡里展示） */
+const RESERVE_SERIES = [{ name: '当日新增预约', field: 'reserve_count', color: '#9CAF9F' }];
 
 /** APP首页广告投放趋势系列（v5 表的 app 渠道：广告 / 资源互换） */
 const LANDING_AD_SERIES = [
@@ -670,16 +667,20 @@ export default function SearchView() {
     { enabled: !!appId && !infoQuery.isLoading && targetApp?.releasedAt === '' }
   );
 
-  /** 预约趋势 → LineChart 双轴数据（x=毫秒；累计左轴、当日新增右轴） */
+  /**
+   * 预约趋势 → LineChart 数据：日粒度离散点，用 category 轴（一天一个刻度）。
+   * 用 datetime 轴时 Apex 会按时间间隔自动取刻度，点位少（表刚上线只有几天）时同一天会标好几次。
+   */
   const reserveTrend = useMemo(() => {
     const points = reserveTrendQuery.data?.rows || [];
     const toY = (v) => (v == null ? null : Number(v));
+    const labels = points.map((p) => String(p.crawled_at).slice(5).replace('-', '/'));
     return {
-      hasData: points.some((p) => p.total_reserve_count != null || p.reserve_count != null),
+      hasData: points.some((p) => p.reserve_count != null),
+      labels,
       series: RESERVE_SERIES.map((def) => ({
         name: def.name,
-        yAxisIndex: def.axis,
-        data: points.map((p) => ({ x: DATE_X(p.crawled_at), y: toY(p[def.field]) })),
+        data: points.map((p, i) => ({ x: labels[i], y: toY(p[def.field]) })),
       })),
       colors: RESERVE_SERIES.map((def) => def.color),
     };
@@ -971,7 +972,7 @@ export default function SearchView() {
             <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>游戏预约趋势</div>
             <div className="text-muted small">
               {targetApp.appName ? `${targetApp.appName}（` : ''}APPID {targetApp.appId}
-              {targetApp.appName ? '）' : ''} · 最近 30 天 · 左轴累计预约数，右轴当日新增预约
+              {targetApp.appName ? '）' : ''} · 最近 30 天 · 每日新增预约数
             </div>
           </div>
           <div className="card-body">
@@ -985,17 +986,12 @@ export default function SearchView() {
                 strokeWidth={2}
                 toolbar={false}
                 xaxisOverrides={{
-                  // 日粒度点位很少（表刚上线时只有几天），按点数定刻度，避免同一天重复标多次
-                  tickAmount: Math.min(Math.max(reserveTrend.series[0]?.data?.length || 1, 1), 30),
-                  labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 },
+                  type: 'category',
+                  categories: reserveTrend.labels,
+                  labels: { rotate: -45 },
                 }}
                 yaxisOverrides={{
-                  title: { text: '累计预约数' },
-                  min: 0,
-                  labels: { formatter: (v) => formatCompactNumber(v) },
-                }}
-                yaxisRight={{
-                  title: { text: '当日新增' },
+                  title: { text: '新增预约数' },
                   min: 0,
                   labels: { formatter: (v) => formatCompactNumber(v) },
                 }}
