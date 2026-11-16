@@ -13,6 +13,7 @@ import {
   Placeholder,
   Sparkline,
   fmtCompact,
+  fmtCutoff,
   fmtDateTime,
   fmtFull,
   fmtPct,
@@ -98,7 +99,7 @@ export function Cover({ report, periodType }) {
             {meta.isPartial && (
               <span className="pr-cover-tag is-warn">
                 <i className="bi bi-hourglass-split" />
-                本期进行中 · 环比只作参考
+                进行中 · 截至 {fmtCutoff(meta)} · 环比只作参考
               </span>
             )}
             {highFlags.length > 0 && (
@@ -293,7 +294,7 @@ export function buildInsights(report) {
     out.push({
       tone: 'muted',
       icon: 'bi-hourglass-split',
-      text: <>本期尚未走完（截至 {meta.periodEnd} 之前），数值为累计进度，和上一完整期不可比。</>,
+      text: <>本期尚未走完（数据截至 {fmtCutoff(meta)}），数值为累计进度，和上一完整期不可比。</>,
     });
   }
 
@@ -522,6 +523,13 @@ function PeakHourBreakdown({ peakHour }) {
         三类可相加
         {peakHour.sumsMatch === false ? '（明细合计与总数不一致，接口已标红）' : ''}。
       </div>
+      {items.some((item) => (item.placeholderRatio ?? 0) > 0.5) && (
+        <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
+          <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
+          该小时部分分型含采集兜底值（源端无真值时按 100 人填充），分型占比仅作参考方向；
+          榜单均值已剔除兜底小时。
+        </div>
+      )}
     </>
   );
 }

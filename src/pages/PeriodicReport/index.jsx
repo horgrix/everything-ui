@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPeriods, fetchReport } from '../../api/periodic';
-import { Panel, Placeholder, fmtDateTime } from './prKit';
+import { Panel, Placeholder, fmtCutoff, fmtDateTime } from './prKit';
 import {
   Cover,
   KpiGrid,
@@ -228,8 +228,8 @@ export default function PeriodicReport() {
             <div className="pr-banner">
               <i className="bi bi-hourglass-split" style={{ marginTop: 1 }} />
               <span>
-                {meta.periodLabel} 尚未走完（{meta.periodStart} 至 {meta.periodEnd}），数值是累计到当前的进度，
-                与上一完整期不可比；环比已标「参考」。
+                {meta.periodLabel} 尚未走完（{meta.periodStart} 至 {meta.periodEnd}，数据截至 {fmtCutoff(meta)}），
+                数值是累计到当前的进度，与上一完整期不可比；环比已标「参考」。
               </span>
             </div>
           )}

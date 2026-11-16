@@ -91,6 +91,17 @@ export function fmtDay(date) {
   return m && d ? `${m}.${d}` : String(date);
 }
 
+/**
+ * 进行中期次的「数据截至」日期。
+ * 月报 periodEnd 是 11-30，但数据只到跑批那天（meta.updatedAt = 11-16），
+ * 写「截至 11-30」会让人以为整月已出齐，所以优先取 updatedAt 的日期。
+ */
+export function fmtCutoff(meta) {
+  const updated = String(meta?.updatedAt || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(updated)) return updated;
+  return meta?.periodEnd || '';
+}
+
 /* ------------------------------------------------------------------ 基础壳 */
 
 export function Panel({ children, className = '', style, as: Tag = 'div' }) {
