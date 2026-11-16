@@ -484,31 +484,60 @@ const DIST_COLORS = ['#5C7F8E', '#7E9B84', '#B99B72'];
  * 两者会差很多（W46 商业游戏：行 43% vs 人数 14.9%），所以不能共用一句话。
  * 只认真正的数字且 > 0.5；null / 0 都不算（0 不能被当成缺值吞掉）。
  */
+/** 上游对低体量游戏统一回的人员下限（哨兵值），据数据侧核算就是 100 */
+const ONLINE_SENTINEL = 100;
+
 function placeholderPeak(items) {
-  const pick = (field) =>
-    (items || [])
-      .map((item) => item[field])
-      .filter((v) => typeof v === 'number');
-  const byPlayers = pick('placeholderPlayerRatio');
-  if (byPlayers.length) {
-    const max = Math.max(...byPlayers);
-    return max > 0.5 ? { mode: 'players', ratio: max } : null;
+  const rows = (items || []).filter((item) => typeof item.placeholderRatio === 'number');
+  const players = (items || []).filter((item) => typeof item.placeholderPlayerRatio === 'number');
+  if (!rows.length && !players.length) return null;
+
+  // 最坏的按行口径分型（后端未透人数口径时，拿它推导人数近似值）
+  const worstRow = rows.length ? rows.reduce((a, b) => (b.placeholderRatio > a.placeholderRatio ? b : a)) : null;
+  const rowRatio = worstRow ? worstRow.placeholderRatio : null;
+  const playerRatioExact = players.length
+    ? players.reduce((m, item) => Math.max(m, item.placeholderPlayerRatio), 0)
+    : null;
+
+  // 人数口径：接口给了就直用；否则用「兜底款数 × 哨兵值 / 该分型在线」估算
+  let playerRatio = playerRatioExact;
+  let approx = false;
+  if (playerRatio == null && worstRow && worstRow.gameCnt && worstRow.peakOnlinePlayers) {
+    const sentinelGames = Math.round(rowRatio * worstRow.gameCnt);
+    if (sentinelGames > 0 && worstRow.peakOnlinePlayers > 0) {
+      playerRatio = (sentinelGames * ONLINE_SENTINEL) / worstRow.peakOnlinePlayers;
+      approx = true;
+    }
   }
-  const byRows = pick('placeholderRatio');
-  if (byRows.length) {
-    const max = Math.max(...byRows);
-    return max > 0.5 ? { mode: 'rows', ratio: max } : null;
-  }
-  return null;
+
+  const high = (rowRatio != null && rowRatio > 0.5) || (playerRatio != null && playerRatio > 0.5);
+  if (!high) return null;
+  return { rowRatio, playerRatio, approx, worstRow };
 }
 
-/** 兜底提示文案：口径不同措辞不同，绝不把行占比说成人数占比 */
-function placeholderNoteText(info, extra = '') {
-  const pct = (info.ratio * 100).toFixed(0);
-  if (info.mode === 'players') {
-    return `含采集兜底值：最坏的分型里 ${pct}% 的在线人数是源端兜底值（低体量游戏统一回 100 人），分型占比只作方向参考${extra}。`;
+/**
+ * 兜底提示文案。百分比必须和口径对齐：
+ * 「款数 / app-小时」用 placeholderRatio；「人数」只能用人数口径（接口值或推导值，推导加「约」）。
+ */
+function placeholderNoteText(info, extra = '', { withPlayers = true } = {}) {
+  const label = info.worstRow?.label || '该分型';
+  const parts = [];
+  if (info.rowRatio != null && info.worstRow) {
+    const games = info.worstRow.gameCnt;
+    const sentinelGames = games ? Math.round(info.rowRatio * games) : null;
+    parts.push(
+      `${label}${games ? ` ${games} 款里 ` : ' '}${sentinelGames ?? ''}${sentinelGames ? ' 款' : ''}（${(info.rowRatio * 100).toFixed(0)}% 的记录）为源端哨兵值 ${ONLINE_SENTINEL}`
+    );
   }
-  return `含采集兜底值：最坏的分型里 ${pct}% 的 app-小时取到的是源端兜底值（低体量游戏统一回 100 人）——这是按行计的数据质量比例，不等于在线人数里的兜底占比，分型占比只作方向参考${extra}。`;
+  if (withPlayers && info.playerRatio != null) {
+    const peak = info.worstRow?.peakOnlinePlayers;
+    const sentinelPlayers = peak ? Math.round(info.playerRatio * peak / 100) * 100 : null;
+    parts.push(
+      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${sentinelPlayers ? fmtFull(sentinelPlayers) : ''} 人` : ''}（${(info.playerRatio * 100).toFixed(0)}%）来自这些哨兵值`
+    );
+  }
+  const head = parts.length ? parts.join('；') : '含采集兜底值';
+  return `含采集兜底值：${head}。两个百分比口径不同（款数 / 人数），不要互相换算；分型占比只作方向参考${extra}。`;
 }
 
 /** 峰值小时的同一时刻快照：三类相加严格等于总数，可以画堆叠（接口给了才画） */
@@ -680,7 +709,7 @@ export function LineBand({ line }) {
                 {placeholderPeak(items) && (
                   <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
                     <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-                    {placeholderNoteText(placeholderPeak(items), '；并列视图同样只作方向参考')}
+                    {placeholderNoteText(placeholderPeak(items), '；并列视图同样只作方向参考', { withPlayers: false })}
                   </div>
                 )}
               </>
@@ -847,8 +876,12 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   if (duplicatedRank) {
     items = [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   }
-  // 所有行数值完全一样（实测在线榜创意工坊 20 行全是 100）→ 是占位值，不是榜单，别硬画
-  const degenerate = items.length >= 3 && new Set(items.map((item) => item.value)).size === 1;
+  // 只有「所有行都等于上游哨兵值 100」才判占位（在线榜低体量分型的典型形态）；
+  // 任意同值不再隐藏——真并列是真实数据，藏掉会让人以为是渲染 bug
+  const distinctValues = new Set(items.map((item) => item.value));
+  const degenerate =
+    items.length >= 3 && distinctValues.size === 1 && items[0].value === ONLINE_SENTINEL;
+  const allTied = items.length >= 3 && distinctValues.size === 1 && !degenerate;
 
   return (
     <Panel>
@@ -901,6 +934,13 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
               旧维度 · 仅历史期
             </span>
           )}
+        </div>
+      )}
+
+      {allTied && (
+        <div className="pr-rank-notice">
+          <i className="bi bi-info-circle me-1" />
+          该维度 {items.length} 条记录数值相同（{rankValueText(items[0].value)}），是真实并列而非占位值，按源表名次展示。
         </div>
       )}
 
