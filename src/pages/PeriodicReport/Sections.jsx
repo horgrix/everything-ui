@@ -477,6 +477,19 @@ function DistLegend({ items, unclassified, colorMap, total }) {
 
 const DIST_COLORS = ['#5C7F8E', '#7E9B84', '#B99B72'];
 
+/**
+ * 采集兜底占比：接口给 0~1 小数，无该列/非在线线时为 null。
+ * 只有「确实是数字且 > 0.5」才算高，null/0 都不算（0 不能被当成缺值吞掉）。
+ */
+function placeholderPeak(items) {
+  const ratios = (items || [])
+    .map((item) => item.placeholderRatio)
+    .filter((v) => typeof v === 'number');
+  if (!ratios.length) return null;
+  const max = Math.max(...ratios);
+  return max > 0.5 ? max : null;
+}
+
 /** 峰值小时的同一时刻快照：三类相加严格等于总数，可以画堆叠（接口给了才画） */
 function PeakHourBreakdown({ peakHour }) {
   const items = peakHour.breakdown || [];
@@ -524,11 +537,11 @@ function PeakHourBreakdown({ peakHour }) {
         三类可相加
         {peakHour.sumsMatch === false ? '（明细合计与总数不一致，接口已标红）' : ''}。
       </div>
-      {items.some((item) => (item.placeholderRatio ?? 0) > 0.5) && (
+      {placeholderPeak(items) != null && (
         <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
           <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-          该小时部分分型含采集兜底值（源端无真值时按 100 人填充），分型占比仅作参考方向；
-          榜单均值已剔除兜底小时。
+          含采集兜底值：最坏的分型里有 {(placeholderPeak(items) * 100).toFixed(0)}% 的在线人数来自源端兜底填充（100 人），
+          分型占比只作方向参考；榜单均值已剔除兜底小时。
         </div>
       )}
     </>
@@ -644,6 +657,13 @@ export function LineBand({ line }) {
                   各分型峰值出现在不同时刻，相加 {fmtFull(breakdown?.consistency?.detailTotal)} 与总峰值{' '}
                   {fmtFull(breakdown?.consistency?.allValue)} 不同 —— 只并列展示，不做堆叠与占比。
                 </div>
+                {placeholderPeak(items) != null && (
+                  <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
+                    <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
+                    同样含采集兜底值：最坏的分型里有 {(placeholderPeak(items) * 100).toFixed(0)}% 的在线人数是源端兜底填充（100 人），
+                    两个视图都只作方向参考。
+                  </div>
+                )}
               </>
             )
           ) : (
