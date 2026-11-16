@@ -898,12 +898,15 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   if (duplicatedRank) {
     items = [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   }
-  // 只有「所有行都等于上游哨兵值 100」才判占位（在线榜低体量分型的典型形态）；
-  // 任意同值不再隐藏——真并列是真实数据，藏掉会让人以为是渲染 bug
+  // 不再用「数值全相同」判占位/隐藏：数据修好时它碰巧正确，遇到真实同值榜就会静默消失。
+  // 可比性交给接口（58714b5 的 sample.lowSample，阈值常量在服务端），前端只渲染信号。
   const distinctValues = new Set(items.map((item) => item.value));
-  const degenerate =
-    items.length >= 3 && distinctValues.size === 1 && items[0].value === ONLINE_SENTINEL;
-  const allTied = items.length >= 3 && distinctValues.size === 1 && !degenerate;
+  const allTied = items.length >= 3 && distinctValues.size === 1;
+  const lowSample = data?.sample?.lowSample === true;
+  const sampleRange =
+    data?.sample && typeof data.sample.minRealHours === 'number' && typeof data.sample.maxRealHours === 'number'
+      ? `${data.sample.minRealHours}~${data.sample.maxRealHours} 小时`
+      : null;
 
   return (
     <Panel>
@@ -959,14 +962,22 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
         </div>
       )}
 
-      {allTied && (
+      {lowSample && (
         <div className="pr-rank-notice">
-          <i className="bi bi-info-circle me-1" />
-          该维度 {items.length} 条记录数值相同（{rankValueText(items[0].value)}），是真实并列而非占位值，按源表名次展示。
+          <i className="bi bi-exclamation-circle me-1" />
+          样本不足 · 名次仅作参考：该榜每行的有效在线小时都 ≤ 2{sampleRange ? `（本期 ${sampleRange}）` : ''}，
+          一两个小时的均值区分度有限。
         </div>
       )}
 
-      {duplicatedRank && !degenerate && (
+      {allTied && !lowSample && (
+        <div className="pr-rank-notice">
+          <i className="bi bi-info-circle me-1" />
+          该维度 {items.length} 条记录数值相同（{rankValueText(items[0].value)}），是真实并列，按源表名次展示。
+        </div>
+      )}
+
+      {duplicatedRank && (
         <div className="pr-rank-notice">
           <i className="bi bi-exclamation-circle me-1" />
           排名列异常：{items.length} 条记录并列第 1（源表 rank_no 未展开），已改按数值降序展示，名次仅作参考。
@@ -980,17 +991,10 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
             榜单读取失败：{rankQuery.error.message}
           </div>
         )}
-        {!rankQuery.isLoading && !rankQuery.error && !degenerate && items.length === 0 && (
+        {!rankQuery.isLoading && !rankQuery.error && items.length === 0 && (
           <div className="pr-rank-empty">本期该维度暂无榜单数据</div>
         )}
-        {degenerate && (
-          <div className="pr-rank-empty">
-            <i className="bi bi-slash-circle d-block mb-1" style={{ fontSize: 15 }} />
-            该维度 {items.length} 行的数值全部是 {rankValueText(items[0].value)}，是源端占位/下限值而非真实排名，
-            因此不展示名次（等数据侧重算该榜后会自动恢复，不是渲染问题）。
-          </div>
-        )}
-        {!degenerate && items.map((item, index) => {
+        {items.map((item, index) => {
           const main = category === 'top' ? item.value : item.diff;
           const pct = item.diffPct;
           const tone = pct == null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
@@ -1017,7 +1021,17 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
               </div>
               <div className="pr-rank-value">
                 {rankValueText(main)}
-                <small className={`is-${category === 'top' ? tone : 'flat'}`}>{subText}</small>
+                <small className={`is-${category === 'top' ? tone : 'flat'}`}>
+                  {subText}
+                  {item.realHours != null && (
+                    <span
+                      style={{ color: '#A7B0B8', marginLeft: 5 }}
+                      title={`本周期仅 ${item.realHours} 个有效在线小时参与均值（有效小时越少，名次越不稳）`}
+                    >
+                      · {item.realHours}h
+                    </span>
+                  )}
+                </small>
               </div>
             </div>
           );

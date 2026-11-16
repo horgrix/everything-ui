@@ -139,5 +139,17 @@ export function fetchRank(line, { periodType = 'weekly', key, category = 'top', 
       ...(dist ? { dist } : {}),
     },
     [`rank-${suffix}`, `rank-${line}-${category}`, `rank-${line}-top`]
-  );
+  ).then((data) => {
+    if (!data) return data;
+    // 后端 58714b5：逐行 realHours（该游戏本周期有有效在线的小时数）+ 榜单级 sample 可比性信号。
+    // 老接口没有这些字段时保持 null，页面按「无信号」渲染，前端不自己造阈值。
+    return {
+      ...data,
+      sample: data.sample || null,
+      items: (data.items || []).map((item) => ({
+        ...item,
+        realHours: typeof item.realHours === 'number' ? item.realHours : null,
+      })),
+    };
+  });
 }
