@@ -1,7 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { fetchReserveTrend } from '../../api/oneSearchApi';
 import useChartData from '../../hooks/useChartData';
 import { querySql, querySqlV09 } from '../../api/query';
 import BrushLineChart from '../../components/charts/BrushLineChart';
@@ -69,8 +67,8 @@ const DOWNLOAD_SERIES = [
 
 /** 游戏预约趋势系列（最近 30 天）：累计总量走左轴，当日新增走右轴（两者量级差一个数量级） */
 const RESERVE_SERIES = [
-  { name: '累计预约数', field: 'total', color: '#7A8B99', axis: 0 },
-  { name: '当日新增预约', field: 'added', color: '#9CAF9F', axis: 1 },
+  { name: '累计预约数', field: 'total_reserve_count', color: '#7A8B99', axis: 0 },
+  { name: '当日新增预约', field: 'reserve_count', color: '#9CAF9F', axis: 1 },
 ];
 
 /** APP首页广告投放趋势系列（v5 表的 app 渠道：广告 / 资源互换） */
@@ -656,25 +654,31 @@ export default function SearchView() {
     { enabled: !!appId, transform: (rows) => buildBrushSeries(rows, PC_AD_SERIES, 7) }
   );
 
-  // 【游戏预约趋势】最近 30 天（everything-api 的 /api/v09/data/search/reserve-trend）
-  const reserveTrendQuery = useQuery({
-    queryKey: ['one-search-reserve-trend', appId],
-    queryFn: () => fetchReserveTrend(appId, 30),
-    enabled: !!appId,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
+  // 【游戏预约趋势】最近 30 天（MySQL v09 的 dws_taptap_reserve_v2_daily，走 /api/v09/data/sql）
+  const reserveTrendQuery = useChartData(
+    `one-search-reserve-trend-${appId ?? 'none'}`,
+    () =>
+      querySqlV09(
+        `SELECT crawled_at, reserve_count, total_reserve_count
+         FROM dws_taptap_reserve_v2_daily
+         WHERE app_id = ${appId}
+           AND crawled_at >= '${recentDaysWhere(29)}'
+         ORDER BY crawled_at ASC`
+      ),
+    {},
+    { enabled: !!appId }
+  );
 
   /** 预约趋势 → LineChart 双轴数据（x=毫秒；累计左轴、当日新增右轴） */
   const reserveTrend = useMemo(() => {
-    const points = reserveTrendQuery.data?.points || [];
+    const points = reserveTrendQuery.data?.rows || [];
     const toY = (v) => (v == null ? null : Number(v));
     return {
-      hasData: points.some((p) => p.total != null || p.added != null),
+      hasData: points.some((p) => p.total_reserve_count != null || p.reserve_count != null),
       series: RESERVE_SERIES.map((def) => ({
         name: def.name,
         yAxisIndex: def.axis,
-        data: points.map((p) => ({ x: DATE_X(p.date), y: toY(p[def.field]) })),
+        data: points.map((p) => ({ x: DATE_X(p.crawled_at), y: toY(p[def.field]) })),
       })),
       colors: RESERVE_SERIES.map((def) => def.color),
     };
@@ -979,7 +983,11 @@ export default function SearchView() {
                 height={320}
                 strokeWidth={2}
                 toolbar={false}
-                xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+                xaxisOverrides={{
+                  // 日粒度点位很少（表刚上线时只有几天），按点数定刻度，避免同一天重复标多次
+                  tickAmount: Math.min(Math.max(reserveTrend.series[0]?.data?.length || 1, 1), 30),
+                  labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 },
+                }}
                 yaxisOverrides={{
                   title: { text: '累计预约数' },
                   min: 0,
