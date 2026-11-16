@@ -281,7 +281,7 @@ export default function PeriodicReport() {
                   : '月榜按自然月累计'
               }
             />
-            <RankGrid periodType={periodType} periodKey={meta.periodKey} />
+            <RankGrid periodType={periodType} periodKey={meta.periodKey} distLabels={meta.distLabels} />
           </section>
 
           <section className="pr-section">

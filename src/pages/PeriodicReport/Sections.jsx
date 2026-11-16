@@ -518,7 +518,7 @@ function PeakHourBreakdown({ peakHour }) {
         </div>
       </div>
       <div className="pr-breakdown-note" style={{ lineHeight: 1.65 }}>
-        {(peakHour.crawledAt || '').slice(0, 16)} 这一小时的快照：{fmtFull(total)} 人 / {peakHour.gameCnt ?? '—'} 款，
+        {String(peakHour.crawledAt || '').length === 13 ? `${peakHour.crawledAt}:00` : (peakHour.crawledAt || '').slice(0, 16)} 这一小时的快照：{fmtFull(total)} 人 / {peakHour.gameCnt ?? '—'} 款，
         三类可相加
         {peakHour.sumsMatch === false ? '（明细合计与总数不一致，接口已标红）' : ''}。
       </div>
@@ -715,8 +715,8 @@ const RANK_CATEGORIES = [
 
 const ONLINE_LISTS = [
   { key: 'dist_0', label: '商业游戏' },
-  { key: 'dist_1', label: '创意工坊' },
-  { key: 'dist_2', label: 'TapMaker' },
+  { key: 'dist_1', label: '独立小游戏' },
+  { key: 'dist_2', label: 'Maker 小游戏' },
 ];
 
 function RankIcon({ src, name }) {
@@ -740,7 +740,7 @@ function rankValueText(value) {
   return Math.abs(value) < 100000 ? fmtFull(value) : fmtCompact(value);
 }
 
-export function RankCard({ line, periodType, periodKey }) {
+export function RankCard({ line, periodType, periodKey, distLabels }) {
   const meta = LINE_META[line] || LINE_META.download;
   const [category, setCategory] = useState('top');
   const [listType, setListType] = useState(line === 'online' ? 'dist_0' : undefined);
@@ -802,7 +802,7 @@ export function RankCard({ line, periodType, periodKey }) {
                   : { background: '#F5F8F9', color: '#8A959E', border: 0, cursor: 'pointer' }
               }
             >
-              {item.label}
+              {distLabels?.[item.key.replace('dist_', '')] || item.label}
             </button>
           ))}
         </div>
@@ -868,11 +868,11 @@ export function RankCard({ line, periodType, periodKey }) {
   );
 }
 
-export function RankGrid({ periodType, periodKey }) {
+export function RankGrid({ periodType, periodKey, distLabels }) {
   return (
     <div className="pr-ranks">
       {['download', 'ad', 'online'].map((line) => (
-        <RankCard key={line} line={line} periodType={periodType} periodKey={periodKey} />
+        <RankCard key={line} line={line} periodType={periodType} periodKey={periodKey} distLabels={distLabels} />
       ))}
     </div>
   );
