@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ChartWrapper from '../../components/charts/ChartWrapper';
 import { fetchRank } from '../../api/periodic';
@@ -784,6 +784,23 @@ const ONLINE_LISTS = [
   { key: 'dist_2', label: 'Maker 小游戏' },
 ];
 
+/** W45 起才改成按 distribution_type 分榜；之前的历史周只有这三个旧维度 */
+const ONLINE_LISTS_RETIRED = [
+  { key: 'pc_played', label: 'PC' },
+  { key: 'pc_emulator_played', label: 'PC 模拟器' },
+  { key: 'app_hot_creative', label: '小游戏' },
+];
+
+/** 该期在线榜用的是哪套维度（周报按 ISO 周号比较，月报 2026-10 也属于旧维度区间） */
+function onlineListSet(periodType, periodKey) {
+  if (!periodKey) return ONLINE_LISTS;
+  if (periodType === 'monthly') {
+    const [y, m] = String(periodKey).split('-').map(Number);
+    return y === 2026 && m <= 10 ? ONLINE_LISTS_RETIRED : ONLINE_LISTS;
+  }
+  return String(periodKey) < '2026-45' ? ONLINE_LISTS_RETIRED : ONLINE_LISTS;
+}
+
 function RankIcon({ src, name }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
@@ -807,8 +824,14 @@ function rankValueText(value) {
 
 export function RankCard({ line, periodType, periodKey, distLabels }) {
   const meta = LINE_META[line] || LINE_META.download;
+  const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
-  const [listType, setListType] = useState(line === 'online' ? 'dist_0' : undefined);
+  const [listType, setListType] = useState(listSet ? listSet[0].key : undefined);
+
+  // 换期次时维度集合会变（W44 及之前是旧维度），同步切回该期的第一项
+  useEffect(() => {
+    if (listSet) setListType(listSet[0].key);
+  }, [listSet]);
 
   const rankQuery = useQuery({
     queryKey: ['pr-rank', line, periodType, periodKey, category, listType],
@@ -853,9 +876,9 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
         </div>
       </div>
 
-      {line === 'online' && (
-        <div style={{ display: 'flex', gap: 6, padding: '8px 16px 0' }}>
-          {ONLINE_LISTS.map((item) => (
+      {line === 'online' && listSet && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', flexWrap: 'wrap' }}>
+          {listSet.map((item) => (
             <button
               key={item.key}
               type="button"
@@ -870,6 +893,14 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
               {distLabels?.[item.key.replace('dist_', '')] || item.label}
             </button>
           ))}
+          {data?.retiredDimension && (
+            <span
+              className="pr-chip is-empty"
+              title="W45 起在线榜改为按分发类型（dist_0/1/2）分榜；这一期只有旧维度行（is_active=0 的历史数据），仅作回看"
+            >
+              旧维度 · 仅历史期
+            </span>
+          )}
         </div>
       )}
 
