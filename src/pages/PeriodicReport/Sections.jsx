@@ -9,9 +9,9 @@ import {
   DeltaChip,
   Panel,
   PanelHead,
+  NoteMark,
   Placeholder,
   Sparkline,
-  fmtAbs,
   fmtCompact,
   fmtDateTime,
   fmtFull,
@@ -28,7 +28,8 @@ export function Cover({ report, periodType }) {
   const { meta, coreKpis = [], flags = [] } = report;
   const byKey = Object.fromEntries(coreKpis.map((k) => [k.key, k]));
   const download = byKey.download_total;
-  const peak = byKey.online_peak;
+  // 在线峰值的对外键名改过一次（online_peak → online_peak_players），两种都认
+  const peak = byKey.online_peak_players || byKey.online_peak;
 
   const highFlags = flags.filter((f) => f.level === 'high');
   const withValue = coreKpis.filter((k) => k.hasValue).length;
@@ -136,7 +137,10 @@ export function KpiCard({ kpi, totalPeriods }) {
   return (
     <article className="pr-kpi" style={{ '--kpi-color': line.color }}>
       <div className="pr-kpi-top">
-        <span className="pr-kpi-label">{kpi.label}</span>
+        <span className="pr-kpi-label">
+          {kpi.label}
+          <NoteMark note={kpi.note} />
+        </span>
         <Coverage available={kpi.availablePeriods || []} total={totalPeriods} />
       </div>
       <div className="pr-kpi-value" title={`${fmtFull(kpi.value)} ${kpi.unit}`}>
@@ -151,6 +155,7 @@ export function KpiCard({ kpi, totalPeriods }) {
           comparable={kpi.deltaComparable}
           hasValue={kpi.hasValue}
           insufficientHistory={kpi.insufficientHistory}
+          blocked={kpi.deltaBlocked}
           showAbs
         />
         {kpi.prevValue != null && (
@@ -256,13 +261,14 @@ export function buildInsights(report) {
   });
   if (streak.length) {
     const best = streak.sort((a, b) => Math.abs(b.run) - Math.abs(a.run))[0];
+    const recent = (best.kpi.trend || []).filter((t) => t.value != null);
     out.push({
       tone: 'info',
       icon: best.run > 0 ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow',
       text: (
         <>
-          <b>{best.kpi.label}</b> 已连续 <b>{Math.abs(best.run)}</b> 期{best.run > 0 ? '上升' : '下降'}（
-          {best.kpi.availablePeriods.length} 期里最近 {Math.abs(best.run) + 1} 期）。
+          <b>{best.kpi.label}</b> 最近 <b>{Math.abs(best.run) + 1}</b> 期连续{best.run > 0 ? '上升' : '下降'}
+          {recent.length >= 2 && `（${recent[recent.length - Math.abs(best.run) - 1]?.label} → ${recent[recent.length - 1].label}）`}。
         </>
       ),
     });
@@ -277,7 +283,7 @@ export function buildInsights(report) {
       text: (
         <>
           {short.map((k) => k.label).join('、')} 只有 {Math.min(...short.map((k) => k.historyPoints))} 期数据，
-          {' '}按口径不画趋势线，只看当期值与环比。
+          {' '}按口径不画趋势线，只看当期值（覆盖不全时连环比也不出）。
         </>
       ),
     });
@@ -469,6 +475,57 @@ function DistLegend({ items, unclassified, colorMap, total }) {
 
 const DIST_COLORS = ['#5C7F8E', '#7E9B84', '#B99B72'];
 
+/** 峰值小时的同一时刻快照：三类相加严格等于总数，可以画堆叠（接口给了才画） */
+function PeakHourBreakdown({ peakHour }) {
+  const items = peakHour.breakdown || [];
+  const total = peakHour.peakOnlinePlayers || 0;
+  const sum = peakHour.sumPeakOnlinePlayers || 0;
+  return (
+    <>
+      <div className="pr-stack" role="img" aria-label="峰值小时在线分型">
+        {items.map((item, index) => (
+          <span
+            key={item.distributionType}
+            style={{
+              width: `${total ? ((item.peakOnlinePlayers || 0) / total) * 100 : 0}%`,
+              background: DIST_COLORS[index % DIST_COLORS.length],
+            }}
+            title={`${item.label} ${fmtFull(item.peakOnlinePlayers)} 人 / ${item.gameCnt ?? '—'} 款`}
+          />
+        ))}
+      </div>
+      <div className="pr-legend">
+        {items.map((item, index) => (
+          <div className="pr-legend-row" key={item.distributionType}>
+            <span className="pr-legend-dot" style={{ background: DIST_COLORS[index % DIST_COLORS.length] }} />
+            <span className="pr-legend-name">
+              {item.label}
+              {item.gameCnt != null && <span style={{ color: '#A7B0B8' }}> · {item.gameCnt} 款</span>}
+            </span>
+            <span className="pr-legend-val">{fmtCompact(item.peakOnlinePlayers)}</span>
+            <span className="pr-legend-share">
+              {total ? `${(((item.peakOnlinePlayers || 0) / total) * 100).toFixed(1)}%` : '—'}
+            </span>
+          </div>
+        ))}
+        <div className="pr-legend-row" style={{ borderTop: '1px solid #F1F4F6', paddingTop: 6 }}>
+          <span />
+          <span className="pr-legend-name" style={{ color: '#8A959E' }}>
+            同一小时合计
+          </span>
+          <span className="pr-legend-val">{fmtCompact(sum)}</span>
+          <span className="pr-legend-share">100%</span>
+        </div>
+      </div>
+      <div className="pr-breakdown-note" style={{ lineHeight: 1.65 }}>
+        {(peakHour.crawledAt || '').slice(0, 16)} 这一小时的快照：{fmtFull(total)} 人 / {peakHour.gameCnt ?? '—'} 款，
+        三类可相加
+        {peakHour.sumsMatch === false ? '（明细合计与总数不一致，接口已标红）' : ''}。
+      </div>
+    </>
+  );
+}
+
 export function LineBand({ line }) {
   const meta = LINE_META[line.key] || LINE_META.download;
   const breakdown = line.breakdown;
@@ -495,11 +552,12 @@ export function LineBand({ line }) {
         }
       />
       <div className="pr-line-body">
-        <div className="pr-line-metrics">
+        <div className={`pr-line-metrics${line.kpis.length % 2 === 1 || line.kpis.length > 4 ? ' is-list' : ''}`}>
           {line.kpis.map((kpi) => (
             <div className="pr-metric" key={kpi.key}>
               <div className="pr-metric-label">
                 {kpi.label}
+                <NoteMark note={kpi.note} />
                 <Coverage available={kpi.availablePeriods || []} total={line.periods?.length} />
               </div>
               <div className="pr-metric-row">
@@ -513,11 +571,17 @@ export function LineBand({ line }) {
                   unit={kpi.unit}
                   comparable={kpi.deltaComparable}
                   hasValue={kpi.hasValue}
+                  blocked={kpi.deltaBlocked}
                   size="sm"
                 />
               </div>
             </div>
           ))}
+          {isOnline && (
+            <div className="pr-metrics-note">
+              在线数据自 2026-11-07 起采集，目前 {line.periods?.length || 0} 期；「本周去重款数」与「峰值小时同时在线款数」是两个口径，不可相减。
+            </div>
+          )}
         </div>
 
         <div className="pr-breakdown">
@@ -525,33 +589,37 @@ export function LineBand({ line }) {
             <span className="pr-breakdown-title">
               分型拆解 · {isOnline ? '在线峰值' : line.key === 'ad' ? '广告曝光' : '下载量'}
             </span>
-            <span className="pr-breakdown-note">{isOnline ? '并列展示' : '按占比'}</span>
+            <span className="pr-breakdown-note">{isOnline ? (line.peakHour ? '同一小时 · 可相加' : '并列展示') : '按占比'}</span>
           </div>
 
           {isOnline ? (
-            <>
-              <div className="pr-groupbars">
-                {items.map((item, index) => (
-                  <div className="pr-groupbar-row" key={item.key}>
-                    <span style={{ color: '#5C6873' }}>{item.label}</span>
-                    <span className="pr-groupbar-track">
-                      <span
-                        className="pr-groupbar-fill"
-                        style={{ width: `${Math.max((item.value / maxItem) * 100, 1.5)}%`, background: DIST_COLORS[index % DIST_COLORS.length] }}
-                      />
-                    </span>
-                    <span className="pr-groupbar-val">
-                      {fmtCompact(item.value)}
-                      <small>{fmtPct(item.deltaPct) || '上期无数据'}</small>
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="pr-breakdown-note" style={{ lineHeight: 1.65 }}>
-                各分型峰值出现在不同时刻，相加 {fmtFull(breakdown?.consistency?.detailTotal)} 与总峰值{' '}
-                {fmtFull(breakdown?.consistency?.allValue)} 不同 —— 只并列展示，不做堆叠与占比。
-              </div>
-            </>
+            line.peakHour ? (
+              <PeakHourBreakdown peakHour={line.peakHour} />
+            ) : (
+              <>
+                <div className="pr-groupbars">
+                  {items.map((item, index) => (
+                    <div className="pr-groupbar-row" key={item.key}>
+                      <span style={{ color: '#5C6873' }}>{item.label}</span>
+                      <span className="pr-groupbar-track">
+                        <span
+                          className="pr-groupbar-fill"
+                          style={{ width: `${Math.max((item.value / maxItem) * 100, 1.5)}%`, background: DIST_COLORS[index % DIST_COLORS.length] }}
+                        />
+                      </span>
+                      <span className="pr-groupbar-val">
+                        {fmtCompact(item.value)}
+                        <small>{fmtPct(item.deltaPct) || '上期无数据'}</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pr-breakdown-note" style={{ lineHeight: 1.65 }}>
+                  各分型峰值出现在不同时刻，相加 {fmtFull(breakdown?.consistency?.detailTotal)} 与总峰值{' '}
+                  {fmtFull(breakdown?.consistency?.allValue)} 不同 —— 只并列展示，不做堆叠与占比。
+                </div>
+              </>
+            )
           ) : (
             <>
               <div className="pr-stack" role="img" aria-label="分型占比">
@@ -626,7 +694,7 @@ export function PlayerCards({ players, flags }) {
               <div className="pr-flag-inline">
                 <i className="bi bi-exclamation-triangle" />
                 <span>
-                  {jump.detail}。趋势图上单独看待，不与正常期并排比较（{jump.action}）。
+                  {jump.detail}。趋势图上单独看待，不与正常期并排比较。
                 </span>
               </div>
             )}
@@ -650,6 +718,22 @@ const ONLINE_LISTS = [
   { key: 'dist_1', label: '创意工坊' },
   { key: 'dist_2', label: 'TapMaker' },
 ];
+
+function RankIcon({ src, name }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return <span className="pr-rank-icon-fallback">{(name || '?').slice(0, 1)}</span>;
+  }
+  return (
+    <img
+      className="pr-rank-icon"
+      src={src}
+      alt=""
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 function rankValueText(value) {
   if (value == null) return '—';
@@ -675,8 +759,8 @@ export function RankCard({ line, periodType, periodKey }) {
   if (duplicatedRank) {
     items = [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   }
-
-  const unit = data?.unit || (line === 'online' ? '人' : '次');
+  // 所有行数值完全一样（实测在线榜创意工坊 20 行全是 100）→ 是占位值，不是榜单，别硬画
+  const degenerate = items.length >= 3 && new Set(items.map((item) => item.value)).size === 1;
 
   return (
     <Panel>
@@ -724,7 +808,7 @@ export function RankCard({ line, periodType, periodKey }) {
         </div>
       )}
 
-      {duplicatedRank && (
+      {duplicatedRank && !degenerate && (
         <div className="pr-rank-notice">
           <i className="bi bi-exclamation-circle me-1" />
           排名列异常：{items.length} 条记录并列第 1（源表 rank_no 未展开），已改按数值降序展示，名次仅作参考。
@@ -738,13 +822,23 @@ export function RankCard({ line, periodType, periodKey }) {
             榜单读取失败：{rankQuery.error.message}
           </div>
         )}
-        {!rankQuery.isLoading && !rankQuery.error && items.length === 0 && (
+        {!rankQuery.isLoading && !rankQuery.error && !degenerate && items.length === 0 && (
           <div className="pr-rank-empty">本期该维度暂无榜单数据</div>
         )}
-        {items.map((item, index) => {
+        {degenerate && (
+          <div className="pr-rank-empty">
+            <i className="bi bi-slash-circle d-block mb-1" style={{ fontSize: 15 }} />
+            该维度 {items.length} 行的数值全部是 {rankValueText(items[0].value)}，疑似源表占位/下限值，已隐藏榜单。
+          </div>
+        )}
+        {!degenerate && items.map((item, index) => {
           const main = category === 'top' ? item.value : item.diff;
-          const pct = category === 'top' ? item.diffPct : item.value && item.prevValue ? ((item.value - item.prevValue) / item.prevValue) * 100 : null;
+          const pct = item.diffPct;
           const tone = pct == null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+          const subText =
+            category === 'top'
+              ? fmtPct(pct) || '上期无数据'
+              : `总量 ${rankValueText(item.value)}`;
           return (
             <div
               className={`pr-rank-row${!duplicatedRank && item.rankNo <= 3 ? ` is-top${item.rankNo}` : ''}`}
@@ -752,11 +846,7 @@ export function RankCard({ line, periodType, periodKey }) {
               title={item.tags?.length ? item.tags.join(' / ') : undefined}
             >
               <span className="pr-rank-no">{duplicatedRank ? index + 1 : item.rankNo ?? '—'}</span>
-              {item.icon ? (
-                <img className="pr-rank-icon" src={item.icon} alt="" loading="lazy" />
-              ) : (
-                <span className="pr-rank-icon-fallback">{(item.appName || '?').slice(0, 1)}</span>
-              )}
+              <RankIcon src={item.icon} name={item.appName} />
               <div style={{ minWidth: 0 }}>
                 <div className="pr-rank-name">
                   {item.appName || '—'}
@@ -768,11 +858,7 @@ export function RankCard({ line, periodType, periodKey }) {
               </div>
               <div className="pr-rank-value">
                 {rankValueText(main)}
-                <small className={`is-${tone}`}>
-                  {category === 'top'
-                    ? fmtPct(item.diffPct) || '上期无数据'
-                    : fmtAbs(item.diff, unit)}
-                </small>
+                <small className={`is-${category === 'top' ? tone : 'flat'}`}>{subText}</small>
               </div>
             </div>
           );

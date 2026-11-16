@@ -629,6 +629,41 @@
   border-bottom: 0;
 }
 
+/* 指标数为奇数（PC 在线 3 个）时走纵向列表，避免 2+1 留下空格子 */
+.pr-line-metrics.is-list {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+.pr-line-metrics.is-list .pr-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--pr-hair);
+}
+
+.pr-line-metrics.is-list .pr-metric:last-child {
+  border-bottom: 0;
+}
+
+.pr-line-metrics.is-list .pr-metric-row {
+  margin-top: 0;
+  justify-content: flex-end;
+}
+
+.pr-metrics-note {
+  grid-column: 1 / -1;
+  margin-top: auto;
+  padding: 11px 18px;
+  border-top: 1px solid var(--pr-hair);
+  background: #fbfcfc;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--pr-muted);
+}
+
 .pr-metric-label {
   font-size: 11px;
   color: var(--pr-muted);
@@ -762,6 +797,7 @@
 }
 
 .pr-groupbar-fill {
+  display: block;
   height: 100%;
   border-radius: 4px;
   transition: width 0.4s ease;
@@ -1105,7 +1141,7 @@
   margin-top: 3px;
   font-size: 10.5px;
   line-height: 1.6;
-  color: var(--pr-faint);
+  color: var(--pr-muted);
 }
 
 .pr-notes {
@@ -1205,6 +1241,13 @@
   font-size: 9px;
   font-weight: 500;
   opacity: 0.7;
+}
+
+.pr-note-mark {
+  font-size: 10px;
+  color: var(--pr-faint);
+  cursor: help;
+  vertical-align: 1px;
 }
 
 .pr-coverage {
@@ -1374,6 +1417,12 @@
 /* ---------------------------------------------------------------- 打印（导出 PDF） */
 
 @media print {
+  /* 导出 PDF 时只留报告本身 */
+  .navbar,
+  footer.bg-dark {
+    display: none !important;
+  }
+
   .pr-page {
     max-width: none;
     padding: 0;

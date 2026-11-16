@@ -84,7 +84,7 @@ export default function Navbar() {
                 className={({ isActive }) =>
                   `nav-link text-nowrap ${isActive ? 'active' : ''}`
                 }
-                title="定期报告（周报 / 月报 / 年报）"
+                title="定期报告（周报 / 月报，一期一篇）"
               >
                 <i className="bi bi-file-earmark-text me-1"></i>
                 定期报告

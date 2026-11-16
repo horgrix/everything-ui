@@ -43,7 +43,11 @@ export function fmtCompact(value, digits = 1) {
   const num = Number(value);
   const abs = Math.abs(num);
   const unit = CN_UNITS.find((item) => abs >= item.limit);
-  if (!unit) return abs % 1 === 0 ? String(Math.round(num)) : num.toFixed(digits);
+  if (!unit) {
+    return abs % 1 === 0
+      ? Math.round(num).toLocaleString('zh-CN')
+      : num.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: digits });
+  }
   const scaled = num / unit.limit;
   const fixed = Math.abs(scaled) >= 100 ? scaled.toFixed(0) : scaled.toFixed(digits);
   return `${fixed} ${unit.suffix}`;
@@ -127,9 +131,33 @@ export function PanelHead({ color, icon, title, sub, right, tag }) {
  * @param {boolean} props.insufficientHistory 历史不足时不给涨跌结论
  * @param {boolean} props.showAbs   是否显示绝对变化
  */
-export function DeltaChip({ pct, abs, unit, comparable = true, hasValue = true, insufficientHistory, showAbs = false, size }) {
+const BLOCKED_TEXT = {
+  secondary_metric: '副指标 · 不出环比',
+  coverage_partial: '覆盖不全 · 不出环比',
+  prev_coverage_partial: '上期覆盖不全 · 不出环比',
+};
+
+export function DeltaChip({
+  pct,
+  abs,
+  unit,
+  comparable = true,
+  hasValue = true,
+  insufficientHistory,
+  showAbs = false,
+  size,
+  blocked,
+}) {
   if (!hasValue) {
     return <span className="pr-chip is-empty">本期无数据</span>;
+  }
+  // 接口判定环比不可比（覆盖不全 / 副指标）时连上期值都不给，前端也不自己算
+  if (blocked) {
+    return (
+      <span className="pr-chip is-empty" title={BLOCKED_TEXT[blocked] || '环比不可比'}>
+        {BLOCKED_TEXT[blocked] || '环比不可比'}
+      </span>
+    );
   }
   const text = fmtPct(pct);
   if (!text) {
@@ -164,6 +192,19 @@ export function DeltaChip({ pct, abs, unit, comparable = true, hasValue = true, 
 }
 
 /** 可用期数徽标：5/7 期 */
+/** 口径备注的小问号：hover 出接口给的 note */
+export function NoteMark({ note }) {
+  if (!note) return null;
+  return (
+    <i
+      className="bi bi-info-circle pr-note-mark"
+      role="img"
+      aria-label={note}
+      title={note}
+    />
+  );
+}
+
 export function Coverage({ available, total }) {
   const count = Array.isArray(available) ? available.length : available;
   const isPartial = typeof count === 'number' && typeof total === 'number' && count < total;
