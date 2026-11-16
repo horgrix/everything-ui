@@ -510,9 +510,11 @@ function placeholderPeak(items) {
     }
   }
 
-  const high = (rowRatio != null && rowRatio > 0.5) || (playerRatio != null && playerRatio > 0.5);
-  if (!high) return null;
-  return { rowRatio, playerRatio, approx, worstRow };
+  // 两个口径各自过阈值，谁过就只说谁（后端契约建议：行口径 >0.5 说「多数游戏无真值」，人数口径 >0.5 说「人数含水」）
+  const rowsHigh = rowRatio != null && rowRatio > 0.5;
+  const playersHigh = playerRatio != null && playerRatio > 0.5;
+  if (!rowsHigh && !playersHigh) return null;
+  return { rowRatio, playerRatio, approx, worstRow, rowsHigh, playersHigh };
 }
 
 /**
@@ -522,22 +524,23 @@ function placeholderPeak(items) {
 function placeholderNoteText(info, extra = '', { withPlayers = true } = {}) {
   const label = info.worstRow?.label || '该分型';
   const parts = [];
-  if (info.rowRatio != null && info.worstRow) {
+  if (info.rowsHigh && info.worstRow) {
     const games = info.worstRow.gameCnt;
     const sentinelGames = games ? Math.round(info.rowRatio * games) : null;
     parts.push(
       `${label}${games ? ` ${games} 款里 ` : ' '}${sentinelGames ?? ''}${sentinelGames ? ' 款' : ''}（${(info.rowRatio * 100).toFixed(0)}% 的记录）为源端哨兵值 ${ONLINE_SENTINEL}`
     );
   }
-  if (withPlayers && info.playerRatio != null) {
+  if (withPlayers && info.playersHigh) {
     const peak = info.worstRow?.peakOnlinePlayers;
     const sentinelPlayers = peak ? Math.round(info.playerRatio * peak / 100) * 100 : null;
     parts.push(
-      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${sentinelPlayers ? fmtFull(sentinelPlayers) : ''} 人` : ''}（${(info.playerRatio * 100).toFixed(0)}%）来自这些哨兵值`
+      `按人数计${info.approx ? '约' : ''} ${peak ? `${fmtFull(peak)} 人里 ${sentinelPlayers ? fmtFull(sentinelPlayers) : ''} 人` : ''}（${(info.playerRatio * 100).toFixed(1)}%）来自这些哨兵值`
     );
   }
   const head = parts.length ? parts.join('；') : '含采集兜底值';
-  return `含采集兜底值：${head}。两个百分比口径不同（款数 / 人数），不要互相换算；分型占比只作方向参考${extra}。`;
+  const caveat = parts.length > 1 ? '两个百分比口径不同（款数 / 人数），不要互相换算；' : '';
+  return `含采集兜底值：${head}。${caveat}分型占比只作方向参考${extra}。`;
 }
 
 /** 峰值小时的同一时刻快照：三类相加严格等于总数，可以画堆叠（接口给了才画） */
