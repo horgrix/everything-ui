@@ -478,16 +478,37 @@ function DistLegend({ items, unclassified, colorMap, total }) {
 const DIST_COLORS = ['#5C7F8E', '#7E9B84', '#B99B72'];
 
 /**
- * 采集兜底占比：接口给 0~1 小数，无该列/非在线线时为 null。
- * 只有「确实是数字且 > 0.5」才算高，null/0 都不算（0 不能被当成缺值吞掉）。
+ * 采集兜底占比。接口有两种口径，语义完全不同，文案必须跟着口径走：
+ *   placeholderPlayerRatio —— 兜底贡献人数 / 该分型在线人数（人数口径，结论最直观）
+ *   placeholderRatio       —— 取到兜底值的 app-小时 / 该分型总 app-小时（数据质量口径）
+ * 两者会差很多（W46 商业游戏：行 43% vs 人数 14.9%），所以不能共用一句话。
+ * 只认真正的数字且 > 0.5；null / 0 都不算（0 不能被当成缺值吞掉）。
  */
 function placeholderPeak(items) {
-  const ratios = (items || [])
-    .map((item) => item.placeholderRatio)
-    .filter((v) => typeof v === 'number');
-  if (!ratios.length) return null;
-  const max = Math.max(...ratios);
-  return max > 0.5 ? max : null;
+  const pick = (field) =>
+    (items || [])
+      .map((item) => item[field])
+      .filter((v) => typeof v === 'number');
+  const byPlayers = pick('placeholderPlayerRatio');
+  if (byPlayers.length) {
+    const max = Math.max(...byPlayers);
+    return max > 0.5 ? { mode: 'players', ratio: max } : null;
+  }
+  const byRows = pick('placeholderRatio');
+  if (byRows.length) {
+    const max = Math.max(...byRows);
+    return max > 0.5 ? { mode: 'rows', ratio: max } : null;
+  }
+  return null;
+}
+
+/** 兜底提示文案：口径不同措辞不同，绝不把行占比说成人数占比 */
+function placeholderNoteText(info, extra = '') {
+  const pct = (info.ratio * 100).toFixed(0);
+  if (info.mode === 'players') {
+    return `含采集兜底值：最坏的分型里 ${pct}% 的在线人数是源端兜底值（低体量游戏统一回 100 人），分型占比只作方向参考${extra}。`;
+  }
+  return `含采集兜底值：最坏的分型里 ${pct}% 的 app-小时取到的是源端兜底值（低体量游戏统一回 100 人）——这是按行计的数据质量比例，不等于在线人数里的兜底占比，分型占比只作方向参考${extra}。`;
 }
 
 /** 峰值小时的同一时刻快照：三类相加严格等于总数，可以画堆叠（接口给了才画） */
@@ -537,11 +558,10 @@ function PeakHourBreakdown({ peakHour }) {
         三类可相加
         {peakHour.sumsMatch === false ? '（明细合计与总数不一致，接口已标红）' : ''}。
       </div>
-      {placeholderPeak(items) != null && (
+      {placeholderPeak(items) && (
         <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
           <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-          含采集兜底值：最坏的分型里有 {(placeholderPeak(items) * 100).toFixed(0)}% 的在线人数来自源端兜底填充（100 人），
-          分型占比只作方向参考；榜单均值已剔除兜底小时。
+          {placeholderNoteText(placeholderPeak(items), '；榜单均值已剔除兜底小时')}
         </div>
       )}
     </>
@@ -657,11 +677,10 @@ export function LineBand({ line }) {
                   各分型峰值出现在不同时刻，相加 {fmtFull(breakdown?.consistency?.detailTotal)} 与总峰值{' '}
                   {fmtFull(breakdown?.consistency?.allValue)} 不同 —— 只并列展示，不做堆叠与占比。
                 </div>
-                {placeholderPeak(items) != null && (
+                {placeholderPeak(items) && (
                   <div className="pr-breakdown-note" style={{ lineHeight: 1.65, color: '#9A7A35' }}>
                     <i className="bi bi-exclamation-triangle" style={{ marginRight: 4 }} />
-                    同样含采集兜底值：最坏的分型里有 {(placeholderPeak(items) * 100).toFixed(0)}% 的在线人数是源端兜底填充（100 人），
-                    两个视图都只作方向参考。
+                    {placeholderNoteText(placeholderPeak(items), '；并列视图同样只作方向参考')}
                   </div>
                 )}
               </>
@@ -974,9 +993,11 @@ export function QualitySection({ report }) {
           <div>
             <div className="pr-note-block-title">兜底值说明</div>
             <div className="pr-note-block-text">
-              在线人数源端对低体量游戏按 <code>100</code> 兜底：峰值小时快照里这类行约占四分之一，
-              独立小游戏 / Maker 分型里比例更高，所以在线分型占比只作方向参考；榜单均值已剔除兜底小时，
-              整周期全为兜底值时该维度不出榜。
+              在线人数源端对低体量游戏统一回 <code>100</code>（哨兵值）：按 <code>app-小时</code> 计，
+              独立小游戏 / Maker 分型里过半时段都是这个值，商业游戏约四成。
+              接口的 <code>placeholderRatio</code> 是「按行计」的数据质量比例，<b>不等于在线人数里的兜底占比</b>
+              （W46 商业游戏：按行 43%、按人数 15%），所以分型占比只作方向参考；
+              榜单均值已剔除兜底小时，整周期全为兜底值时该维度不出榜。
             </div>
           </div>
           <div>
