@@ -510,10 +510,12 @@ function placeholderPeak(items) {
     }
   }
 
-  // 两个口径各自过阈值，谁过就只说谁（后端契约建议：行口径 >0.5 说「多数游戏无真值」，人数口径 >0.5 说「人数含水」）
+  // 是否提示看「人数口径」——占比会被兜底稀释多少，人数口径才是直接指标；
+  // 人数口径缺失（老接口/拼接口径）时才退回行口径。
   const rowsHigh = rowRatio != null && rowRatio > 0.5;
   const playersHigh = playerRatio != null && playerRatio > 0.5;
-  if (!rowsHigh && !playersHigh) return null;
+  const shouldWarn = playerRatio != null ? playersHigh : rowsHigh;
+  if (!shouldWarn) return null;
   return { rowRatio, playerRatio, approx, worstRow, rowsHigh, playersHigh };
 }
 
