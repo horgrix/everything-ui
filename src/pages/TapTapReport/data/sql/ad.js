@@ -393,13 +393,6 @@ export function buildAdRankTopSql(rankType = 'daily', limit = 10, label = null) 
   `;
 }
 
-/** 上个月份键（YYYY-MM），用于查 rank 表的 monthly 上月快照 */
-export function lastMonthLabel() {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
 /** 今天（YYYY-MM-DD） */
 function todayWhere() {
   const now = new Date();

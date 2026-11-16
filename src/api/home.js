@@ -1,6 +1,4 @@
-import axios from 'axios';
-import { V09_API_BASE, COMMON_HEADERS } from './config';
-import { handleResponseError } from './authNotice';
+import createV09Client from './v09Client';
 
 /**
  * 首页概览接口（everything-api 服务端聚合，前端不再直连 MySQL 拼 SQL）
@@ -10,31 +8,9 @@ import { handleResponseError } from './authNotice';
  * - GET {base}/ad-rank?month=YYYY-MM&limit=5        本月广告曝光榜 TopN（top / gain / loss）
  *
  * base 默认 `${V09_API_BASE}/home` —— 即 `/api/v09/data/home`，复用现有的
- * `/api/v09/data → everything-api` nginx 反代，不用为这两个接口单独加 location；
- * 需要换地址时用 VITE_HOME_API_BASE_URL 覆盖。
+ * `/api/v09/data → everything-api` nginx 反代；需要换地址时用 VITE_HOME_API_BASE_URL 覆盖。
  */
-const homeClient = axios.create({
-  baseURL: import.meta.env.VITE_HOME_API_BASE_URL || `${V09_API_BASE.replace(/\/+$/, '')}/home`,
-  timeout: 20000,
-  headers: COMMON_HEADERS,
-});
-
-// 与 apiClient 一致的 {code, message, data, total} 解包
-homeClient.interceptors.response.use(
-  (response) => {
-    const body = response.data;
-    if (body.code !== undefined && body.code !== 0) {
-      return Promise.reject(new Error(body.message || `API Error (code: ${body.code})`));
-    }
-    return { data: body.data, total: body.total };
-  },
-  (error) => {
-    handleResponseError(error, 'API');
-    const message = error.response?.data?.message || error.message || '请求失败';
-    console.error('[API Error]', message);
-    return Promise.reject(new Error(message));
-  }
-);
+const homeClient = createV09Client('/home', import.meta.env.VITE_HOME_API_BASE_URL);
 
 /** 当前月份（'YYYY-MM'），与后端缺省值口径一致（后端按 Asia/Shanghai） */
 export function currentMonthKey() {

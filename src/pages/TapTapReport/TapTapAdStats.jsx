@@ -20,7 +20,6 @@ import {
   buildAdRankWeekSql,
   buildAdRankDerivedWeekSql,
   buildAdRankTopSql,
-  lastMonthLabel,
   lastWeekRankKey,
   thisWeekWhere,
 } from './sql';
@@ -401,24 +400,9 @@ export default function TapTapAdStats() {
     transformAdRankTop,
     { enabled: true },
   );
-  const monthTopQuery = useSqlQuery(
-    'taptap-ad-rank-top-monthly',
-    () => buildAdRankTopSql('monthly', 10),
-    [],
-    transformAdRankTop,
-    { enabled: true },
-  );
-
   const lastWeekTopQuery = useSqlQuery(
     'taptap-ad-rank-top-last-week',
     () => buildAdRankTopSql('weekly', 10, lastWeekRankKey()),
-    [],
-    transformAdRankTop,
-    { enabled: true },
-  );
-  const lastMonthTopQuery = useSqlQuery(
-    'taptap-ad-rank-top-last-month',
-    () => buildAdRankTopSql('monthly', 10, lastMonthLabel()),
     [],
     transformAdRankTop,
     { enabled: true },
@@ -628,7 +612,7 @@ export default function TapTapAdStats() {
         )}
       </div>
 
-      {/* 第三行：今日 / 本月投放 Top10（各占 50%） */}
+      {/* 第三行：今日投放 Top10 / 上周投放 Top10（并排，各占 50%） */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
         <div style={{ flex: '50 1 0', minWidth: 0 }}>
           <RankTopCard
@@ -643,23 +627,7 @@ export default function TapTapAdStats() {
             height={500}
           />
         </div>
-        <div style={{ flex: '50 1 0', minWidth: 0 }}>
-          <RankTopCard
-            title="【广告大盘】本月投放 Top10"
-            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
-            rangeLabel="数据月份"
-            snapshot={monthTopQuery.data?.snapshot}
-            rows={monthTopQuery.data?.rows || []}
-            loading={monthTopQuery.isLoading}
-            error={monthTopQuery.error?.message}
-            emptyText="本月排名快照暂无数据"
-            height={500}
-          />
-        </div>
-      </div>
 
-      {/* 第四行：上周 / 上月投放 Top10（各占 50%） */}
-      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
         <div style={{ flex: '50 1 0', minWidth: 0 }}>
           {(() => {
             const official = lastWeekTopQuery.data;
@@ -681,19 +649,6 @@ export default function TapTapAdStats() {
               />
             );
           })()}
-        </div>
-        <div style={{ flex: '50 1 0', minWidth: 0 }}>
-          <RankTopCard
-            title="【广告大盘】上月投放 Top10"
-            subtitle="rank_type=monthly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
-            rangeLabel="数据月份"
-            snapshot={lastMonthTopQuery.data?.snapshot || lastMonthLabel()}
-            rows={lastMonthTopQuery.data?.rows || []}
-            loading={lastMonthTopQuery.isLoading}
-            error={lastMonthTopQuery.error?.message}
-            emptyText={`上月（${lastMonthLabel()}）排名快照尚未入库`}
-            height={500}
-          />
         </div>
       </div>
     </>

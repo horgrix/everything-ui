@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { fetchReserveTrend } from '../../api/oneSearchApi';
 import useChartData from '../../hooks/useChartData';
 import { querySql, querySqlV09 } from '../../api/query';
 import BrushLineChart from '../../components/charts/BrushLineChart';
+import LineChart from '../../components/charts/LineChart';
 import Sparkline from '../../components/common/Sparkline';
 import { recentDaysWhere, recentHoursWhere } from '../TapTapReport/dates';
 import { PC_GAME_TYPE_META } from '../TapTapReport/shared';
@@ -62,6 +65,12 @@ const DOWNLOAD_SERIES = [
   { name: '总下载数', field: 'download_count', color: '#7A8B99' },
   { name: 'PC端下载数', field: 'pc_download_count', color: '#9CAF9F' },
   { name: '移动端下载数', field: 'app_download_count', color: '#C4A4A4' },
+];
+
+/** 游戏预约趋势系列（最近 30 天）：累计总量走左轴，当日新增走右轴（两者量级差一个数量级） */
+const RESERVE_SERIES = [
+  { name: '累计预约数', field: 'total', color: '#7A8B99', axis: 0 },
+  { name: '当日新增预约', field: 'added', color: '#9CAF9F', axis: 1 },
 ];
 
 /** APP首页广告投放趋势系列（v5 表的 app 渠道：广告 / 资源互换） */
@@ -647,6 +656,30 @@ export default function SearchView() {
     { enabled: !!appId, transform: (rows) => buildBrushSeries(rows, PC_AD_SERIES, 7) }
   );
 
+  // 【游戏预约趋势】最近 30 天（everything-api 的 /api/v09/data/search/reserve-trend）
+  const reserveTrendQuery = useQuery({
+    queryKey: ['one-search-reserve-trend', appId],
+    queryFn: () => fetchReserveTrend(appId, 30),
+    enabled: !!appId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  /** 预约趋势 → LineChart 双轴数据（x=毫秒；累计左轴、当日新增右轴） */
+  const reserveTrend = useMemo(() => {
+    const points = reserveTrendQuery.data?.points || [];
+    const toY = (v) => (v == null ? null : Number(v));
+    return {
+      hasData: points.some((p) => p.total != null || p.added != null),
+      series: RESERVE_SERIES.map((def) => ({
+        name: def.name,
+        yAxisIndex: def.axis,
+        data: points.map((p) => ({ x: DATE_X(p.date), y: toY(p[def.field]) })),
+      })),
+      colors: RESERVE_SERIES.map((def) => def.color),
+    };
+  }, [reserveTrendQuery.data]);
+
   // 【游戏下载趋势】本年逐日下载（MySQL v09 的 dws_taptap_download_v2_daily）
   const downloadQuery = useChartData(
     `one-search-download-${appId ?? 'none'}`,
@@ -923,6 +956,53 @@ export default function SearchView() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 【游戏预约趋势】最近 30 天 */}
+      {targetApp && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-header bg-white border-0">
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#232B33' }}>游戏预约趋势</div>
+            <div className="text-muted small">
+              {targetApp.appName ? `${targetApp.appName}（` : ''}APPID {targetApp.appId}
+              {targetApp.appName ? '）' : ''} · 最近 30 天 · 左轴累计预约数，右轴当日新增预约
+            </div>
+          </div>
+          <div className="card-body">
+            {reserveTrend.hasData ? (
+              <LineChart
+                series={reserveTrend.series}
+                colors={reserveTrend.colors}
+                loading={reserveTrendQuery.isLoading}
+                error={reserveTrendQuery.error?.message}
+                height={320}
+                strokeWidth={2}
+                toolbar={false}
+                xaxisOverrides={{ labels: { format: 'MM/dd', datetimeUTC: false, rotate: -45 } }}
+                yaxisOverrides={{
+                  title: { text: '累计预约数' },
+                  min: 0,
+                  labels: { formatter: (v) => formatCompactNumber(v) },
+                }}
+                yaxisRight={{
+                  title: { text: '当日新增' },
+                  min: 0,
+                  labels: { formatter: (v) => formatCompactNumber(v) },
+                }}
+                legendOverrides={{ position: 'top', horizontalAlign: 'center', fontSize: '10px' }}
+              />
+            ) : (
+              <div className="text-center text-muted py-5">
+                <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+                {reserveTrendQuery.isLoading
+                  ? '加载中…'
+                  : reserveTrendQuery.error
+                    ? `预约数据读取失败：${reserveTrendQuery.error.message}`
+                    : '该游戏在最近 30 天没有预约数据'}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
