@@ -902,10 +902,20 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
   // 可比性交给接口（58714b5 的 sample.lowSample，阈值常量在服务端），前端只渲染信号。
   const distinctValues = new Set(items.map((item) => item.value));
   const allTied = items.length >= 3 && distinctValues.size === 1;
-  const lowSample = data?.sample?.lowSample === true;
+  // 只有真拿到行级 realHours 才敢说「样本不足」——后端 58714b5 曾经因为 real_hours 没落库
+  // 返回过全 null，这时 lowSample 即使为 true 也没有可见依据，宁可不提示也不能凭空报警。
+  const hoursKnown = items.filter((item) => typeof item.realHours === 'number');
+  const sample = data?.sample || null;
+  const lowSample = sample?.lowSample === true && hoursKnown.length > 0;
+  const sampleMax =
+    sample && typeof sample.maxRealHours === 'number'
+      ? sample.maxRealHours
+      : hoursKnown.length
+        ? Math.max(...hoursKnown.map((item) => item.realHours))
+        : null;
   const sampleRange =
-    data?.sample && typeof data.sample.minRealHours === 'number' && typeof data.sample.maxRealHours === 'number'
-      ? `${data.sample.minRealHours}~${data.sample.maxRealHours} 小时`
+    sample && typeof sample.minRealHours === 'number' && typeof sample.maxRealHours === 'number'
+      ? `${sample.minRealHours}~${sample.maxRealHours} 小时`
       : null;
 
   return (
@@ -965,8 +975,9 @@ export function RankCard({ line, periodType, periodKey, distLabels }) {
       {lowSample && (
         <div className="pr-rank-notice">
           <i className="bi bi-exclamation-circle me-1" />
-          样本不足 · 名次仅作参考：该榜每行的有效在线小时都 ≤ 2{sampleRange ? `（本期 ${sampleRange}）` : ''}，
-          一两个小时的均值区分度有限。
+          样本不足 · 名次仅作参考：该榜每行的有效在线小时
+          {sampleMax != null ? `都 ≤ ${sampleMax}` : '都很少'}
+          {sampleRange ? `（本期 ${sampleRange}）` : ''}，均值区分度有限。
         </div>
       )}
 
