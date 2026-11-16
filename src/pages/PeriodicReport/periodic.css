@@ -863,6 +863,16 @@
   border-bottom: 1px solid var(--pr-hair);
 }
 
+.pr-player-appicon {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #f1eef7;
+  display: block;
+  flex: 0 0 auto;
+}
+
 .pr-player-name {
   font-size: 13.5px;
   font-weight: 650;

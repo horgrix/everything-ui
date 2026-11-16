@@ -811,6 +811,31 @@ export function LineBand({ line }) {
 
 /* ================================================================== 按游戏 */
 
+/**
+ * 重点游戏的角标图标。
+ * 接口给 players[].icon（TapTap 图标 URL）就渲染真图；没给 / 加载失败一律回到
+ * 原来的控制器图标占位，不留空白 —— 数据侧补字段时前端不需要再改。
+ */
+function PlayerIcon({ src, name }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <span className="pr-panel-icon" style={{ color: '#6B5B86', background: '#F1EEF7' }}>
+        <i className="bi bi-controller" />
+      </span>
+    );
+  }
+  return (
+    <img
+      className="pr-player-appicon"
+      src={src}
+      alt={name || ''}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export function PlayerCards({ players, flags }) {
   if (!players?.length) return null;
   return (
@@ -820,9 +845,7 @@ export function PlayerCards({ players, flags }) {
         return (
           <Panel key={player.key}>
             <div className="pr-player-head">
-              <span className="pr-panel-icon" style={{ color: '#6B5B86', background: '#F1EEF7' }}>
-                <i className="bi bi-controller" />
-              </span>
+              <PlayerIcon src={player.icon} name={player.name} />
               <div>
                 <div className="pr-player-name">{player.name}</div>
                 <div className="pr-player-sub">XD 重点游戏 · 概览周表口径</div>
