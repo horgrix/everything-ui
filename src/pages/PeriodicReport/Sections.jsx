@@ -840,11 +840,15 @@ function PeakHourBreakdown({ peakHour }) {
 function DailyTrend({ line, daily, color }) {
   const [metricKey, setMetricKey] = useState('total');
   const distLabels = daily.distLabels || {};
-  const distKeys = Object.keys(distLabels);
 
   const pointsOf = (side) => (side && Array.isArray(side.points) ? side.points : []);
   const current = pointsOf(daily.current);
   const previous = pointsOf(daily.previous);
+  // 分型 chips 只看实际出现的 dist 键：在线线按口径不给分型（distLabels 有、points 里没有），
+  // 若照 distLabels 列 chip，会给出三条永远空的曲线
+  const distKeys = Array.from(
+    new Set([...current, ...previous].flatMap((point) => Object.keys(point.dist || {})))
+  ).sort();
   const maxDay = Math.max(
     ...current.map((p) => p.day || 0),
     ...previous.map((p) => p.day || 0),
@@ -861,22 +865,18 @@ function DailyTrend({ line, daily, color }) {
   const previousByDay = byDay(previous);
 
   const categories = Array.from({ length: maxDay }, (_, i) => `第 ${i + 1} 天`);
+  const buildSeries = (name, byDay) => ({
+    name,
+    data: categories.map((_, i) => {
+      const v = valueOf(byDay.get(i + 1));
+      return v == null ? null : v;
+    }),
+  });
+  // 上期整段没数据时（在线线早期只有一两天）不挂一条空曲线，图例也不留空条目
   const series = [
-    {
-      name: '本期',
-      data: categories.map((_, i) => {
-        const v = valueOf(currentByDay.get(i + 1));
-        return v == null ? null : v;
-      }),
-    },
-    {
-      name: `上期${daily.previous?.periodKey ? `（${daily.previous.periodKey}）` : ''}`,
-      data: categories.map((_, i) => {
-        const v = valueOf(previousByDay.get(i + 1));
-        return v == null ? null : v;
-      }),
-    },
-  ];
+    buildSeries('本期', currentByDay),
+    buildSeries(`上期${daily.previous?.periodKey ? `（${daily.previous.periodKey}）` : ''}`, previousByDay),
+  ].filter((item) => item.data.some((v) => v != null));
 
   const firstDate = current[0]?.date || null;
   const lastDate = current[current.length - 1]?.date || null;
@@ -886,7 +886,12 @@ function DailyTrend({ line, daily, color }) {
 
   if (!maxDay || !hasData) return null;
 
-  const chips = [{ key: 'total', label: '合计' }, ...distKeys.map((key) => ({ key, label: distLabels[key] || key }))];
+  // 第一条 chip 是该线的「主指标」而不是求和：在线线每日值是当日峰值，求和没有意义
+  const TOTAL_LABEL = { download: '下载总量', ad: '广告曝光', online: '在线峰值' };
+  const chips = [
+    { key: 'total', label: TOTAL_LABEL[line.key] || '总量' },
+    ...distKeys.map((key) => ({ key, label: distLabels[key] || key })),
+  ];
 
   return (
     <div className="pr-daily">
@@ -935,6 +940,7 @@ function DailyTrend({ line, daily, color }) {
               axisBorder: { show: false },
               axisTicks: { show: false },
               labels: { style: { colors: '#8A959E', fontSize: '10.5px' } },
+              tickAmount: Math.min(maxDay, 8),
               tooltip: { enabled: false },
             },
             yaxis: {
