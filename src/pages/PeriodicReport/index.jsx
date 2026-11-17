@@ -319,6 +319,7 @@ export default function PeriodicReport() {
                 <LineBand line={line} />
                 <RankCard
                   line={line.key}
+                  limit={6}
                   periodType={periodType}
                   periodKey={meta.periodKey}
                   distLabels={meta.distLabels}

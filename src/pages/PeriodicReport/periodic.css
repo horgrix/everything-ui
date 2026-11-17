@@ -754,6 +754,82 @@
   margin-bottom: 0;
 }
 
+/*
+ * 明细区改成「指标一行 + 分型拆解单独一行」：
+ * 左边栏只有 ~830px，四个指标挤成 2×2 会让数值与环比上下错位，一行四个反而更好比。
+ * 分型拆解独占下一行，条形图有了整行宽度，占比文字也不会被挤到换行。
+ */
+.pr-line-row .pr-line-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pr-line-row .pr-line-metrics,
+.pr-line-row .pr-line-metrics.is-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-right: 0;
+  border-bottom: 1px solid var(--pr-hair);
+}
+
+.pr-line-row .pr-metric {
+  border-bottom: 0;
+  border-right: 1px solid var(--pr-hair);
+  padding: 13px 15px;
+}
+
+/* 覆盖全局的 2n / nth-last-child 规则，改成按 4 列收边 */
+.pr-line-row .pr-metric:nth-child(2n) {
+  border-right: 1px solid var(--pr-hair);
+}
+
+.pr-line-row .pr-metric:nth-child(4n),
+.pr-line-row .pr-metric:last-child {
+  border-right: 0;
+}
+
+.pr-line-row .pr-metric:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+/* 指标数为 3（在线缺并发款数）时，让最后一个指标吃掉剩下的列，别留空格子 */
+.pr-line-row .pr-line-metrics:not(.is-list) > .pr-metric:last-child:nth-child(4n + 3) {
+  grid-column: span 2;
+}
+
+.pr-line-row .pr-metrics-note {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+/* 在线那两格标签较长会折成两行，把标签区固定成两行高，四个数值才落在同一条基线上 */
+.pr-line-row .pr-metric-label {
+  min-height: 30px;
+  align-items: flex-start;
+}
+
+.pr-line-row .pr-metric-label .pr-coverage {
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .pr-line-row .pr-line-metrics,
+  .pr-line-row .pr-line-metrics.is-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pr-line-row .pr-metric:nth-child(4n),
+  .pr-line-row .pr-metric:last-child {
+    border-right: 0;
+  }
+
+  .pr-line-row .pr-metric:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .pr-line-row .pr-metric:nth-child(2n + 1) {
+    border-right: 1px solid var(--pr-hair);
+  }
+}
+
 @media (max-width: 1100px) {
   .pr-line-row {
     grid-template-columns: minmax(0, 1fr);
