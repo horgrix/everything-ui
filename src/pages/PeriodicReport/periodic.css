@@ -867,6 +867,17 @@
   white-space: nowrap;
 }
 
+.pr-daily-chip-val {
+  margin-left: 4px;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: #a7b0b8;
+}
+
+.pr-daily-chips button.is-active .pr-daily-chip-val {
+  color: #8a959e;
+}
+
 .pr-daily-chips button.is-active {
   background: #fff;
   color: var(--pr-ink);

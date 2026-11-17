@@ -888,10 +888,21 @@ export function DailyTrend({ line, daily, color }) {
 
   // 第一条 chip 是该线的「主指标」而不是求和：在线线每日值是当日峰值，求和没有意义
   const TOTAL_LABEL = { download: '下载总量', ad: '广告曝光', online: '在线峰值', reserve: '新增预约' };
+  // chip 上带本期量级：Maker 这种量级差三个数量级的品类，四线同框时贴底，
+  // 不标数值会被当成「没数据」；summable=false（在线）时给峰值，其余给合计
+  const chipValue = (key) => {
+    const values = current
+      .map((point) => (key === 'total' ? point.total : point.dist?.[key]))
+      .filter((v) => typeof v === 'number');
+    if (!values.length) return null;
+    return daily.summable === false
+      ? Math.max(...values)
+      : values.reduce((sum, v) => sum + v, 0);
+  };
   const chips = [
     { key: 'total', label: TOTAL_LABEL[line.key] || '总量' },
     ...distKeys.map((key) => ({ key, label: distLabels[key] || key })),
-  ];
+  ].map((chip) => ({ ...chip, value: chipValue(chip.key), isPeak: daily.summable === false }));
 
   return (
     <div className="pr-daily">
@@ -908,8 +919,12 @@ export function DailyTrend({ line, daily, color }) {
               aria-selected={metricKey === chip.key}
               className={metricKey === chip.key ? 'is-active' : ''}
               onClick={() => setMetricKey(chip.key)}
+              title={chip.value == null ? undefined : `${chip.label} 本期${chip.isPeak ? '峰值' : '合计'} ${fmtFull(chip.value)} ${daily.unit || ''}`}
             >
               {chip.label}
+              {chip.value != null && (
+                <span className="pr-daily-chip-val">{fmtCompact(chip.value)}</span>
+              )}
             </button>
           ))}
         </div>
