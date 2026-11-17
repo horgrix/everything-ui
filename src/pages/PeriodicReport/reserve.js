@@ -125,15 +125,28 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
     typeof head.dailyAvgComparable === 'boolean'
       ? head.dailyAvgComparable
       : Boolean(hasPrevCoverage && !thinCoverage && !prevThin);
-  // 为什么不出日均环比：本周没采满 / 上期没采满 / 上期早于采集起点（prevDayCnt 为 null，不是 0）。
-  // 后端 24f1c4f 起统一由 dailyAvgBlocked 给这三种；没这个字段时前端自己判。
+  // 期初早于预约采集起点（11-08）的那几天永远不会有数据 —— 这不是缺口，别标黄
+  const startLimited = cov.startLimited === true;
+  // 本期还没走完（今天/昨天才收了一半）—— 也不是缺口，是「进行中」
+  const periodInProgress = cov.periodInProgress === true;
+
+  // 为什么不出日均环比：上期早于采集起点 / 本期还在进行中 / 本期没采满 / 上期没采满。
+  // 后端 6eba707 起统一由 dailyAvgBlocked 给这四种（顺序即优先级）；没这个字段时前端自己判。
   const blocked =
     head.dailyAvgBlocked ||
-    (thinCoverage ? 'current_partial' : hasPrevCoverage && prevThin ? 'prev_partial' : hasPrevCoverage ? null : 'prev_missing');
+    (!hasPrevCoverage
+      ? 'prev_missing'
+      : periodInProgress
+        ? 'current_in_progress'
+        : thinCoverage
+          ? 'current_partial'
+          : prevThin
+            ? 'prev_partial'
+            : null);
 
   return {
     available: true,
-    coverage: { dayCnt, expectedDays, firstDay, lastDay, thinCoverage },
+    coverage: { dayCnt, expectedDays, firstDay, lastDay, thinCoverage, startLimited, periodInProgress },
     headline: {
       add,
       dailyAvg,
@@ -165,10 +178,15 @@ export function periodLabelOf(key, periodType) {
   return `W${tail}`;
 }
 
-/** 覆盖天数文案：7/7 天 · 11.09~11.15 */
+/**
+ * 覆盖天数文案：7/7 天 · 11-09~11-15
+ * 期初早于采集起点时补「上线首周」、还没走完补「进行中」——这两种都不是缺口，不该被读成不完整。
+ */
 export function coverageText(coverage) {
   if (!coverage || coverage.dayCnt == null) return null;
-  const { dayCnt, expectedDays, firstDay, lastDay } = coverage;
+  const { dayCnt, expectedDays, firstDay, lastDay, startLimited, periodInProgress } = coverage;
   const span = firstDay && lastDay ? ` · ${firstDay.slice(5)}~${lastDay.slice(5)}` : '';
-  return expectedDays != null ? `${dayCnt}/${expectedDays} 天${span}` : `${dayCnt} 天${span}`;
+  const head = expectedDays != null ? `${dayCnt}/${expectedDays} 天` : `${dayCnt} 天`;
+  const note = periodInProgress ? ' · 进行中' : startLimited ? ' · 上线首周' : '';
+  return `${head}${span}${note}`;
 }

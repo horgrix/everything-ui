@@ -84,22 +84,22 @@ export function ReserveSection({ reserve, periodType }) {
 
   const { coverage, headline, dist, ranks } = reserve;
 
-  // 不给日均环比时，必须说清是哪一头不可比：拿半周日均比整周日均，会把周末效应读成涨跌
+  // 不给日均环比时，四种原因各写各的：上期无数据 / 本期进行中 / 本期没采满 / 上期没采满。
+  // 拿「1 天的日均」比「7 天的日均」，会把周末效应读成增长或腰斩，所以这四种一律不画百分比。
   const dayText = (cnt, expected) => (expected != null ? `${cnt ?? '—'}/${expected} 天` : `${cnt ?? '—'} 天`);
-  const compareReasons = [];
-  if (headline.dailyAvgBlocked === 'current_partial') {
-    compareReasons.push(`本期仅覆盖 ${dayText(coverage.dayCnt, coverage.expectedDays)}`);
-  }
-  if (headline.prevDailyAvg == null) {
-    const prevLabel = periodLabelOf(headline.prevPeriodKey, periodType);
-    compareReasons.push(prevLabel ? `上期（${prevLabel}）无预约数据` : '上期无预约数据');
-  }
-  else if (headline.dailyAvgBlocked === 'prev_partial') {
-    compareReasons.push(`上期仅覆盖 ${dayText(headline.prevDayCnt, headline.prevExpectedDays)}`);
-  }
-  const compareText = compareReasons.length
-    ? `${compareReasons.join(' · ')} · 日均不可比`
-    : '日均环比暂不可比';
+  const prevLabel = periodLabelOf(headline.prevPeriodKey, periodType);
+  const blockedText = {
+    prev_missing: `${prevLabel ? `上期（${prevLabel}）` : '上期'}无预约数据`,
+    current_in_progress: '本期进行中，日均环比待本期走完',
+    current_partial: `本期仅覆盖 ${dayText(coverage.dayCnt, coverage.expectedDays)}`,
+    prev_partial: `上期仅覆盖 ${dayText(headline.prevDayCnt, headline.prevExpectedDays)}`,
+  };
+  // 「本期进行中」这句自己已经说清为什么没有环比，不要再拖一个「日均不可比」尾巴
+  const compareText = headline.dailyAvgComparable
+    ? null
+    : headline.dailyAvgBlocked === 'current_in_progress'
+      ? blockedText.current_in_progress
+      : `${blockedText[headline.dailyAvgBlocked] || '日均环比暂不可比'} · 日均不可比`;
   const compareHint =
     '日均只在两期都覆盖满整期时才给环比：拿「1 天的日均」比「7 天的日均」，会把周末效应读成增长或腰斩';
   const totalAdd = dist.reduce((sum, row) => sum + (row.add || 0), 0);
