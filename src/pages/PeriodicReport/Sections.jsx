@@ -1330,6 +1330,13 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
     if (listSet) setListType(listSet[0].key);
   }, [listSet]);
 
+  // 本期还在进行中（如 W47 只有 1 天）时，「增量 / 下滑」是按 diffPct 排的，
+  // 而 diffPct 是「1 天对整周」，线上会出现 −88% 这种假跌幅 —— 只留「总量」榜。
+  const canDiff = isPartial !== true;
+  useEffect(() => {
+    if (!canDiff && category !== 'top') setCategory('top');
+  }, [canDiff, category]);
+
   const rankQuery = useQuery({
     queryKey: ['pr-rank', line, periodType, periodKey, category, listType, limit],
     queryFn: () => fetchRank(line, { periodType, key: periodKey, category, limit, listType }),
@@ -1404,6 +1411,9 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
               key={item.key}
               type="button"
               className={item.key === category ? 'is-active' : ''}
+              disabled={item.key !== 'top' && !canDiff}
+              title={item.key !== 'top' && !canDiff ? '本期还没走完，增量与整期不可比，暂不提供' : undefined}
+              style={item.key !== 'top' && !canDiff ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               onClick={() => setCategory(item.key)}
             >
               {item.label}
@@ -1477,9 +1487,11 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
           const pct = item.diffPct;
           const tone = pct == null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
           const subText =
-            category === 'top'
-              ? fmtPct(pct) || '上期无数据'
-              : `总量 ${rankValueText(item.value)}`;
+            category !== 'top'
+              ? `总量 ${rankValueText(item.value)}`
+              : isPartial
+                ? '本期进行中'
+                : fmtPct(pct) || '上期无数据';
           return (
             <div
               className={`pr-rank-row${!duplicatedRank && item.rankNo <= 3 ? ` is-top${item.rankNo}` : ''}`}

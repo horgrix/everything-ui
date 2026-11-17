@@ -146,15 +146,26 @@ function noteWithHour(kpi) {
 export function withLineLabels(report) {
   if (!report?.lines) return report;
   const byLine = new Map(CORE_KPI_SPEC.filter((spec) => spec.label).map((spec) => [spec.key, spec.label]));
+  // 本期还没走完时，累计值对整期天然偏低（W47 的 −86.3% 就是 1 天比 7 天）：
+  // 在数据层把这批 kpi 的环比统一抹掉，01 卡片、封面大数字、04 明细一起生效，
+  // 不用每个组件各自判 meta.isPartial（后端 5f66dd4 起也可能直接给 null/blocked，这里幂等）。
+  const partial = report?.meta?.isPartial === true;
+  const guard = (kpi) =>
+    partial && !kpi.deltaBlocked
+      ? { ...kpi, deltaPct: null, deltaAbs: null, deltaComparable: false, deltaBlocked: 'current_in_progress' }
+      : kpi;
   return {
     ...report,
     lines: report.lines.map((line) => ({
       ...line,
-      kpis: (line.kpis || []).map((kpi) => ({
-        ...kpi,
-        ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
-        ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
-      })),
+      kpis: (line.kpis || []).map((kpi) => {
+        const guarded = guard(kpi);
+        return {
+          ...guarded,
+          ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
+          ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
+        };
+      }),
     })),
   };
 }
