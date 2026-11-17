@@ -1047,7 +1047,10 @@ export function LineBand({ line, isPartial = false }) {
               <div className="pr-metric-label">
                 {kpi.label}
                 <NoteMark note={kpi.note} />
-                <Coverage available={kpi.availablePeriods || []} total={line.periods?.length} />
+                {/* 只有当期、没有逐期数据的指标（在线分型峰值）不显示「x/y 期」，否则会读成 0/3 期覆盖率 */}
+                {(kpi.availablePeriods?.length || 0) > 0 && (
+                  <Coverage available={kpi.availablePeriods} total={line.periods?.length} />
+                )}
               </div>
               <div className="pr-metric-row">
                 <span className="pr-metric-num" title={`${fmtFull(kpi.value)} ${kpi.unit}`}>

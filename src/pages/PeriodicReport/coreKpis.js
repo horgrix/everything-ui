@@ -16,7 +16,40 @@
  */
 
 /** 不进 04 明细的指标（仍在接口里，只是不展示） */
-export const HIDDEN_LINE_KPIS = new Set(['concurrent_game_cnt']);
+export const HIDDEN_LINE_KPIS = new Set(['concurrent_game_cnt', 'online_avg', 'online_game_cnt']);
+
+/**
+ * 在线线把「周均在线 / 有在线的游戏款数」换成三个分型峰值（商业 / 独立 / Maker）。
+ * 数据来自 `breakdown.items[]`（同一小时快照，三型相加 = 在线峰值），不新增接口字段。
+ */
+function onlineDistPeakKpis(line) {
+  // 必须用 peakHour.breakdown（同一小时快照，三型相加 = 在线峰值 146,354）。
+  // 不能用 breakdown.items：那是「各分型各自的周内峰值」，相加是 146,929，和旁边的在线峰值对不上。
+  const rows = line?.peakHour?.breakdown || [];
+  const crawledAt = line?.peakHour?.crawledAt || null;
+  return rows
+    .filter((row) => row && row.peakOnlinePlayers != null)
+    .map((row) => ({
+      key: `online_dist_peak_${row.distributionType ?? row.label}`,
+      line: 'online',
+      label: `${row.label}峰值`,
+      unit: '人',
+      isInt: true,
+      value: row.peakOnlinePlayers,
+      // 同一小时的分型峰值只有当期（历史期没有逐分型的同小时快照），所以不出环比、不画趋势
+      deltaPct: null,
+      deltaAbs: null,
+      deltaComparable: false,
+      deltaBlocked: 'secondary_metric',
+      note: `同一小时快照${crawledAt ? `（${crawledAt}）` : ''}的分型峰值，三型相加等于在线峰值；与「整周去重」不是一个量`,
+      trend: [],
+      availablePeriods: [],
+      historyPoints: 0,
+      insufficientHistory: true,
+      hasValue: true,
+      games: row.gameCnt ?? null,
+    }));
+}
 
 /** 顺序即网格顺序（一行 3 个：三款数 → 三总量） */
 export const CORE_KPI_SPEC = [
@@ -61,6 +94,8 @@ export function rosterNote(line) {
   const kpi = (line.kpis || []).find((item) => item.key === spec.key);
   // 两种送达方式都认：二方 KPI（接口现行的 MetricSpec 做法）或同名指标上的附加字段
   const rosterKpi = (line.kpis || []).find((item) => item.key === spec.rosterKey);
+  // 指标格已经隐藏时，那句「覆盖 X 款里 N 款为 0」会对着看不见的数解释，一并省掉
+  if (kpi?.hidden) return null;
   const roster = typeof rosterKpi?.value === 'number' ? rosterKpi.value : kpi?.game_cnt_roster;
   if (typeof roster !== 'number' || typeof kpi?.value !== 'number') return null;
   const gap = roster - kpi.value;
@@ -164,15 +199,19 @@ export function withLineLabels(report) {
     ...report,
     lines: report.lines.map((line) => ({
       ...line,
-      kpis: (line.kpis || []).map((kpi) => {
-        const guarded = guard(kpi);
-        return {
-          ...guarded,
-          ...(hiddenKeys.has(kpi.key) ? { hidden: true } : {}),
-          ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
-          ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
-        };
-      }),
+      kpis: [
+        ...(line.kpis || []).map((kpi) => {
+          const guarded = guard(kpi);
+          return {
+            ...guarded,
+            ...(hiddenKeys.has(kpi.key) ? { hidden: true } : {}),
+            ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
+            ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
+          };
+        }),
+        // 在线线补充三个分型峰值（明细里替代周均在线 / 有在线款数）
+        ...(line.key === 'online' ? onlineDistPeakKpis(line) : []),
+      ],
     })),
   };
 }
