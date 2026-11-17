@@ -1332,10 +1332,12 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
 
   // 本期还在进行中（如 W47 只有 1 天）时，「增量 / 下滑」是按 diffPct 排的，
   // 而 diffPct 是「1 天对整周」，线上会出现 −88% 这种假跌幅 —— 只留「总量」榜。
-  const canDiff = isPartial !== true;
+  // 接口 6871ed1 起对进行中的期直接不给 diffPct（items[].diffBlocked），以它为准；
+  // 它还没发布时退回 meta.isPartial，双保险
+  const diffBlocked = isPartial === true;
   useEffect(() => {
-    if (!canDiff && category !== 'top') setCategory('top');
-  }, [canDiff, category]);
+    if (diffBlocked && category !== 'top') setCategory('top');
+  }, [diffBlocked, category]);
 
   const rankQuery = useQuery({
     queryKey: ['pr-rank', line, periodType, periodKey, category, listType, limit],
@@ -1411,9 +1413,9 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
               key={item.key}
               type="button"
               className={item.key === category ? 'is-active' : ''}
-              disabled={item.key !== 'top' && !canDiff}
-              title={item.key !== 'top' && !canDiff ? '本期还没走完，增量与整期不可比，暂不提供' : undefined}
-              style={item.key !== 'top' && !canDiff ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+              disabled={item.key !== 'top' && diffBlocked}
+              title={item.key !== 'top' && diffBlocked ? '本期还没走完，增量与整期不可比，暂不提供' : undefined}
+              style={item.key !== 'top' && diffBlocked ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
               onClick={() => setCategory(item.key)}
             >
               {item.label}
@@ -1486,11 +1488,13 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
           const main = category === 'top' ? item.value : item.diff;
           const pct = item.diffPct;
           const tone = pct == null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+          // 行内副标题：总量榜看环比（接口置空时说明原因），增量/下滑榜看总量
+          const blockedLabel = item.diffBlocked === 'current_in_progress' ? '本期进行中' : '环比不可比';
           const subText =
             category !== 'top'
               ? `总量 ${rankValueText(item.value)}`
-              : isPartial
-                ? '本期进行中'
+              : item.diffBlocked || (isPartial && pct == null)
+                ? blockedLabel
                 : fmtPct(pct) || '上期无数据';
           return (
             <div
