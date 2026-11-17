@@ -132,10 +132,11 @@ export default function PeriodicReport() {
       current_in_progress: 'current_in_progress',
     };
     const blocked = blockedMap[head.dailyAvgBlocked] || null;
-    const mk = (key, label, value, unit, note) => ({
+    const mk = (key, label, shortLabel, value, unit, note) => ({
       key,
       line: 'reserve',
       label,
+      shortLabel,
       unit,
       isInt: true,
       value,
@@ -154,6 +155,7 @@ export default function PeriodicReport() {
     const reserveGameCnt = mk(
       'reserve_game_cnt',
       '有新增预约的游戏',
+      '预约款数',
       head.gameCnt ?? null,
       '款',
       '期内至少新增 1 次预约的款数；预约采集 2026-11-08 起才有数据'
@@ -161,6 +163,7 @@ export default function PeriodicReport() {
     const reserveAdd = mk(
       'reserve_add',
       '新增预约量',
+      '预约量',
       head.add ?? null,
       '次',
       '期内新增预约次数合计（预约池口径，不是平台大盘）'
@@ -364,7 +367,7 @@ export default function PeriodicReport() {
             <KpiGrid coreKpis={coreKpis} totalPeriods={meta.availablePeriods.length} />
           </section>
 
-          <TrendSection report={view} />
+          <TrendSection report={{ ...view, coreKpis }} />
 
           <DownloadTrend trend={downloadTrend} isPartial={meta.isPartial === true} />
 

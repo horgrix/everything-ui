@@ -284,7 +284,10 @@ export function buildInsights(report) {
   }
 
   // 5) 趋势期数不足的提醒
-  const short = (report.coreKpis || []).filter((k) => k.insufficientHistory && k.hasValue);
+  // 「期数不足」这条只对「有若干期但不够 3 期」的指标有意义；只有当期值（趋势为空）的不在这里说
+  const short = (report.coreKpis || []).filter(
+    (k) => k.insufficientHistory && k.hasValue && (k.trend?.length || 0) > 0
+  );
   if (short.length) {
     out.push({
       tone: 'muted',
@@ -402,7 +405,10 @@ export function TrendSection({ report, no = '02' }) {
                 <span style={{ fontSize: 10.5, marginTop: 2 }}>
                   {trend.length === 2
                     ? `${trend[0].label} ${fmtCompact(trend[0].value)} → ${trend[1].label} ${fmtCompact(trend[1].value)}`
-                    : '仅 1 期有值'}
+                    : trend.length === 1
+                      ? `仅 ${trend[0].label} 有值`
+                      : // 预约两项只有当期值：接口没有逐期历史（采集 2026-11-08 起）
+                        '该指标只有当期值，暂无可回看的期次'}
                 </span>
               </Placeholder>
             )}
