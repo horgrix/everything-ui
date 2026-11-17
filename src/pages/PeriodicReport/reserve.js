@@ -49,6 +49,10 @@ function normalizeDist(raw, totalAdd) {
         add,
         gameCnt: num(row.gameCnt ?? row.reserveGameCnt),
         roster: num(row.gameCntRoster ?? row.reserveGameCntRoster),
+        // 分型各自的覆盖天数（W46 Maker 只有 4/7 天）；后端还没给这个字段时为 null，页面不显示徽标
+        dayCnt: num(row.dayCnt ?? row.day_cnt),
+        firstDay: row.firstDay || row.first_day || null,
+        lastDay: row.lastDay || row.last_day || null,
         share: givenShare ?? (add != null && totalAdd ? (add / totalAdd) * 100 : null),
       };
     })

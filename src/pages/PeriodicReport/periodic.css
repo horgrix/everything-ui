@@ -1634,7 +1634,7 @@
 
 .pr-reserve-dist-row {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr) 46px 58px 44px;
+  grid-template-columns: 82px minmax(0, 1fr) 46px 58px 44px auto;
   align-items: center;
   gap: 9px;
   padding: 4px 0;
@@ -1644,6 +1644,19 @@
 .pr-reserve-dist-name {
   color: var(--pr-text);
   white-space: nowrap;
+}
+
+/* 分型覆盖天数徽标（只有覆盖不满整期时出现） */
+.pr-reserve-dist-days {
+  justify-self: start;
+  white-space: nowrap;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #9a7a35;
+  background: rgba(154, 122, 53, 0.12);
+  vertical-align: 1px;
 }
 
 .pr-reserve-dist-bar {
