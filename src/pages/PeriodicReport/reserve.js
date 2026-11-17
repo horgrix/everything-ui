@@ -122,9 +122,11 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
   const prevExpectedDays = num(head.prevExpectedDayCnt) ?? num(head.prevExpectedDays) ?? (periodType === 'weekly' ? WEEK_DAYS : null);
   const prevThin = prevDayCnt != null && prevExpectedDays != null && prevDayCnt < prevExpectedDays;
   const comparable =
-    typeof raw.dailyAvgComparable === 'boolean'
-      ? raw.dailyAvgComparable
+    typeof head.dailyAvgComparable === 'boolean'
+      ? head.dailyAvgComparable
       : Boolean(hasPrevCoverage && !thinCoverage && !prevThin);
+  // 为什么不出日均环比：本周没采满 / 上期没采满 / 上期压根没数据。三者文案不同，别混着写
+  const blocked = head.dailyAvgBlocked || (thinCoverage ? 'current_partial' : hasPrevCoverage && prevThin ? 'prev_partial' : null);
 
   return {
     available: true,
@@ -135,6 +137,7 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
       // 日均环比只在两期覆盖都够整期时给结论，否则只把数摆出来、不让人读成涨跌
       dailyAvgPct: comparable ? dailyAvgPct : null,
       dailyAvgComparable: comparable,
+      dailyAvgBlocked: blocked,
       prevAdd,
       prevDayCnt,
       prevExpectedDays,

@@ -83,6 +83,22 @@ export function ReserveSection({ reserve }) {
   }
 
   const { coverage, headline, dist, ranks } = reserve;
+
+  // 不给日均环比时，必须说清是哪一头不可比：拿半周日均比整周日均，会把周末效应读成涨跌
+  const dayText = (cnt, expected) => (expected != null ? `${cnt ?? '—'}/${expected} 天` : `${cnt ?? '—'} 天`);
+  const compareReasons = [];
+  if (headline.dailyAvgBlocked === 'current_partial') {
+    compareReasons.push(`本期仅覆盖 ${dayText(coverage.dayCnt, coverage.expectedDays)}`);
+  }
+  if (headline.prevDailyAvg == null) compareReasons.push('上期无预约数据');
+  else if (headline.dailyAvgBlocked === 'prev_partial') {
+    compareReasons.push(`上期仅覆盖 ${dayText(headline.prevDayCnt, headline.prevExpectedDays)}`);
+  }
+  const compareText = compareReasons.length
+    ? `${compareReasons.join(' · ')} · 日均不可比`
+    : '日均环比暂不可比';
+  const compareHint =
+    '日均只在两期都覆盖满整期时才给环比：拿「1 天的日均」比「7 天的日均」，会把周末效应读成增长或腰斩';
   const totalAdd = dist.reduce((sum, row) => sum + (row.add || 0), 0);
   const coverageLabel = coverageText(coverage);
   const rankTabs = [
@@ -118,20 +134,14 @@ export function ReserveSection({ reserve }) {
                 {headline.dailyAvg != null && (
                   <span className="pr-reserve-muted">日均 {fmtCompact(headline.dailyAvg)} 次/日</span>
                 )}
-                {headline.prevDailyAvg == null ? (
-                  <span className="pr-reserve-muted">上期无预约数据</span>
-                ) : headline.dailyAvgComparable ? (
+                {headline.dailyAvgComparable ? (
                   <>
                     <span className="pr-reserve-chip-label">日均环比</span>
                     <DeltaChip pct={headline.dailyAvgPct} hasValue={headline.dailyAvg != null} size="sm" showAbs={false} />
                   </>
                 ) : (
-                  <span
-                    className="pr-reserve-muted"
-                    title="日均只在两期覆盖天数都够整期时才可比：拿「1 天的日均」比「7 天的日均」会把周末效应读成增长"
-                  >
-                    上期仅覆盖 {headline.prevDayCnt ?? '—'}
-                    {headline.prevExpectedDays != null ? `/${headline.prevExpectedDays}` : ''} 天 · 日均不可比
+                  <span className="pr-reserve-muted" title={compareHint}>
+                    {compareText}
                   </span>
                 )}
               </>
