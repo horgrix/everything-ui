@@ -52,6 +52,9 @@ function normalizeDist(raw, totalAdd) {
         // 分型各自的覆盖天数（W46 Maker 只有 4/7 天）；后端还没给这个字段时为 null，页面不显示徽标
         hasData: row.hasData !== false,
         dayCnt: num(row.dayCnt ?? row.day_cnt),
+        // 每行自带分母（355c853 起）：外层 coverage.expectedDayCnt 的裁剪规则一旦变化，
+        // 分型若还拿外层的数去算「4/7」就会两头不一致，所以优先读行内的
+        expectedDays: num(row.expectedDayCnt ?? row.expected_day_cnt),
         firstDay: row.firstDay || row.first_day || null,
         lastDay: row.lastDay || row.last_day || null,
         share: givenShare ?? (add != null && totalAdd ? (add / totalAdd) * 100 : null),

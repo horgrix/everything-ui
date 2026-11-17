@@ -190,16 +190,19 @@ export function ReserveSection({ reserve, periodType }) {
                 <span className="pr-reserve-dist-share">{shareText(row.share)}</span>
                 <span className="pr-reserve-dist-value">{row.add == null ? '—' : fmtCompact(row.add)}</span>
                 <span className="pr-reserve-dist-cnt">{row.gameCnt == null ? '—' : `${row.gameCnt} 款`}</span>
-                {row.dayCnt != null && coverage.expectedDays != null && row.dayCnt < coverage.expectedDays ? (
-                  <span
-                    className="pr-reserve-dist-days"
-                    title={`该分型本期只有 ${row.dayCnt} 天有采集（${row.firstDay?.slice(5) || '—'}~${row.lastDay?.slice(5) || '—'}），新增量偏低是覆盖不足，不是需求下降`}
-                  >
-                    {row.dayCnt}/{coverage.expectedDays} 天
-                  </span>
-                ) : (
-                  <span />
-                )}
+                {(() => {
+                  // 分母优先用该行自己的 expectedDayCnt（355c853），老接口才退回外层的
+                  const expected = row.expectedDays ?? coverage.expectedDays;
+                  if (row.dayCnt == null || expected == null || row.dayCnt >= expected) return <span />;
+                  return (
+                    <span
+                      className="pr-reserve-dist-days"
+                      title={`该分型本期只有 ${row.dayCnt} 天有采集（${row.firstDay?.slice(5) || '—'}~${row.lastDay?.slice(5) || '—'}），新增量偏低是覆盖不足，不是需求下降`}
+                    >
+                      {row.dayCnt}/{expected} 天
+                    </span>
+                  );
+                })()}
               </div>
             ))}
             <div className="pr-reserve-note">
