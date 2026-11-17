@@ -14,7 +14,7 @@ import {
   LineBand,
   PlayerCards,
   QualitySection,
-  RankGrid,
+  RankCard,
   TrendSection,
 } from './Sections';
 import './periodic.css';
@@ -311,11 +311,24 @@ export default function PeriodicReport() {
             <SectionHead
               no="04"
               title="业务线明细"
-              sub="汇总行 + 分型拆解"
+              sub="左边汇总与分型拆解，右边该业务线榜单"
               right={`更新至 ${fmtDateTime(meta.updatedAt) || '—'}`}
             />
             {view.lines.map((line) => (
-              <LineBand key={line.key} line={line} />
+              <div className="pr-line-row" key={line.key}>
+                <LineBand line={line} />
+                <RankCard
+                  line={line.key}
+                  periodType={periodType}
+                  periodKey={meta.periodKey}
+                  distLabels={meta.distLabels}
+                  flags={report.flags}
+                  isPartial={meta.isPartial === true}
+                  coverage={
+                    line.key === 'online' ? line.coverage : null
+                  }
+                />
+              </div>
             ))}
           </section>
 
@@ -331,31 +344,10 @@ export default function PeriodicReport() {
             </section>
           )}
 
-          <section className="pr-section">
-            <SectionHead
-              no="06"
-              title="榜单"
-              sub="总量 / 增量 / 下滑"
-              right={
-                periodType === 'weekly'
-                  ? '同一期榜单，按 is_active=1 去重后取前 8'
-                  : '月榜按自然月累计'
-              }
-            />
-            <RankGrid
-              periodType={periodType}
-              periodKey={meta.periodKey}
-              distLabels={meta.distLabels}
-              flags={report.flags}
-              isPartial={meta.isPartial === true}
-              coverage={report.lines?.find((item) => item.key === 'online')?.coverage || null}
-            />
-          </section>
-
           {reserve && (
             <section className="pr-section">
               <SectionHead
-                no="07"
+                no="06"
                 title="预约"
                 sub="尚未上线游戏的预约热度"
                 right="采集 2026-11-08 起，期数不够不出趋势线；日均环比代替总量环比"
@@ -366,7 +358,7 @@ export default function PeriodicReport() {
 
           <section className="pr-section">
             <SectionHead
-              no={reserve ? '08' : '07'}
+              no={reserve ? '07' : '06'}
               title="数据质量与口径"
               sub={`${report.flags.length} 条标注`}
               right="新版报表已不再依赖下线的旧表与旧维度"

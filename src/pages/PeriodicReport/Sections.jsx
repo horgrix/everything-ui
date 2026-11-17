@@ -1150,7 +1150,7 @@ function rankValueText(value) {
   return Math.abs(value) < 100000 ? fmtFull(value) : fmtCompact(value);
 }
 
-export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial, coverage }) {
+export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial, coverage, limit = 8 }) {
   const meta = LINE_META[line] || LINE_META.download;
   const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
@@ -1162,8 +1162,8 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
   }, [listSet]);
 
   const rankQuery = useQuery({
-    queryKey: ['pr-rank', line, periodType, periodKey, category, listType],
-    queryFn: () => fetchRank(line, { periodType, key: periodKey, category, limit: 8, listType }),
+    queryKey: ['pr-rank', line, periodType, periodKey, category, listType, limit],
+    queryFn: () => fetchRank(line, { periodType, key: periodKey, category, limit, listType }),
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1,

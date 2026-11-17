@@ -735,6 +735,31 @@
   margin-bottom: 13px;
 }
 
+/* 业务线一行：左边明细（指标 + 分型），右边该业务线榜单 —— 与 07 预约同一套版式 */
+.pr-line-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 13px;
+  /* 榜单比明细高，两栏等高对齐，避免明细下面空出一块让两行之间看着断掉 */
+  align-items: stretch;
+  margin-bottom: 13px;
+}
+
+.pr-line-row > * {
+  min-width: 0;
+}
+
+
+.pr-line-row .pr-line {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1100px) {
+  .pr-line-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .pr-line-body {
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
