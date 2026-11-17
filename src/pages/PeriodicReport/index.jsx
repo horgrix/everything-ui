@@ -319,7 +319,7 @@ export default function PeriodicReport() {
                 <LineBand line={line} isPartial={meta.isPartial === true} />
                 <RankCard
                   line={line.key}
-                  limit={6}
+                  limit={10}
                   periodType={periodType}
                   periodKey={meta.periodKey}
                   distLabels={meta.distLabels}
