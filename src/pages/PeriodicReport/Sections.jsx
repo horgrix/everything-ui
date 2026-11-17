@@ -1002,7 +1002,8 @@ export function LineBand({ line, isPartial = false }) {
   // 03 里两个在线款数（整周去重 / 单小时快照）的区分句用接口 label 拼，
   // 不写死「峰值小时」——单小时最高值不一定出现在人数峰值那一刻（后端已约定改文案）
   const onlineDedup = line.kpis.find((kpi) => kpi.key === 'online_game_cnt');
-  const onlineConcurrent = line.kpis.find((kpi) => kpi.key === 'concurrent_game_cnt');
+  // 并发款数已按要求下掉；它不在明细里时不写「两个口径不可相减」那句（否则对着两个不存在的数讲口径）
+  const onlineConcurrent = line.kpis.find((kpi) => kpi.key === 'concurrent_game_cnt' && !kpi.hidden);
   const sum = items.reduce((acc, item) => acc + (item.value || 0), 0);
   const maxItem = Math.max(...items.map((item) => item.value || 0), 1);
   const consistent = breakdown?.consistency?.consistent;
@@ -1072,6 +1073,9 @@ export function LineBand({ line, isPartial = false }) {
               </div>
             </div>
           ))}
+        </div>
+        {(roster || isOnline) && (
+          <div className="pr-line-notes">
           {roster && <div className="pr-metrics-note">{roster}</div>}
           {isOnline && (
             <div className="pr-metrics-note">
@@ -1107,12 +1111,12 @@ export function LineBand({ line, isPartial = false }) {
               ) : (
                 <>在线链路目前只有 {line.periods?.length || 0} 期，采集密度为每 2 小时一次（每周 84 个采样点）。</>
               )}
-              {onlineDedup && onlineConcurrent
-                ? `「${onlineDedup.label}」按整周去重，「${onlineConcurrent.label}」是单小时快照，两个口径不可相减。`
-                : '整周去重的款数与单小时同时在线款数是两个口径，不可相减。'}
+              {onlineDedup && onlineConcurrent &&
+                `「${onlineDedup.label}」按整周去重，「${onlineConcurrent.label}」是单小时快照，两个口径不可相减。`}
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         <div className="pr-breakdown">
           <div className="pr-breakdown-head">
@@ -1585,7 +1589,10 @@ export function RankGrid({ periodType, periodKey, distLabels, flags, isPartial, 
 /* ================================================================== 数据质量 */
 
 export function QualitySection({ report }) {
-  const { flags = [], meta } = report;
+  const { meta } = report;
+  // 「单小时同时在线款数最高」已从页面下掉，它专属的质量标注一并隐藏——
+  // 留着等于对一个页面上看不到的指标讲口径
+  const flags = (report.flags || []).filter((flag) => flag.item !== 'online_insufficient_history');
   return (
     <div className="pr-quality">
       <Panel>

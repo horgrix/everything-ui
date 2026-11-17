@@ -763,41 +763,46 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 指标一律横排一行、等宽铺满：3 个就三等分，4 个就四等分，不必为数量写死列数 */
 .pr-line-row .pr-line-metrics,
 .pr-line-row .pr-line-metrics.is-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-content: stretch;
   border-right: 0;
   border-bottom: 1px solid var(--pr-hair);
+}
+
+/* 覆盖 is-list 的「标签与数值左右摊开」版式：横排格子窄，摊开会把标签挤成竖排 */
+.pr-line-row .pr-line-metrics.is-list .pr-metric {
+  display: block;
+  padding: 13px 15px;
+}
+
+.pr-line-row .pr-line-metrics.is-list .pr-metric-row {
+  margin-top: 6px;
+  justify-content: flex-start;
 }
 
 .pr-line-row .pr-metric {
   border-bottom: 0;
   border-right: 1px solid var(--pr-hair);
+  border-left: 0;
   padding: 13px 15px;
 }
 
-/* 覆盖全局的 2n / nth-last-child 规则，改成按 4 列收边 */
+/* 覆盖全局的 2n / nth-last-child 规则，改成按最后一项收边 */
 .pr-line-row .pr-metric:nth-child(2n) {
   border-right: 1px solid var(--pr-hair);
 }
 
-.pr-line-row .pr-metric:nth-child(4n),
 .pr-line-row .pr-metric:last-child {
   border-right: 0;
 }
 
 .pr-line-row .pr-metric:nth-last-child(-n + 2) {
   border-bottom: 0;
-}
-
-/* 指标数为 3（在线缺并发款数）时，让最后一个指标吃掉剩下的列，别留空格子 */
-.pr-line-row .pr-line-metrics:not(.is-list) > .pr-metric:last-child:nth-child(4n + 3) {
-  grid-column: span 2;
-}
-
-.pr-line-row .pr-metrics-note {
-  grid-column: 1 / -1;
-  margin-top: 0;
 }
 
 /* 本期未走完时明细里替代环比胶囊的说明 */
@@ -896,12 +901,12 @@
 @media (max-width: 900px) {
   .pr-line-row .pr-line-metrics,
   .pr-line-row .pr-line-metrics.is-list {
+    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .pr-line-row .pr-metric:nth-child(4n),
-  .pr-line-row .pr-metric:last-child {
-    border-right: 0;
+  .pr-line-row .pr-metric {
+    border-bottom: 1px solid var(--pr-hair);
   }
 
   .pr-line-row .pr-metric:nth-child(2n) {
@@ -910,6 +915,10 @@
 
   .pr-line-row .pr-metric:nth-child(2n + 1) {
     border-right: 1px solid var(--pr-hair);
+  }
+
+  .pr-line-row .pr-metric:last-child {
+    border-right: 0;
   }
 }
 
@@ -970,14 +979,21 @@
 }
 
 .pr-metrics-note {
-  grid-column: 1 / -1;
-  margin-top: auto;
-  padding: 11px 18px;
+  padding: 9px 18px;
   border-top: 1px solid var(--pr-hair);
   background: #fbfcfc;
   font-size: 10.5px;
   line-height: 1.7;
   color: var(--pr-muted);
+}
+
+.pr-metrics-note:first-child {
+  border-top: 0;
+}
+
+/* 指标格下面的整行说明（覆盖款数 / 采集覆盖），独立于指标网格，避免混进栅格布局 */
+.pr-line-notes {
+  border-top: 1px solid var(--pr-hair);
 }
 
 .pr-metric-label {

@@ -15,6 +15,9 @@
  * 「本期要点」里的下载结构（APP 占比 / PC 占比）也仍然从业务线里取数。
  */
 
+/** 不进 04 明细的指标（仍在接口里，只是不展示） */
+export const HIDDEN_LINE_KPIS = new Set(['concurrent_game_cnt']);
+
 /** 顺序即网格顺序（一行 3 个：三款数 → 三总量） */
 export const CORE_KPI_SPEC = [
   {
@@ -150,6 +153,9 @@ export function withLineLabels(report) {
   // 在数据层把这批 kpi 的环比统一抹掉，01 卡片、封面大数字、04 明细一起生效，
   // 不用每个组件各自判 meta.isPartial（后端 5f66dd4 起也可能直接给 null/blocked，这里幂等）。
   const partial = report?.meta?.isPartial === true;
+  // 不上页面的指标（只从 04 明细里隐藏，数据仍在 lines[].kpis 里可用）：
+  // 「单小时同时在线款数最高」口径难解释、价值有限，产品要求去掉
+  const hiddenKeys = HIDDEN_LINE_KPIS;
   const guard = (kpi) =>
     partial && !kpi.deltaBlocked
       ? { ...kpi, deltaPct: null, deltaAbs: null, deltaComparable: false, deltaBlocked: 'current_in_progress' }
@@ -162,6 +168,7 @@ export function withLineLabels(report) {
         const guarded = guard(kpi);
         return {
           ...guarded,
+          ...(hiddenKeys.has(kpi.key) ? { hidden: true } : {}),
           ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
           ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
         };
