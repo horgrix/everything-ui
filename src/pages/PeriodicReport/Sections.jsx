@@ -827,7 +827,161 @@ function PeakHourBreakdown({ peakHour }) {
   );
 }
 
-export function LineBand({ line }) {
+
+/* ------------------------------------------------------- 逐日趋势（本期 vs 上期） */
+
+/**
+ * 分型拆解下面的逐日对比：本期（实线）+ 上一期（虚线），按「第 N 天」对齐。
+ *
+ * 数据来自接口 `lines[].daily`（后端按天聚合；缺某天就不给那个点，前端不补 0）。
+ * 为什么不按日历星期对齐：两期起始日不同，按第几天对齐才能看出「同一节奏」的差异，
+ * 日历星期留给 tooltip（那里两个日期都写出来）。
+ */
+function DailyTrend({ line, daily, color }) {
+  const [metricKey, setMetricKey] = useState('total');
+  const distLabels = daily.distLabels || {};
+  const distKeys = Object.keys(distLabels);
+
+  const pointsOf = (side) => (side && Array.isArray(side.points) ? side.points : []);
+  const current = pointsOf(daily.current);
+  const previous = pointsOf(daily.previous);
+  const maxDay = Math.max(
+    ...current.map((p) => p.day || 0),
+    ...previous.map((p) => p.day || 0),
+    0
+  );
+
+  const valueOf = (point) => {
+    if (!point) return null;
+    if (metricKey === 'total') return point.total;
+    return point.dist ? point.dist[metricKey] : null;
+  };
+  const byDay = (points) => new Map(points.map((p) => [p.day, p]));
+  const currentByDay = byDay(current);
+  const previousByDay = byDay(previous);
+
+  const categories = Array.from({ length: maxDay }, (_, i) => `第 ${i + 1} 天`);
+  const series = [
+    {
+      name: '本期',
+      data: categories.map((_, i) => {
+        const v = valueOf(currentByDay.get(i + 1));
+        return v == null ? null : v;
+      }),
+    },
+    {
+      name: `上期${daily.previous?.periodKey ? `（${daily.previous.periodKey}）` : ''}`,
+      data: categories.map((_, i) => {
+        const v = valueOf(previousByDay.get(i + 1));
+        return v == null ? null : v;
+      }),
+    },
+  ];
+
+  const firstDate = current[0]?.date || null;
+  const lastDate = current[current.length - 1]?.date || null;
+  const prevFirstDate = previous[0]?.date || null;
+  const prevLastDate = previous[previous.length - 1]?.date || null;
+  const hasData = current.some((p) => valueOf(p) != null) || previous.some((p) => valueOf(p) != null);
+
+  if (!maxDay || !hasData) return null;
+
+  const chips = [{ key: 'total', label: '合计' }, ...distKeys.map((key) => ({ key, label: distLabels[key] || key }))];
+
+  return (
+    <div className="pr-daily">
+      <div className="pr-daily-head">
+        <span className="pr-daily-title">
+          逐日趋势 <span className="pr-breakdown-note">本期实线 / 上期虚线</span>
+        </span>
+        <div className="pr-daily-chips" role="tablist" aria-label="逐日趋势指标">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              role="tab"
+              aria-selected={metricKey === chip.key}
+              className={metricKey === chip.key ? 'is-active' : ''}
+              onClick={() => setMetricKey(chip.key)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="pr-daily-chart">
+        <ChartWrapper
+          type="line"
+          height={176}
+          series={series}
+          options={{
+            chart: {
+              id: `pr-daily-${line.key}-${metricKey}`,
+              type: 'line',
+              toolbar: { show: false },
+              zoom: { enabled: false },
+              fontFamily: 'inherit',
+              animations: { enabled: true, speed: 320 },
+              parentHeightOffset: 0,
+            },
+            colors: [color, '#A7B0B8'],
+            stroke: { curve: 'smooth', width: [2.4, 2], dashArray: [0, 5] },
+            markers: { size: 3, strokeWidth: 1.6, strokeColors: '#fff', hover: { size: 5 } },
+            dataLabels: { enabled: false },
+            grid: { borderColor: '#EDF0F2', strokeDashArray: 3, padding: { left: 8, right: 12, top: 0, bottom: 0 } },
+            xaxis: {
+              categories,
+              type: 'category',
+              axisBorder: { show: false },
+              axisTicks: { show: false },
+              labels: { style: { colors: '#8A959E', fontSize: '10.5px' } },
+              tooltip: { enabled: false },
+            },
+            yaxis: {
+              tickAmount: 3,
+              labels: {
+                formatter: (v) => fmtCompact(v, 0),
+                style: { colors: '#A7B0B8', fontSize: '10px' },
+              },
+            },
+            legend: {
+              show: true,
+              position: 'top',
+              horizontalAlign: 'left',
+              fontSize: '10.5px',
+              markers: { size: 5 },
+              labels: { colors: '#7B8993' },
+              itemMargin: { horizontal: 8, vertical: 0 },
+            },
+            tooltip: {
+              theme: 'light',
+              shared: true,
+              intersect: false,
+              y: {
+                formatter: (v, opts) => {
+                  const i = opts?.dataPointIndex ?? 0;
+                  const side = opts?.seriesIndex === 0 ? currentByDay : previousByDay;
+                  const point = side.get(i + 1);
+                  const date = point?.date ? `${point.date} ` : '';
+                  return `${date}${fmtFull(v)} ${daily.unit || ''}`.trim();
+                },
+              },
+            },
+          }}
+        />
+      </div>
+      <div className="pr-daily-foot">
+        <span>
+          本期 {firstDate ? `${firstDate.slice(5)}~${(lastDate || firstDate).slice(5)}` : '—'}
+          {prevFirstDate && ` · 上期 ${prevFirstDate.slice(5)}~${(prevLastDate || prevFirstDate).slice(5)}`}
+        </span>
+        <span>按「第 N 天」对齐（两期起始日不同）· 期初早于采集起点或当天未采集时该点缺失，不补 0</span>
+      </div>
+    </div>
+  );
+}
+
+export function LineBand({ line, isPartial = false }) {
   const meta = LINE_META[line.key] || LINE_META.download;
   const breakdown = line.breakdown;
   const isOnline = line.key === 'online';
@@ -889,16 +1043,22 @@ export function LineBand({ line }) {
                   {fmtCompact(kpi.value)}
                 </span>
                 <span className="pr-metric-unit">{kpi.unit}</span>
-                <DeltaChip
-                  pct={kpi.deltaPct}
-                  abs={kpi.deltaAbs}
-                  unit={kpi.unit}
-                  comparable={kpi.deltaComparable}
-                  hasValue={kpi.hasValue}
-                  blocked={kpi.deltaBlocked}
-                  reason={kpi.unavailableReason}
-                  size="sm"
-                />
+                {isPartial ? (
+                  <span className="pr-metric-live" title="本期还没走完，累计值与整期不可比，所以不出环比">
+                    本期未走完 · 不出环比
+                  </span>
+                ) : (
+                  <DeltaChip
+                    pct={kpi.deltaPct}
+                    abs={kpi.deltaAbs}
+                    unit={kpi.unit}
+                    comparable={kpi.deltaComparable}
+                    hasValue={kpi.hasValue}
+                    blocked={kpi.deltaBlocked}
+                    reason={kpi.unavailableReason}
+                    size="sm"
+                  />
+                )}
               </div>
             </div>
           ))}
@@ -1005,6 +1165,7 @@ export function LineBand({ line }) {
           )}
         </div>
       </div>
+      {line.daily && <DailyTrend line={line} daily={line.daily} color={meta.color} />}
     </Panel>
   );
 }

@@ -316,7 +316,7 @@ export default function PeriodicReport() {
             />
             {view.lines.map((line) => (
               <div className="pr-line-row" key={line.key}>
-                <LineBand line={line} />
+                <LineBand line={line} isPartial={meta.isPartial === true} />
                 <RankCard
                   line={line.key}
                   limit={6}

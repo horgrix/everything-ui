@@ -800,6 +800,89 @@
   margin-top: 0;
 }
 
+/* 本期未走完时明细里替代环比胶囊的说明 */
+.pr-metric-live {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(123, 137, 147, 0.1);
+  font-size: 10.5px;
+  color: var(--pr-muted);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 逐日趋势 */
+
+.pr-daily {
+  border-top: 1px solid var(--pr-hair);
+  padding: 12px 16px 10px;
+}
+
+.pr-daily-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.pr-daily-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--pr-ink);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pr-daily-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  background: #f2f5f7;
+  border-radius: 9px;
+}
+
+.pr-daily-chips button {
+  border: 0;
+  background: transparent;
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: #71808a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pr-daily-chips button.is-active {
+  background: #fff;
+  color: var(--pr-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1);
+}
+
+.pr-daily-chart {
+  margin: 0 -6px;
+}
+
+.pr-daily-chart .apexcharts-legend {
+  padding: 0 6px 4px !important;
+}
+
+.pr-daily-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10.5px;
+  color: var(--pr-muted);
+  border-top: 1px dashed var(--pr-hair);
+  padding-top: 7px;
+  margin-top: 2px;
+}
+
 /* 在线那两格标签较长会折成两行，把标签区固定成两行高，四个数值才落在同一条基线上 */
 .pr-line-row .pr-metric-label {
   min-height: 30px;
