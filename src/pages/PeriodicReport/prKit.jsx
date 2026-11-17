@@ -148,6 +148,7 @@ const BLOCKED_TEXT = {
   prev_coverage_partial: '上期覆盖不全 · 不出环比',
   // 本期还在进行中（如 W47 只采到 1 天）：累计值对整期天然偏低，环比没有意义
   current_in_progress: '本期未走完 · 不出环比',
+  prev_missing: '上期无数据 · 不出环比',
 };
 
 export function DeltaChip({

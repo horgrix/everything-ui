@@ -102,6 +102,9 @@ export default function PeriodicReport() {
   const smallGame = useSmallGameSeries(report, periodType, downloadPeriods);
   const downloadTrend = useMemo(() => buildDownloadTrend(report, smallGame), [report, smallGame]);
   const view = useMemo(() => withSmallGame(report, downloadTrend), [report, downloadTrend]);
+
+  // 预约的两项也进 01 核心指标：有新增预约的游戏（放在「有下载游戏款数」左边）、
+  // 新增预约量（放在「下载总量」左边）。预约没有多期历史，所以不给趋势点。
   // 预约：优先用 /report 里的 reserve 块（一篇报告一次请求拿全）；后端若改成独立接口，
   // meta.reserveAvailable = true 时再补一次请求。两种都没有 → 这一节不出现，页面与改造前一致。
   const reserveInline = reportQuery.data?.reserve || null;
@@ -117,6 +120,60 @@ export default function PeriodicReport() {
     () => normalizeReserve(reserveInline || reserveQuery.data, { periodType, meta: reportQuery.data?.meta }),
     [reserveInline, reserveQuery.data, periodType, reportQuery.data?.meta]
   );
+
+  const coreKpis = useMemo(() => {
+    const list = [...(view?.coreKpis || [])];
+    if (!reserve || reserve.available === false) return list;
+    const head = reserve.headline || {};
+    const blockedMap = {
+      prev_partial: 'prev_coverage_partial',
+      prev_missing: 'prev_missing',
+      current_partial: 'current_partial',
+      current_in_progress: 'current_in_progress',
+    };
+    const blocked = blockedMap[head.dailyAvgBlocked] || null;
+    const mk = (key, label, value, unit, note) => ({
+      key,
+      line: 'reserve',
+      label,
+      unit,
+      isInt: true,
+      value,
+      prevValue: null,
+      deltaPct: null,
+      deltaAbs: null,
+      deltaComparable: false,
+      ...(blocked ? { deltaBlocked: blocked } : {}),
+      note,
+      trend: [],
+      availablePeriods: [],
+      historyPoints: 0,
+      insufficientHistory: true,
+      hasValue: value != null,
+    });
+    const reserveGameCnt = mk(
+      'reserve_game_cnt',
+      '有新增预约的游戏',
+      head.gameCnt ?? null,
+      '款',
+      '期内至少新增 1 次预约的款数；预约采集 2026-11-08 起才有数据'
+    );
+    const reserveAdd = mk(
+      'reserve_add',
+      '新增预约量',
+      head.add ?? null,
+      '次',
+      '期内新增预约次数合计（预约池口径，不是平台大盘）'
+    );
+    const insertAt = (item, beforeKey) => {
+      const at = list.findIndex((kpi) => kpi.key === beforeKey);
+      if (at < 0) list.push(item);
+      else list.splice(at, 0, item);
+    };
+    insertAt(reserveGameCnt, 'game_cnt');
+    insertAt(reserveAdd, 'download_total');
+    return list;
+  }, [view, reserve]);
 
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;
@@ -284,7 +341,8 @@ export default function PeriodicReport() {
 
       {view && (
         <>
-          <Cover report={view} periodType={periodType} />
+          {/* 封面上的「x/y 项核心指标有值」按合并后的 8 项算 */}
+          <Cover report={{ ...view, coreKpis }} periodType={periodType} />
 
           {meta.isPartial && (
             <div className="pr-banner">
@@ -300,10 +358,10 @@ export default function PeriodicReport() {
             <SectionHead
               no="01"
               title="核心指标"
-              sub={`每期都看的 ${view.coreKpis.length} 个数`}
+              sub={`每期都看的 ${coreKpis.length} 个数`}
               right="趋势点来自同一张业务线周期表，缺值期不补 0"
             />
-            <KpiGrid coreKpis={view.coreKpis} totalPeriods={meta.availablePeriods.length} />
+            <KpiGrid coreKpis={coreKpis} totalPeriods={meta.availablePeriods.length} />
           </section>
 
           <TrendSection report={view} />

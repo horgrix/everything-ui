@@ -346,7 +346,8 @@
 
 .pr-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 6 张卡时三列两行；加了预约两张后是 8 张，四列两行更平衡（列宽自适应，窄屏自然并成 2 列） */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 13px;
 }
 

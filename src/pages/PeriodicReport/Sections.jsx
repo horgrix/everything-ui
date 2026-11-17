@@ -144,7 +144,10 @@ export function KpiCard({ kpi, totalPeriods }) {
           {kpi.label}
           <NoteMark note={kpi.note} />
         </span>
-        <Coverage available={kpi.availablePeriods || []} total={totalPeriods} />
+        {/* 只有当期、没有逐期历史的指标（预约两项）不显示「x/y 期」，否则会读成 0/8 期 */}
+        {(kpi.availablePeriods?.length || 0) > 0 && (
+          <Coverage available={kpi.availablePeriods} total={totalPeriods} />
+        )}
       </div>
       <div className="pr-kpi-value" title={`${fmtFull(kpi.value)} ${kpi.unit}`}>
         <span className="pr-kpi-num">{fmtCompact(kpi.value)}</span>
