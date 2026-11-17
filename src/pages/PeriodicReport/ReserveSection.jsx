@@ -118,13 +118,21 @@ export function ReserveSection({ reserve }) {
                 {headline.dailyAvg != null && (
                   <span className="pr-reserve-muted">日均 {fmtCompact(headline.dailyAvg)} 次/日</span>
                 )}
-                {headline.prevDailyAvg != null ? (
+                {headline.prevDailyAvg == null ? (
+                  <span className="pr-reserve-muted">上期无预约数据</span>
+                ) : headline.dailyAvgComparable ? (
                   <>
                     <span className="pr-reserve-chip-label">日均环比</span>
                     <DeltaChip pct={headline.dailyAvgPct} hasValue={headline.dailyAvg != null} size="sm" showAbs={false} />
                   </>
                 ) : (
-                  <span className="pr-reserve-muted">上期无预约数据</span>
+                  <span
+                    className="pr-reserve-muted"
+                    title="日均只在两期覆盖天数都够整期时才可比：拿「1 天的日均」比「7 天的日均」会把周末效应读成增长"
+                  >
+                    上期仅覆盖 {headline.prevDayCnt ?? '—'}
+                    {headline.prevExpectedDays != null ? `/${headline.prevExpectedDays}` : ''} 天 · 日均不可比
+                  </span>
                 )}
               </>
             }

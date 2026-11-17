@@ -88,7 +88,8 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
   const cov = raw.coverage || raw.coverageInfo || {};
   const head = raw.headline || raw.summary || raw;
   const dayCnt = num(cov.dayCnt ?? cov.day_cnt ?? head.dayCnt);
-  const expectedDays = num(cov.expectedDays) ?? expectedDaysOf(periodType, meta);
+  // 后端 1cc0623 起自己算「期内到今天应覆盖几天」（月报尤其麻烦，前端不重算）：优先用它
+  const expectedDays = num(cov.expectedDayCnt) ?? num(cov.expectedDays) ?? expectedDaysOf(periodType, meta);
   const firstDay = cov.firstDay || cov.first_day || null;
   const lastDay = cov.lastDay || cov.last_day || null;
 
@@ -108,10 +109,18 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
   const gain = (ranksRaw.gain || []).map(normalizeRankItem);
   const total = (ranksRaw.total || []).map(normalizeRankItem);
 
-  // 覆盖不满该期的天数时，日均是「已覆盖那些天」的日，不能当整期节奏
-  const thinCoverage = dayCnt != null && expectedDays != null && dayCnt < expectedDays;
+  // 覆盖不满该期的天数时，日均是「已覆盖那些天」的日，不能当整期节奏（后端给了 partial 就采信）
+  const thinCoverage = cov.partial === true || (dayCnt != null && expectedDays != null && dayCnt < expectedDays);
   // 上期完全没有覆盖（预约任务上线前）时不给环比结论
   const hasPrevCoverage = prevDailyAvg != null;
+  // 上期也只盖了几天（W45 只有 1 天）时，日均环比是把「1 天的日均」和「7 天的日均」比，天然含周末效应；
+  // 后端给了 dailyAvgComparable 就听它的，没给则要求上期覆盖天数达到整期
+  const prevExpectedDays = num(head.prevExpectedDayCnt) ?? num(head.prevExpectedDays) ?? (periodType === 'weekly' ? WEEK_DAYS : null);
+  const prevThin = prevDayCnt != null && prevExpectedDays != null && prevDayCnt < prevExpectedDays;
+  const comparable =
+    typeof raw.dailyAvgComparable === 'boolean'
+      ? raw.dailyAvgComparable
+      : Boolean(hasPrevCoverage && !thinCoverage && !prevThin);
 
   return {
     available: true,
@@ -119,9 +128,12 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
     headline: {
       add,
       dailyAvg,
-      dailyAvgPct: hasPrevCoverage ? dailyAvgPct : null,
+      // 日均环比只在两期覆盖都够整期时给结论，否则只把数摆出来、不让人读成涨跌
+      dailyAvgPct: comparable ? dailyAvgPct : null,
+      dailyAvgComparable: comparable,
       prevAdd,
       prevDayCnt,
+      prevExpectedDays,
       prevDailyAvg: hasPrevCoverage ? prevDailyAvg : null,
       gameCnt: num(head.gameCnt ?? head.reserveGameCnt),
       roster: num(head.gameCntRoster ?? head.reserveGameCntRoster),
