@@ -1323,14 +1323,35 @@ function rankValueText(value) {
 
 export function RankCard({ line, periodType, periodKey, distLabels, flags, isPartial, coverage, limit = 8 }) {
   const meta = LINE_META[line] || LINE_META.download;
-  const listSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
+  const localListSet = line === 'online' ? onlineListSet(periodType, periodKey) : null;
   const [category, setCategory] = useState('top');
-  const [listType, setListType] = useState(listSet ? listSet[0].key : undefined);
+  const [listType, setListType] = useState(localListSet ? localListSet[0].key : undefined);
+  const [serverLists, setServerLists] = useState(null);
 
-  // 换期次时维度集合会变（W44 及之前是旧维度），同步切回该期的第一项
+  // 维度集合以接口回显为准（6d1bd06 起 listTypes 跟着响应走，分榜口径变了不用前端改日期判断）；
+  // 接口没给（老版本）时退回本地按期判断。
+  const listSet =
+    line === 'online'
+      ? serverLists && serverLists.length
+        ? serverLists.map((key) => ({
+            key,
+            label:
+              distLabels?.[String(key).replace('dist_', '')] ||
+              (ONLINE_LISTS.find((item) => item.key === key) ||
+                ONLINE_LISTS_RETIRED.find((item) => item.key === key) ||
+                {}).label ||
+              String(key),
+          }))
+        : localListSet
+      : null;
+
+  // 换期次 / 换维度集合时，同步切回该期的第一项
   useEffect(() => {
-    if (listSet) setListType(listSet[0].key);
-  }, [listSet]);
+    if (localListSet) setListType((prev) => (prev && localListSet.some((i) => i.key === prev) ? prev : localListSet[0].key));
+  }, [localListSet]);
+  useEffect(() => {
+    if (listSet && !listSet.some((item) => item.key === listType)) setListType(listSet[0].key);
+  }, [listSet, listType]);
 
   // 本期还在进行中（如 W47 只有 1 天）时，「增量 / 下滑」是按 diffPct 排的，
   // 而 diffPct 是「1 天对整周」，线上会出现 −88% 这种假跌幅 —— 只留「总量」榜。
@@ -1350,6 +1371,11 @@ export function RankCard({ line, periodType, periodKey, distLabels, flags, isPar
   });
 
   const data = rankQuery.data;
+  useEffect(() => {
+    if (line !== 'online') return;
+    if (Array.isArray(data?.listTypes) && data.listTypes.length) setServerLists(data.listTypes);
+  }, [line, data]);
+
   let items = data?.items || [];
   const duplicatedRank = items.filter((item) => item.rankNo === 1).length > 2;
   if (duplicatedRank) {
