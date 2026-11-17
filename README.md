@@ -219,13 +219,10 @@ VITE_API_BASE_URL=/api/data
 # 量化 API → 直连远程
 VITE_QUANT_API_BASE_URL=https://api.horgrix.com/api/v1
 
-# 首页概览聚合（可选，缺省 = VITE_V09_API_BASE_URL + /home → /api/v09/data/home）
-# VITE_HOME_API_BASE_URL=/api/v09/data/home
 ```
 
-> 首页四块概览（本月采集活跃 APP / 本月游戏类型占比 / 本月下载榜 Top5 / 本月广告曝光榜 Top5）走 everything-api 的
-> `GET /api/v09/data/home/active-apps`、`/type-share`、`/download-rank`、`/ad-rank`（服务端聚合 MySQL），
-> 前端不再直接拼 SQL 查 MySQL。
+> 首页已改为「定期报告」（2026-11 起），原先的四块概览（活跃 APP / 类型占比 / 下载榜 / 广告榜）
+> 已随首页一起下线；对应接口 `/api/v09/data/home/*` 仍保留在 everything-api 里备用。
 
 ### 生产环境 (`.env.production`)
 

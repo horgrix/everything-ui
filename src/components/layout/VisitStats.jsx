@@ -6,8 +6,8 @@ import { formatCompactNumber, formatNumber } from '../../utils/formatters';
 
 /** 路由 → 报表名，hover 面板里展示更直观（未命中的路径直接显示原始 path） */
 const PATH_LABELS = {
-  '/': '首页',
-  '/home': '首页',
+  '/': '定期报告',
+  '/home': '定期报告',
   '/business': 'Games报表',
   '/one-search': 'One Search',
   '/one-search/report': 'One Search 报告',

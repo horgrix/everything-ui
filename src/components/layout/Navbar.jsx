@@ -1,10 +1,13 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import VisitStats from './VisitStats';
 import usePageviewTracking from '../../hooks/usePageviewTracking';
 import { isAuthEnabled, signOut } from '../../api/auth';
 
 export default function Navbar() {
   usePageviewTracking();
+  const { pathname } = useLocation();
+  // 首页（/home）与旧路径 /periodic-report 是同一页面，都要高亮「定期报告」
+  const onPeriodicHome = pathname === '/home' || pathname.startsWith('/periodic-report');
 
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
@@ -35,14 +38,15 @@ export default function Navbar() {
               `/one-search` 与 `/one-search/report?q=` 仍可按 URL 访问 */}
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
+              {/* 首页即定期报告（/home 与 /periodic-report 同一页面），放在导航最前 */}
               <NavLink
                 to="/home"
                 className={({ isActive }) =>
-                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
+                  `nav-link text-nowrap ${isActive || onPeriodicHome ? 'active' : ''}`
                 }
               >
-                <i className="bi bi-house-door me-1"></i>
-                首页
+                <i className="bi bi-file-earmark-text me-1"></i>
+                定期报告
               </NavLink>
             </li>
             <li className="nav-item">
@@ -76,18 +80,6 @@ export default function Navbar() {
               >
                 <i className="bi bi-calendar3 me-1"></i>
                 TapREP月报
-              </NavLink>
-            </li>
-            <li className="nav-item">
-              <NavLink
-                to="/periodic-report"
-                className={({ isActive }) =>
-                  `nav-link text-nowrap ${isActive ? 'active' : ''}`
-                }
-                title="定期报告（周报 / 月报，一期一篇）"
-              >
-                <i className="bi bi-file-earmark-text me-1"></i>
-                定期报告
               </NavLink>
             </li>
             <li className="nav-item">

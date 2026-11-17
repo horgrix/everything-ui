@@ -366,8 +366,7 @@ footer {
 .tt-page,
 .gd-page,
 .os-page,
-.rp-page,
-.home-page {
+.rp-page {
   // 卡片：细边 + 轻投影 + 大圆角，hover 只加深描边
   .card {
     border-radius: 16px;
@@ -474,8 +473,7 @@ footer {
 .tt-page,
 .gd-page,
 .os-page,
-.rp-page,
-.home-page {
+.rp-page {
   .pagination {
     .page-link {
       border-color: #e3e8ec;
@@ -530,8 +528,7 @@ footer {
 .tt-page,
 .gd-page,
 .os-page,
-.rp-page,
-.home-page {
+.rp-page {
   .card {
     h4 {
       font-size: 20px;
@@ -601,7 +598,7 @@ footer {
   }
 }
 
-// ========== 导航栏：8 个入口时避免换行（宽屏收紧内边距与字号） ==========
+// ========== 导航栏：多入口时避免换行（宽屏收紧内边距与字号） ==========
 
 .navbar {
   .navbar-nav .nav-link {
@@ -617,21 +614,6 @@ footer {
 
     .navbar-nav .nav-link .bi {
       margin-right: 0.25rem !important;
-    }
-  }
-}
-
-// ========== 首页：下载榜行（整行可点，进 One Search） ==========
-.home-page {
-  .rank-row {
-    margin: 0 -8px;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-    border-radius: 8px;
-    transition: background-color 0.14s ease;
-
-    &:hover {
-      background: #f7f9fa;
     }
   }
 }

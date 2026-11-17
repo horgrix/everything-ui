@@ -4,7 +4,6 @@ import Navbar from './components/layout/Navbar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 /* 路由级代码分割：每个页面单独 chunk，/taptap 首屏不再下载全站代码 */
-const Home = lazy(() => import('./pages/Home'));
 const BusinessReport = lazy(() => import('./pages/BusinessReport'));
 const OneSearch = lazy(() => import('./pages/OneSearch'));
 const SearchView = lazy(() => import('./pages/OneSearch/SearchView'));
@@ -32,7 +31,8 @@ export default function App() {
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Navigate to="/home" replace />} />
-                <Route path="/home" element={<Home />} />
+                {/* 首页 = 定期报告（2026-11 起，首页展示周报/月报一期一篇） */}
+                <Route path="/home" element={<PeriodicReport />} />
                 <Route path="/business" element={<BusinessReport />} />
                 <Route path="/one-search" element={<OneSearch />} />
                 <Route path="/one-search/report" element={<SearchView />} />
