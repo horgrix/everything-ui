@@ -50,13 +50,16 @@ function normalizeDist(raw, totalAdd) {
         gameCnt: num(row.gameCnt ?? row.reserveGameCnt),
         roster: num(row.gameCntRoster ?? row.reserveGameCntRoster),
         // 分型各自的覆盖天数（W46 Maker 只有 4/7 天）；后端还没给这个字段时为 null，页面不显示徽标
+        hasData: row.hasData !== false,
         dayCnt: num(row.dayCnt ?? row.day_cnt),
         firstDay: row.firstDay || row.first_day || null,
         lastDay: row.lastDay || row.last_day || null,
         share: givenShare ?? (add != null && totalAdd ? (add / totalAdd) * 100 : null),
       };
     })
-    .filter((row) => row.add != null || row.gameCnt != null)
+    // 先判 hasData 再判值：接口对「该分型本期一条数据都没有」会给 hasData:false + 全 null 字段，
+    // 而 partial 在这种行上可能仍是 false（语义上等于「采满了」），只按 partial 判会把它当完整行
+    .filter((row) => row.hasData !== false && (row.add != null || row.gameCnt != null))
     .sort((a, b) => (RESERVE_DIST_LABELS[a.key] ? Number(a.key) : 99) - (RESERVE_DIST_LABELS[b.key] ? Number(b.key) : 99));
 }
 
