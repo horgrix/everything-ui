@@ -19,6 +19,9 @@ import {
 } from './Sections';
 import './periodic.css';
 
+// 每条榜的条数按左侧明细的高度定：让两栏底部对齐，不靠拉高左卡硬撑
+const RANK_LIMIT = { download: 12, ad: 11, online: 15 };
+
 const TABS = [
   { key: 'weekly', label: '周报' },
   { key: 'monthly', label: '月报' },
@@ -319,7 +322,7 @@ export default function PeriodicReport() {
                 <LineBand line={line} isPartial={meta.isPartial === true} />
                 <RankCard
                   line={line.key}
-                  limit={10}
+                  limit={RANK_LIMIT[line.key] || 10}
                   periodType={periodType}
                   periodKey={meta.periodKey}
                   distLabels={meta.distLabels}
