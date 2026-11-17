@@ -436,6 +436,201 @@ export function TrendSection({ report, no = '02' }) {
   );
 }
 
+/* ================================================================== 下载结构趋势 */
+
+const DOWNLOAD_SERIES = [
+  // 下载总量 ≈ APP 下载量（PC 只占 1%），两者同色时两条实线会重叠成一条粗线：
+  // 总量用同色「面积带」铺底、APP 用实线叠在上面，一眼就能看出「几乎全是 APP」
+  { key: 'total', label: '下载总量', short: '总量', color: '#8FB59F', width: 7, band: true },
+  { key: 'app', label: 'APP 下载量', short: 'APP', color: '#2F6B8F' },
+  { key: 'pc', label: 'PC 下载量', short: 'PC', color: '#B07348' },
+  { key: 'small', label: '小游戏下载量', short: '小游戏', color: '#7C6BA6' },
+];
+const DEFAULT_SERIES = ['total', 'app', 'small'];
+
+/**
+ * 下载结构趋势：总量 / APP / PC / 小游戏四条线可自由勾选，可切「绝对量 / 占比」。
+ *
+ * PC 只有总量的 1% 左右，和「总量」画在同一根轴上会被压成一条贴底直线，所以默认不选它，
+ * 想看时自己勾上（或切占比）。同一张图上不塞双 Y 轴：两个量级差 80 倍的轴放在一起，
+ * 两条线的交叉点会被读成业务含义，实际只是刻度巧合。
+ */
+export function DownloadTrend({ trend, isPartial = false, no = '03' }) {
+  const [mode, setMode] = useState('abs');
+  const [picked, setPicked] = useState(DEFAULT_SERIES);
+
+  const points = trend?.points || [];
+  const current = trend?.current || {};
+  if (!points.length && !Object.keys(current).length) return null;
+
+  const visible = DOWNLOAD_SERIES.filter((item) => picked.includes(item.key) && !(mode === 'share' && item.key === 'total'));
+  const nowOf = (key) => current[key]?.value ?? null;
+  const shareOf = (key) => {
+    const totalValue = nowOf('total');
+    const value = nowOf(key);
+    if (!totalValue || value == null) return null;
+    return (value / totalValue) * 100;
+  };
+  const valueOf = (point, key) => (mode === 'share' ? (point.total ? (point[key] / point.total) * 100 : null) : point[key] / 1e4);
+
+  const toggle = (key) => {
+    setPicked((list) => (list.includes(key) ? list.filter((item) => item !== key) : [...list, key]));
+  };
+
+  return (
+    <section className="pr-section">
+      <div className="pr-section-head">
+        <div className="pr-section-title">
+          <span className="pr-section-no">{no}</span>下载结构趋势
+          <span className="pr-section-sub">近 {points.length} 期 · 四项下载指标对照</span>
+        </div>
+        <div className="pr-chart-tabs" role="tablist" aria-label="显示方式">
+          <button type="button" role="tab" aria-selected={mode === 'abs'} className={mode === 'abs' ? 'is-active' : ''} onClick={() => setMode('abs')}>
+            绝对量
+          </button>
+          <button type="button" role="tab" aria-selected={mode === 'share'} className={mode === 'share' ? 'is-active' : ''} onClick={() => setMode('share')}>
+            占比
+          </button>
+        </div>
+      </div>
+
+      <Panel>
+        <div className="pr-dlchips" role="group" aria-label="选择指标">
+          {DOWNLOAD_SERIES.map((item) => {
+            const on = picked.includes(item.key);
+            const dimmed = mode === 'share' && item.key === 'total';
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`pr-dlchip${on ? ' is-on' : ''}`}
+                style={{ '--chip-color': item.color }}
+                aria-pressed={on}
+                disabled={dimmed}
+                title={dimmed ? '占比模式下总量恒为 100%，不重复画' : undefined}
+                onClick={() => toggle(item.key)}
+              >
+                <span className="pr-dlchip-dot" />
+                {item.label}
+              </button>
+            );
+          })}
+          <span className="pr-dlchips-hint">点标签可增减曲线</span>
+        </div>
+
+        <div className="pr-dlsum">
+          {visible.map((item) => {
+            const now = nowOf(item.key);
+            const pct = current[item.key]?.deltaPct ?? null;
+            return (
+              <div className="pr-dlsum-cell" key={item.key} style={{ '--chip-color': item.color }}>
+                <div className="pr-dlsum-label">
+                  <span className="pr-dlchip-dot" />
+                  {item.label}
+                </div>
+                <div className="pr-dlsum-value">
+                  {now == null ? '—' : fmtCompact(now)}
+                  <small>{mode === 'share' ? `（占总量 ${shareOf(item.key)?.toFixed(1) ?? '—'}%）` : '次'}</small>
+                </div>
+                <div className="pr-dlsum-meta">
+                  <DeltaChip pct={pct} hasValue={now != null} comparable={current[item.key]?.comparable} size="sm" />
+                  {mode === 'abs' && shareOf(item.key) != null && (
+                    <span>占总量 {shareOf(item.key).toFixed(1)}%</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="pr-chart-wrap">
+          {points.length >= 3 && visible.length ? (
+            <ChartWrapper
+              type="line"
+              height={252}
+              series={visible.map((item) => ({
+                name: item.label,
+                data: points.map((point) => {
+                  const value = valueOf(point, item.key);
+                  return value == null || Number.isNaN(value) ? null : Number(value.toFixed(mode === 'share' ? 2 : 1));
+                }),
+              }))}
+              options={{
+                chart: {
+                  id: 'pr-download-structure',
+                  type: 'line',
+                  toolbar: { show: false },
+                  zoom: { enabled: false },
+                  fontFamily: 'inherit',
+                  animations: { enabled: true, speed: 380 },
+                  parentHeightOffset: 0,
+                },
+                colors: visible.map((item) => item.color),
+                stroke: {
+                  curve: 'smooth',
+                  width: visible.map((item) => item.width || 2.4),
+                },
+                markers: {
+                  size: visible.map((item) => (item.width ? 0 : 3.2)),
+                  strokeWidth: 2,
+                  strokeColors: '#fff',
+                  hover: { size: 6 },
+                },
+                dataLabels: { enabled: false },
+                grid: { borderColor: '#EDF0F2', strokeDashArray: 3, padding: { left: 12, right: 16, top: 0, bottom: 0 } },
+                xaxis: {
+                  categories: points.map((point) => point.label),
+                  type: 'category',
+                  axisBorder: { show: false },
+                  axisTicks: { show: false },
+                  labels: { style: { colors: '#8A959E', fontSize: '11px' } },
+                  tooltip: { enabled: false },
+                },
+                yaxis: {
+                  tickAmount: 4,
+                  min: 0,
+                  max: mode === 'share' ? 100 : undefined,
+                  labels: {
+                    formatter: (value) => (mode === 'share' ? `${Math.round(value)}%` : `${fmtCompact(value * 1e4, 0)}`),
+                    style: { colors: '#A7B0B8', fontSize: '10.5px' },
+                  },
+                },
+                legend: { show: false },
+                tooltip: {
+                  theme: 'light',
+                  shared: true,
+                  intersect: false,
+                  y: {
+                    formatter: (value, opts) => {
+                      const index = opts?.dataPointIndex;
+                      const point = points[index];
+                      if (mode === 'share') return `${value}%`;
+                      const raw = point ? point[visible[opts?.seriesIndex]?.key] : null;
+                      return raw == null ? '—' : `${fmtFull(raw)} 次`;
+                    },
+                  },
+                },
+              }}
+            />
+          ) : (
+            <Placeholder height={252} icon="bi-graph-down">
+              可用期数不足 3 期（或没勾选任何指标），暂不画对比线
+            </Placeholder>
+          )}
+        </div>
+
+        <div className="pr-chart-foot">
+          <span>小游戏 = 独立小游戏 + Maker 小游戏（按游戏品类切分）</span>
+          <span>APP / PC 按平台切分；两者是不同维度、会重叠，只做趋势对照，不可相加</span>
+          <span style={{ marginLeft: 'auto' }}>
+            {isPartial ? '本期尚未走完，趋势只画已完成的期' : '缺值期不补 0'}
+          </span>
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
 /* ================================================================== 业务线 */
 
 function DistLegend({ items, unclassified, colorMap, total }) {
@@ -634,7 +829,7 @@ export function LineBand({ line }) {
   const items = breakdown?.items || [];
   const roster = rosterNote(line);
   // 覆盖款数（game_cnt_roster / online_game_cnt_roster）不进指标格，只在下面用一句话说明
-  const metrics = line.kpis.filter((kpi) => !isRosterKpi(kpi.key));
+  const metrics = line.kpis.filter((kpi) => !isRosterKpi(kpi.key) && !kpi.hidden);
   // 03 里两个在线款数（整周去重 / 单小时快照）的区分句用接口 label 拼，
   // 不写死「峰值小时」——单小时最高值不一定出现在人数峰值那一刻（后端已约定改文案）
   const onlineDedup = line.kpis.find((kpi) => kpi.key === 'online_game_cnt');

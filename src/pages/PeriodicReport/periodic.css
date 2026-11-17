@@ -553,6 +553,135 @@
   color: var(--pr-muted);
 }
 
+/* ---------------------------------------------------------------- 下载结构趋势 */
+
+.pr-dlchips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 13px 18px 0;
+}
+
+.pr-dlchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid #e4eaee;
+  background: #fff;
+  color: #8a959e;
+  cursor: pointer;
+  transition: color 0.16s, border-color 0.16s, background 0.16s;
+}
+
+.pr-dlchip:hover:not(:disabled) {
+  border-color: #cbd6dd;
+  color: #56636d;
+}
+
+.pr-dlchip.is-on {
+  color: #2c3a44;
+  border-color: #ccd8de;
+  background: #f5f8f9;
+  font-weight: 600;
+}
+
+.pr-dlchip:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.pr-dlchip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chip-color, #9aa6ae);
+  opacity: 0.35;
+  flex: none;
+}
+
+.pr-dlchip.is-on .pr-dlchip-dot {
+  opacity: 1;
+}
+
+.pr-dlchips-hint {
+  font-size: 10.5px;
+  color: #a7b0b8;
+  margin-left: 2px;
+}
+
+.pr-dlsum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  margin: 12px 18px 0;
+  border: 1px solid var(--pr-hair);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.pr-dlsum-cell {
+  padding: 10px 14px 11px;
+  border-right: 1px solid var(--pr-hair);
+  box-shadow: inset 2px 0 0 var(--chip-color, #9aa6ae);
+}
+
+.pr-dlsum-cell:last-child {
+  border-right: 0;
+}
+
+.pr-dlsum-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--pr-muted);
+}
+
+.pr-dlsum-label .pr-dlchip-dot {
+  opacity: 1;
+}
+
+.pr-dlsum-value {
+  margin-top: 3px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--pr-ink);
+  white-space: nowrap;
+}
+
+.pr-dlsum-value small {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--pr-muted);
+  margin-left: 3px;
+  white-space: nowrap;
+}
+
+.pr-dlsum-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--pr-muted);
+}
+
+@media (max-width: 560px) {
+  .pr-dlsum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pr-dlsum-cell:nth-child(2n) {
+    border-right: 0;
+  }
+}
+
 .pr-insights {
   padding: 14px 18px 16px;
   display: flex;

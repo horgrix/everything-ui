@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPeriods, fetchReport } from '../../api/periodic';
 import { withCoreKpis, withLineLabels } from './coreKpis';
+import { buildDownloadTrend, useSmallGameSeries, withSmallGame } from './distSeries';
 import { Panel, Placeholder, fmtCutoff, fmtDateTime } from './prKit';
 import {
   Cover,
+  DownloadTrend,
   KpiGrid,
   LineBand,
   PlayerCards,
@@ -83,6 +85,21 @@ export default function PeriodicReport() {
   // 核心指标读哪 6 个数由 coreKpis.js 的口径清单定序（三款数 + 三总量），其余区块照用接口原值
   const report = useMemo(() => withCoreKpis(withLineLabels(reportQuery.data)), [reportQuery.data]);
   const meta = report?.meta;
+
+  // 下载结构趋势（总量 / APP / PC / 小游戏）：小游戏逐期值接口暂未直接给，按需补拉各期
+  const downloadPeriods = useMemo(
+    () =>
+      (report?.lines?.find((line) => line.key === 'download')?.kpis?.find((kpi) => kpi.key === 'download_total')?.trend || [])
+        .filter((point) => point.value != null)
+        .map((point) => point.period),
+    [report]
+  );
+  const smallGame = useSmallGameSeries(report, periodType, downloadPeriods);
+  const downloadTrend = useMemo(
+    () => buildDownloadTrend(report, smallGame.series),
+    [report, smallGame.series]
+  );
+  const view = useMemo(() => withSmallGame(report, downloadTrend), [report, downloadTrend]);
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;
   const currentIndex = available.indexOf(currentKey);
@@ -247,9 +264,9 @@ export default function PeriodicReport() {
         </Panel>
       )}
 
-      {report && (
+      {view && (
         <>
-          <Cover report={report} periodType={periodType} />
+          <Cover report={view} periodType={periodType} />
 
           {meta.isPartial && (
             <div className="pr-banner">
@@ -265,22 +282,24 @@ export default function PeriodicReport() {
             <SectionHead
               no="01"
               title="核心指标"
-              sub={`每期都看的 ${report.coreKpis.length} 个数`}
+              sub={`每期都看的 ${view.coreKpis.length} 个数`}
               right="趋势点来自同一张业务线周期表，缺值期不补 0"
             />
-            <KpiGrid coreKpis={report.coreKpis} totalPeriods={meta.availablePeriods.length} />
+            <KpiGrid coreKpis={view.coreKpis} totalPeriods={meta.availablePeriods.length} />
           </section>
 
-          <TrendSection report={report} />
+          <TrendSection report={view} />
+
+          <DownloadTrend trend={downloadTrend} isPartial={meta.isPartial === true} />
 
           <section className="pr-section">
             <SectionHead
-              no="03"
+              no="04"
               title="业务线明细"
               sub="汇总行 + 分型拆解"
               right={`更新至 ${fmtDateTime(meta.updatedAt) || '—'}`}
             />
-            {report.lines.map((line) => (
+            {view.lines.map((line) => (
               <LineBand key={line.key} line={line} />
             ))}
           </section>
@@ -288,7 +307,7 @@ export default function PeriodicReport() {
           {report.players?.length > 0 && (
             <section className="pr-section">
               <SectionHead
-                no="04"
+                no="05"
                 title="重点游戏"
                 sub="XD 单品本周表现"
                 right="来源：概览周表，与业务线周期表分开核算"
@@ -299,7 +318,7 @@ export default function PeriodicReport() {
 
           <section className="pr-section">
             <SectionHead
-              no="05"
+              no="06"
               title="榜单"
               sub="总量 / 增量 / 下滑"
               right={
@@ -320,7 +339,7 @@ export default function PeriodicReport() {
 
           <section className="pr-section">
             <SectionHead
-              no="06"
+              no="07"
               title="数据质量与口径"
               sub={`${report.flags.length} 条标注`}
               right="新版报表已不再依赖下线的旧表与旧维度"
