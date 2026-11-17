@@ -982,8 +982,10 @@ function DailyTrend({ line, daily, color }) {
           {prevFirstDate && ` · 上期 ${prevFirstDate.slice(5)}~${(prevLastDate || prevFirstDate).slice(5)}`}
         </span>
         <span>按「第 N 天」对齐（两期起始日不同）· 期初早于采集起点或当天未采集时该点缺失，不补 0</span>
-        {/* 在线线每日是「当天峰值」，七天相加没有意义，必须写明，否则容易被问「七天一共多少人」 */}
-        {line.key === 'online' && <span>在线为各日峰值人数，不可相加（期峰值取其中最大的一天）</span>}
+        {/* 每日值能不能相加由接口的 summable 决定（在线是每日峰值，相加没有意义）；老接口没有该字段时按线名兜底 */}
+        {(daily.summable === false || (daily.summable === undefined && line.key === 'online')) && (
+          <span>在线为各日峰值人数，不可相加（期峰值取其中最大的一天）</span>
+        )}
       </div>
     </div>
   );
