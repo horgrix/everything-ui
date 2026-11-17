@@ -6,7 +6,7 @@ import { isAuthEnabled, signOut } from '../../api/auth';
 export default function Navbar() {
   usePageviewTracking();
   const { pathname } = useLocation();
-  // 首页（/home）与旧路径 /periodic-report 是同一页面，都要高亮「定期报告」
+  // 首页（/home）与旧路径 /periodic-report 是同一页面，都要高亮「首页」
   const onPeriodicHome = pathname === '/home' || pathname.startsWith('/periodic-report');
 
   return (
@@ -38,15 +38,15 @@ export default function Navbar() {
               `/one-search` 与 `/one-search/report?q=` 仍可按 URL 访问 */}
           <ul className="navbar-nav ms-auto">
             <li className="nav-item">
-              {/* 首页即定期报告（/home 与 /periodic-report 同一页面），放在导航最前 */}
+              {/* 首页 = 定期报告（/home 与 /periodic-report 同一页面），放在导航最前 */}
               <NavLink
                 to="/home"
                 className={({ isActive }) =>
                   `nav-link text-nowrap ${isActive || onPeriodicHome ? 'active' : ''}`
                 }
               >
-                <i className="bi bi-file-earmark-text me-1"></i>
-                定期报告
+                <i className="bi bi-house-door me-1"></i>
+                首页
               </NavLink>
             </li>
             <li className="nav-item">
