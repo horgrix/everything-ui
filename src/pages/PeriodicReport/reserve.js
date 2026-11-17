@@ -170,6 +170,8 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
       totalEnd: num(head.reserveTotalEnd ?? head.reserve_total_end ?? head.totalEnd),
     },
     dist,
+    // 逐日趋势（后端提供时才有）：结构与 lines[].daily 相同，直接交给 DailyTrend
+    daily: raw.daily || null,
     ranks: { gain, total },
     note: raw.note || null,
   };

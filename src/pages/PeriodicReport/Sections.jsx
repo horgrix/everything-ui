@@ -837,7 +837,7 @@ function PeakHourBreakdown({ peakHour }) {
  * 为什么不按日历星期对齐：两期起始日不同，按第几天对齐才能看出「同一节奏」的差异，
  * 日历星期留给 tooltip（那里两个日期都写出来）。
  */
-function DailyTrend({ line, daily, color }) {
+export function DailyTrend({ line, daily, color }) {
   const [metricKey, setMetricKey] = useState('total');
   const distLabels = daily.distLabels || {};
 
@@ -887,7 +887,7 @@ function DailyTrend({ line, daily, color }) {
   if (!maxDay || !hasData) return null;
 
   // 第一条 chip 是该线的「主指标」而不是求和：在线线每日值是当日峰值，求和没有意义
-  const TOTAL_LABEL = { download: '下载总量', ad: '广告曝光', online: '在线峰值' };
+  const TOTAL_LABEL = { download: '下载总量', ad: '广告曝光', online: '在线峰值', reserve: '新增预约' };
   const chips = [
     { key: 'total', label: TOTAL_LABEL[line.key] || '总量' },
     ...distKeys.map((key) => ({ key, label: distLabels[key] || key })),

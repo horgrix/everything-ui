@@ -8,9 +8,12 @@
 import { useState } from 'react';
 import { DeltaChip, Panel, PanelHead, Placeholder, fmtCompact, fmtFull } from './prKit';
 import { coverageText, periodLabelOf } from './reserve';
+import { DailyTrend } from './Sections';
 import { RankIcon } from './Sections';
 
 const RESERVE_COLOR = '#A4577C';
+/** 预约榜条数：与左栏（指标 + 分型 + 逐日图）高度对齐 */
+const RESERVE_RANK_LIMIT = 12;
 const DIST_COLORS = { 0: '#5C7F8E', 1: '#7E9B84', 2: '#B99B72' };
 
 function shareText(share) {
@@ -31,11 +34,11 @@ function Stat({ label, value, unit, sub, title }) {
   );
 }
 
-function RankList({ list, rankType }) {
+function RankList({ list, rankType, limit = 12 }) {
   if (!list.length) return <div className="pr-rank-empty">本期暂无榜单数据</div>;
   return (
     <div className="pr-rank-list">
-      {list.slice(0, 8).map((item, index) => {
+      {list.slice(0, limit).map((item, index) => {
         const main = rankType === 'gain' ? item.gain : item.total;
         const other = rankType === 'gain' ? item.total : item.gain;
         const otherLabel = rankType === 'gain' ? '期末累计' : '本期新增';
@@ -211,6 +214,9 @@ export function ReserveSection({ reserve, periodType }) {
             </div>
           </div>
         )}
+        {reserve.daily && (
+          <DailyTrend line={{ key: 'reserve' }} daily={reserve.daily} color={RESERVE_COLOR} />
+        )}
       </Panel>
 
       <Panel className="pr-reserve-rank">
@@ -221,7 +227,7 @@ export function ReserveSection({ reserve, periodType }) {
           <div>
             <div className="pr-rank-head-title">预约榜</div>
             <div className="pr-rank-head-sub">
-              {rankTabs.find((tab) => tab.key === rankType)?.hint} · 前 {Math.min((ranks[rankType] || []).length, 8)} 款
+              {rankTabs.find((tab) => tab.key === rankType)?.hint} · 前 {Math.min((ranks[rankType] || []).length, RESERVE_RANK_LIMIT)} 款
             </div>
           </div>
           <div className="pr-rank-switch">
@@ -237,7 +243,7 @@ export function ReserveSection({ reserve, periodType }) {
             ))}
           </div>
         </div>
-        <RankList list={ranks[rankType] || []} rankType={rankType} />
+        <RankList list={ranks[rankType] || []} rankType={rankType} limit={RESERVE_RANK_LIMIT} />
       </Panel>
     </div>
   );
