@@ -18,7 +18,7 @@ import {
   fmtFull,
   fmtPct,
 } from './prKit';
-import { indexedKpis, isRosterKpi, rosterNote } from './coreKpis';
+import { completeTrend, indexedKpis, isRosterKpi, rosterNote } from './coreKpis';
 
 /* ================================================================== 封面 */
 
@@ -131,7 +131,8 @@ export function Cover({ report, periodType }) {
 /** 单个核心指标卡：大字数值 + 环比 + 迷你趋势 + 可用期数 */
 export function KpiCard({ kpi, totalPeriods }) {
   const line = LINE_META[kpi.line] || LINE_META.download;
-  const trend = kpi.trend || [];
+  // 接口逐点标了 isPartial（本周进行中的那截半周数），趋势线不画它，避免末尾一根假断崖
+  const trend = completeTrend(kpi.trend);
   const first = trend[0];
   const last = trend[trend.length - 1];
   const noTrend = kpi.insufficientHistory || trend.length < 3;
@@ -252,7 +253,7 @@ export function buildInsights(report) {
   // 4) 连续上升 / 下降的指标（至少 4 期，避免把两期噪声说成趋势）
   const streak = [];
   (report.coreKpis || []).forEach((k) => {
-    const values = (k.trend || []).map((t) => t.value).filter((v) => v != null);
+    const values = completeTrend(k.trend).map((t) => t.value).filter((v) => v != null);
     if (values.length < 4) return;
     const dir = Math.sign(values[values.length - 1] - values[values.length - 2]);
     if (dir === 0) return;
@@ -265,7 +266,8 @@ export function buildInsights(report) {
   });
   if (streak.length) {
     const best = streak.sort((a, b) => Math.abs(b.run) - Math.abs(a.run))[0];
-    const recent = (best.kpi.trend || []).filter((t) => t.value != null);
+    // 期次标签也必须用同一份「只含完整期」的点，否则句子会写到被排除的进行中期（W43 → W47）
+    const recent = completeTrend(best.kpi.trend).filter((t) => t.value != null);
     out.push({
       tone: 'info',
       icon: best.run > 0 ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow',
@@ -318,7 +320,7 @@ export function TrendSection({ report, no = '02' }) {
 
   if (!kpi) return null;
   const line = LINE_META[kpi.line] || LINE_META.download;
-  const trend = (kpi.trend || []).filter((t) => t.value != null);
+  const trend = completeTrend(kpi.trend).filter((t) => t.value != null);
   const first = trend[0];
   const last = trend[trend.length - 1];
   const change = first && last && first.value ? ((last.value - first.value) / first.value) * 100 : null;

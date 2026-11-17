@@ -69,6 +69,10 @@ function fmtCount(value) {
   return Number(value).toLocaleString('zh-CN');
 }
 
+export function completeTrend(trend) {
+  return (trend || []).filter((point) => point && point.isPartial !== true);
+}
+
 /** 覆盖款数只是说明用的旁证，不进 03 明细的指标格（免得和「有…款数」并排放成两个数去比） */
 export function isRosterKpi(key) {
   return CORE_KPI_SPEC.some((spec) => spec.rosterKey && spec.rosterKey === key);

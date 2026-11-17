@@ -41,7 +41,7 @@ function smallGameTrendFromApi(line) {
   const merged = new Map();
   withTrend.forEach((item) => {
     item.trend.forEach((point) => {
-      if (!point?.period) return;
+      if (!point?.period || point.isPartial === true) return; // 进行中的半周不计入趋势
       merged.set(point.period, (merged.get(point.period) || 0) + (point.value || 0));
     });
   });
@@ -106,12 +106,17 @@ export function buildDownloadTrend(report, smallGameSeries) {
   const appByPeriod = new Map((kpiOf('download_app')?.trend || []).map((p) => [p.period, p.value]));
   const pcByPeriod = new Map((kpiOf('download_pc')?.trend || []).map((p) => [p.period, p.value]));
 
-  const periods = (total.trend || [])
-    .filter((point) => point.value != null && (!currentKey || point.period <= currentKey))
-    // 本期还没走完时，它的累计值只有完整周的零头，画进趋势就是一根假断崖 —— 本期数字在 01 卡和明细里看
-    .filter((point) => !(report?.meta?.isPartial && point.period === currentKey))
-    .map((point) => point.period)
-    .slice(-TREND_WINDOW);
+  // 进行中的期（本周只有半周数据）不画进趋势，否则末尾是一根假断崖。
+  // 接口逐点在 trend[] 里标了 isPartial，直接采信；老接口没有这个字段时退回原来的日期判断。
+  const hasPartialFlag = (total.trend || []).some((point) => point.isPartial !== undefined);
+  const usable = (total.trend || [])
+    .filter((point) => point.value != null)
+    .filter((point) =>
+      hasPartialFlag
+        ? point.isPartial !== true
+        : (!currentKey || point.period <= currentKey) && !(report?.meta?.isPartial && point.period === currentKey)
+    );
+  const periods = usable.map((point) => point.period).slice(-TREND_WINDOW);
 
   const points = periods.map((period) => ({
     period,
