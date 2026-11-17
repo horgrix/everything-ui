@@ -749,6 +749,11 @@
   min-width: 0;
 }
 
+/* 预约并进业务线明细后沿用同一套两栏：等高对齐，避免它自己那套 start 对齐破坏节奏 */
+.pr-line-row.pr-reserve {
+  align-items: stretch;
+}
+
 
 .pr-line-row .pr-line {
   margin-bottom: 0;

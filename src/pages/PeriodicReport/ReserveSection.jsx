@@ -110,13 +110,14 @@ export function ReserveSection({ reserve, periodType }) {
   ];
 
   return (
-    <div className="pr-reserve">
+    // 与业务线明细共用一套「左信息 / 右榜单」栅格
+    <div className="pr-line-row pr-reserve">
       <Panel className="pr-reserve-main">
         <PanelHead
           color={RESERVE_COLOR}
           icon="bi-bookmark-star"
-          title="预约"
-          sub="尚未上线游戏的预约热度（预约池口径，不是平台大盘）"
+          title="TapTap 预约"
+          sub="尚未上线游戏的预约热度 · 预约池口径，不是平台大盘"
           right={
             coverageLabel && (
               <span className={`pr-coverage${coverage.thinCoverage ? ' is-partial' : ''}`} title="该期预约数据实际覆盖的天数">

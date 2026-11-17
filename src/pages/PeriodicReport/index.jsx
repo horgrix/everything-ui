@@ -314,9 +314,10 @@ export default function PeriodicReport() {
             <SectionHead
               no="04"
               title="业务线明细"
-              sub="左边汇总与分型拆解，右边该业务线榜单"
+              sub="TapTap 预约 / 下载 / 广告 / 在线：左边汇总与分型拆解，右边该业务线榜单"
               right={`更新至 ${fmtDateTime(meta.updatedAt) || '—'}`}
             />
+            {reserve && <ReserveSection reserve={reserve} periodType={periodType} />}
             {view.lines.map((line) => (
               <div className="pr-line-row" key={line.key}>
                 <LineBand line={line} isPartial={meta.isPartial === true} />
@@ -348,21 +349,9 @@ export default function PeriodicReport() {
             </section>
           )}
 
-          {reserve && (
-            <section className="pr-section">
-              <SectionHead
-                no="06"
-                title="预约"
-                sub="尚未上线游戏的预约热度"
-                right="采集 2026-11-08 起，期数不够不出趋势线；日均环比代替总量环比"
-              />
-              <ReserveSection reserve={reserve} periodType={periodType} />
-            </section>
-          )}
-
           <section className="pr-section">
             <SectionHead
-              no={reserve ? '07' : '06'}
+              no="06"
               title="数据质量与口径"
               sub={`${report.flags.length} 条标注`}
               right="新版报表已不再依赖下线的旧表与旧维度"
