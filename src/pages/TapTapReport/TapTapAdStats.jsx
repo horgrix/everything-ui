@@ -110,7 +110,7 @@ const SPARK_COLUMNS = [
 /** OneSearch 线索查询路由（站内相对路径，用 APPID 拼 q 参数） */
 const ONESEARCH_REPORT_PATH = '/one-search/report';
 
-/** 本周游戏明细 Top30 列配置 */
+/** 本周游戏明细 Top50 列配置 */
 const GAME_TOP_COLUMNS = [
   {
     header: '游戏类型',
@@ -571,11 +571,11 @@ export default function TapTapAdStats() {
         </div>
       </div>
 
-      {/* 第二行：本周游戏明细 Top30 */}
+      {/* 第二行：本周游戏明细 Top50 */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0">
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div className="fw-semibold">【广告大盘】本周游戏明细 — Top30</div>
+            <div className="fw-semibold">【广告大盘】本周游戏明细 — Top50</div>
             {/* 本周明细入口标签：悬停看各渠道广告明细 */}
             <div className="d-flex align-items-center flex-wrap" style={{ gap: '1rem' }}>
               <WeeklyAdGameCountTips />

@@ -222,7 +222,7 @@ export function buildAdShareByWeekSql() {
 /** 构建 TapTap 广告本周游戏 TopN SQL（本周一 ~ 下周一，按 app 聚合，按总投放→总曝光倒序）
  *  口径：商业AD=ad_views、资源互换AD=pcebid_views、总投放=ad_views+pcebid_views
  */
-export function buildAdGameWeeklyTopSql(limit = 30) {
+export function buildAdGameWeeklyTopSql(limit = 50) {
   const thisMonday = thisWeekWhere(0);
   const nextMonday = thisWeekWhere(-1);
   return `
