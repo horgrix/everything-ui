@@ -1538,9 +1538,160 @@
 
 /* ---------------------------------------------------------------- 响应式 */
 
+/* ---------------------------------------------------------------- 预约 */
+
+.pr-reserve {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 13px;
+  align-items: start;
+}
+
+.pr-reserve-main .pr-panel-head {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.pr-reserve-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 2px 8px 12px;
+}
+
+.pr-reserve-stat {
+  padding: 10px 12px 8px;
+  border-right: 1px solid var(--pr-hair);
+  min-width: 0;
+}
+
+.pr-reserve-stat:last-child {
+  border-right: 0;
+}
+
+.pr-reserve-stat-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--pr-sub);
+}
+
+.pr-reserve-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 7px;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  color: var(--pr-ink);
+}
+
+.pr-reserve-stat-unit {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--pr-muted);
+}
+
+.pr-reserve-stat-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--pr-muted);
+  line-height: 1.5;
+}
+
+.pr-reserve-chip-label {
+  color: var(--pr-faint);
+}
+
+.pr-reserve-muted {
+  color: var(--pr-muted);
+}
+
+.pr-reserve-dist {
+  border-top: 1px solid var(--pr-hair);
+  padding: 12px 16px 14px;
+}
+
+.pr-reserve-dist-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pr-sub);
+}
+
+.pr-reserve-dist-head .pr-reserve-muted {
+  font-weight: 400;
+  font-size: 10.5px;
+}
+
+.pr-reserve-dist-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) 46px 58px 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 0;
+  font-size: 11.5px;
+}
+
+.pr-reserve-dist-name {
+  color: var(--pr-text);
+  white-space: nowrap;
+}
+
+.pr-reserve-dist-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--pr-paper);
+  overflow: hidden;
+}
+
+.pr-reserve-dist-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.25s;
+}
+
+.pr-reserve-dist-share {
+  text-align: right;
+  color: var(--pr-sub);
+}
+
+.pr-reserve-dist-value {
+  text-align: right;
+  font-weight: 600;
+  color: var(--pr-ink);
+}
+
+.pr-reserve-dist-cnt {
+  text-align: right;
+  color: var(--pr-faint);
+}
+
+.pr-reserve-rank .pr-rank-value small {
+  display: inline;
+  margin-left: 2px;
+}
+
+.pr-reserve-note {
+  margin-top: 9px;
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--pr-faint);
+}
+
 @media (max-width: 1080px) {
   .pr-trend,
-  .pr-quality {
+  .pr-quality,
+  .pr-reserve {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -1565,8 +1716,24 @@
 
   .pr-kpi-grid,
   .pr-players,
-  .pr-ranks {
+  .pr-ranks,
+  .pr-reserve-stats {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pr-reserve-stat {
+    border-right: 0;
+    border-bottom: 1px solid var(--pr-hair);
+  }
+
+  .pr-reserve-stat:last-child {
+    border-bottom: 0;
+  }
+
+  .pr-reserve-dist-row {
+    grid-template-columns: 66px minmax(0, 1fr) 40px 50px 36px;
+    gap: 6px;
+    font-size: 10.5px;
   }
 
   .pr-cover-inner {

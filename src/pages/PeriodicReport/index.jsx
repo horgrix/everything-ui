@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchPeriods, fetchReport } from '../../api/periodic';
+import { fetchPeriods, fetchReport, fetchReserve } from '../../api/periodic';
 import { withCoreKpis, withLineLabels } from './coreKpis';
 import { buildDownloadTrend, useSmallGameSeries, withSmallGame } from './distSeries';
+import { normalizeReserve } from './reserve';
+import { ReserveSection } from './ReserveSection';
 import { Panel, Placeholder, fmtCutoff, fmtDateTime } from './prKit';
 import {
   Cover,
@@ -97,6 +99,22 @@ export default function PeriodicReport() {
   const smallGame = useSmallGameSeries(report, periodType, downloadPeriods);
   const downloadTrend = useMemo(() => buildDownloadTrend(report, smallGame), [report, smallGame]);
   const view = useMemo(() => withSmallGame(report, downloadTrend), [report, downloadTrend]);
+  // 预约：优先用 /report 里的 reserve 块（一篇报告一次请求拿全）；后端若改成独立接口，
+  // meta.reserveAvailable = true 时再补一次请求。两种都没有 → 这一节不出现，页面与改造前一致。
+  const reserveInline = reportQuery.data?.reserve || null;
+  const reserveQuery = useQuery({
+    queryKey: ['pr-reserve', periodType, keyParam || 'latest'],
+    queryFn: () => fetchReserve(periodType, keyParam),
+    enabled: !reserveInline && reportQuery.data?.meta?.reserveAvailable === true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 0,
+  });
+  const reserve = useMemo(
+    () => normalizeReserve(reserveInline || reserveQuery.data, { periodType, meta: reportQuery.data?.meta }),
+    [reserveInline, reserveQuery.data, periodType, reportQuery.data?.meta]
+  );
+
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;
   const currentIndex = available.indexOf(currentKey);
@@ -136,7 +154,7 @@ export default function PeriodicReport() {
             {meta && <span className="pr-head-issue">{meta.periodLabel}</span>}
           </h1>
           <div className="pr-head-sub">
-            <span>下载 · 广告 · 在线 三条业务线</span>
+            <span>{reserve ? '下载 · 广告 · 在线 · 预约 四条业务线' : '下载 · 广告 · 在线 三条业务线'}</span>
             {rangeText && <span>· {rangeText}</span>}
             {meta?.updatedAt && <span>· 数据更新 {fmtDateTime(meta.updatedAt)}</span>}
             {meta?.isLatest && <span className="pr-coverage">最新一期</span>}
@@ -334,9 +352,21 @@ export default function PeriodicReport() {
             />
           </section>
 
+          {reserve && (
+            <section className="pr-section">
+              <SectionHead
+                no="07"
+                title="预约"
+                sub="尚未上线游戏的预约热度"
+                right="采集 2026-11-08 起，期数不够不出趋势线；日均环比代替总量环比"
+              />
+              <ReserveSection reserve={reserve} />
+            </section>
+          )}
+
           <section className="pr-section">
             <SectionHead
-              no="07"
+              no={reserve ? '08' : '07'}
               title="数据质量与口径"
               sub={`${report.flags.length} 条标注`}
               right="新版报表已不再依赖下线的旧表与旧维度"

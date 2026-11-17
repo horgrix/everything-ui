@@ -124,6 +124,15 @@ function normalizeTrendLabels(data, periodType) {
   return data;
 }
 
+/** 预约数据（独立业务线，历史从 2026-11-08 起） */
+export function fetchReserve(periodType = 'weekly', key) {
+  return request(
+    '/reserve',
+    { period: periodType, ...(key ? { key } : {}) },
+    key ? [`reserve-${periodType}-${key}`, `reserve-${periodType}`] : [`reserve-${periodType}`]
+  );
+}
+
 /** 榜单；line = download | ad | online，category = top | gain | loss */
 export function fetchRank(line, { periodType = 'weekly', key, category = 'top', limit = 8, listType, dist } = {}) {
   const suffix = [line, category, listType].filter(Boolean).join('-');

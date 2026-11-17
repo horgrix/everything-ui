@@ -1129,7 +1129,7 @@ function onlineListSet(periodType, periodKey) {
   return String(periodKey) < '2026-45' ? ONLINE_LISTS_RETIRED : ONLINE_LISTS;
 }
 
-function RankIcon({ src, name }) {
+export function RankIcon({ src, name }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return <span className="pr-rank-icon-fallback">{(name || '?').slice(0, 1)}</span>;
@@ -1423,6 +1423,15 @@ export function QualitySection({ report }) {
               接口的 <code>placeholderRatio</code> 是「按行计」的数据质量比例，<b>不等于在线人数里的兜底占比</b>
               （W46 商业游戏：按行 43%、按人数 15%），所以分型占比只作方向参考；
               榜单均值已剔除兜底小时，整周期全为兜底值时该维度不出榜。
+            </div>
+          </div>
+          <div>
+            <div className="pr-note-block-title">预约口径</div>
+            <div className="pr-note-block-text">
+              预约数据 2026-11-08 才上线采集，更早的期无法回补，所以<b>不画期级趋势</b>；
+              周总量环比会被「该期盖了几天」放大（W45 只 1 天、W46 七天），页面只比<b>日均</b>。
+              预约池只含「预约中、未上线」的游戏，期末累计会随游戏上线而减少，<b>不是平台大盘</b>，
+              不与下载 / 在线放在同一坐标轴上比较。
             </div>
           </div>
           <div>
