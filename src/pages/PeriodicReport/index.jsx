@@ -360,7 +360,7 @@ export default function PeriodicReport() {
                 sub="尚未上线游戏的预约热度"
                 right="采集 2026-11-08 起，期数不够不出趋势线；日均环比代替总量环比"
               />
-              <ReserveSection reserve={reserve} />
+              <ReserveSection reserve={reserve} periodType={periodType} />
             </section>
           )}
 

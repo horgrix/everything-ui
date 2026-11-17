@@ -125,8 +125,11 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
     typeof head.dailyAvgComparable === 'boolean'
       ? head.dailyAvgComparable
       : Boolean(hasPrevCoverage && !thinCoverage && !prevThin);
-  // 为什么不出日均环比：本周没采满 / 上期没采满 / 上期压根没数据。三者文案不同，别混着写
-  const blocked = head.dailyAvgBlocked || (thinCoverage ? 'current_partial' : hasPrevCoverage && prevThin ? 'prev_partial' : null);
+  // 为什么不出日均环比：本周没采满 / 上期没采满 / 上期早于采集起点（prevDayCnt 为 null，不是 0）。
+  // 后端 24f1c4f 起统一由 dailyAvgBlocked 给这三种；没这个字段时前端自己判。
+  const blocked =
+    head.dailyAvgBlocked ||
+    (thinCoverage ? 'current_partial' : hasPrevCoverage && prevThin ? 'prev_partial' : hasPrevCoverage ? null : 'prev_missing');
 
   return {
     available: true,
@@ -141,6 +144,7 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
       prevAdd,
       prevDayCnt,
       prevExpectedDays,
+      prevPeriodKey: head.prevPeriodKey ?? head.prev_period_key ?? null,
       prevDailyAvg: hasPrevCoverage ? prevDailyAvg : null,
       gameCnt: num(head.gameCnt ?? head.reserveGameCnt),
       roster: num(head.gameCntRoster ?? head.reserveGameCntRoster),
@@ -150,6 +154,15 @@ export function normalizeReserve(raw, { periodType, meta } = {}) {
     ranks: { gain, total },
     note: raw.note || null,
   };
+}
+
+/** 期次文案：周报 2026-45 → W45，月报 2026-10 → 10 月 */
+export function periodLabelOf(key, periodType) {
+  const text = String(key || '');
+  const tail = text.slice(5);
+  if (!tail) return null;
+  if (periodType === 'monthly') return `${Number(tail)} 月`;
+  return `W${tail}`;
 }
 
 /** 覆盖天数文案：7/7 天 · 11.09~11.15 */

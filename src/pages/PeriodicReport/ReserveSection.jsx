@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { DeltaChip, Panel, PanelHead, Placeholder, fmtCompact, fmtFull } from './prKit';
-import { coverageText } from './reserve';
+import { coverageText, periodLabelOf } from './reserve';
 import { RankIcon } from './Sections';
 
 const RESERVE_COLOR = '#A4577C';
@@ -68,7 +68,7 @@ function RankList({ list, rankType }) {
   );
 }
 
-export function ReserveSection({ reserve }) {
+export function ReserveSection({ reserve, periodType }) {
   const [rankType, setRankType] = useState('gain');
   if (!reserve) return null;
 
@@ -90,7 +90,10 @@ export function ReserveSection({ reserve }) {
   if (headline.dailyAvgBlocked === 'current_partial') {
     compareReasons.push(`本期仅覆盖 ${dayText(coverage.dayCnt, coverage.expectedDays)}`);
   }
-  if (headline.prevDailyAvg == null) compareReasons.push('上期无预约数据');
+  if (headline.prevDailyAvg == null) {
+    const prevLabel = periodLabelOf(headline.prevPeriodKey, periodType);
+    compareReasons.push(prevLabel ? `上期（${prevLabel}）无预约数据` : '上期无预约数据');
+  }
   else if (headline.dailyAvgBlocked === 'prev_partial') {
     compareReasons.push(`上期仅覆盖 ${dayText(headline.prevDayCnt, headline.prevExpectedDays)}`);
   }
