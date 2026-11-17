@@ -535,7 +535,8 @@ export function DownloadTrend({ trend, isPartial = false, no = '03' }) {
         <div className="pr-dlsum">
           {visible.map((item) => {
             const now = nowOf(item.key);
-            const pct = current[item.key]?.deltaPct ?? null;
+            const cur = current[item.key] || {};
+            const pct = cur.deltaPct ?? null;
             return (
               <div className="pr-dlsum-cell" key={item.key} style={{ '--chip-color': item.color }}>
                 <div className="pr-dlsum-label">
@@ -547,7 +548,13 @@ export function DownloadTrend({ trend, isPartial = false, no = '03' }) {
                   <small>{mode === 'share' ? `（占总量 ${shareOf(item.key)?.toFixed(1) ?? '—'}%）` : '次'}</small>
                 </div>
                 <div className="pr-dlsum-meta">
-                  <DeltaChip pct={pct} hasValue={now != null} comparable={current[item.key]?.comparable} size="sm" />
+                  <DeltaChip
+                    pct={pct}
+                    hasValue={now != null}
+                    comparable={cur.comparable}
+                    blocked={now == null ? null : cur.blocked}
+                    size="sm"
+                  />
                   {mode === 'abs' && shareOf(item.key) != null && (
                     <span>占总量 {shareOf(item.key).toFixed(1)}%</span>
                   )}

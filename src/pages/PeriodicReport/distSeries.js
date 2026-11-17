@@ -182,18 +182,27 @@ export function buildDownloadTrend(report, smallGame) {
     }
     return null;
   };
+  const partial = report?.meta?.isPartial === true;
   const pick = (key) => {
     const kpi = kpiOf(key);
-    return { value: kpi?.value ?? null, deltaPct: kpi?.deltaPct ?? null, comparable: kpi?.deltaComparable };
+    return {
+      value: kpi?.value ?? null,
+      deltaPct: kpi?.deltaPct ?? null,
+      comparable: kpi?.deltaComparable,
+      blocked: kpi?.deltaBlocked ?? (partial ? 'current_in_progress' : null),
+    };
   };
   const partNow = (cat) => (now?.parts || []).find((part) => part.cat === cat)?.value ?? null;
   const partCard = (cat) => {
     const value = partNow(cat);
     const prev = lastWith(cats[cat]);
+    const canCompare = Boolean(value != null && prev && !partial);
     return {
       value,
-      deltaPct: value != null && prev ? pctChange(value, prev.value) : null,
-      comparable: Boolean(value != null && prev && !report?.meta?.isPartial),
+      // 自己算的环比同样要守规矩：本期没走完时不给数字，只给原因
+      deltaPct: canCompare ? pctChange(value, prev.value) : null,
+      comparable: canCompare,
+      blocked: partial ? 'current_in_progress' : null,
       prevValue: prev?.value ?? null,
       prevPeriod: prev?.period ?? null,
     };
@@ -203,13 +212,17 @@ export function buildDownloadTrend(report, smallGame) {
     total: pick('download_total'),
     app: pick('download_app'),
     pc: pick('download_pc'),
-    small: {
-      value: now?.value ?? null,
-      deltaPct: now && prevSmall ? pctChange(now.value, prevSmall.value) : null,
-      comparable: Boolean(now && prevSmall && !report?.meta?.isPartial),
-      prevValue: prevSmall?.value ?? null,
-      prevPeriod: prevSmall?.period ?? null,
-    },
+    small: (() => {
+      const canCompare = Boolean(now && prevSmall && !partial);
+      return {
+        value: now?.value ?? null,
+        deltaPct: canCompare ? pctChange(now.value, prevSmall.value) : null,
+        comparable: canCompare,
+        blocked: partial ? 'current_in_progress' : null,
+        prevValue: prevSmall?.value ?? null,
+        prevPeriod: prevSmall?.period ?? null,
+      };
+    })(),
     indie: partCard('indie'),
     maker: partCard('maker'),
   };
