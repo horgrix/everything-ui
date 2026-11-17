@@ -95,10 +95,7 @@ export default function PeriodicReport() {
     [report]
   );
   const smallGame = useSmallGameSeries(report, periodType, downloadPeriods);
-  const downloadTrend = useMemo(
-    () => buildDownloadTrend(report, smallGame.series),
-    [report, smallGame.series]
-  );
+  const downloadTrend = useMemo(() => buildDownloadTrend(report, smallGame), [report, smallGame]);
   const view = useMemo(() => withSmallGame(report, downloadTrend), [report, downloadTrend]);
   const available = meta?.availablePeriods || [];
   const currentKey = meta?.periodKey;

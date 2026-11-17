@@ -447,6 +447,9 @@ const DOWNLOAD_SERIES = [
   { key: 'app', label: 'APP 下载量', short: 'APP', color: '#2F6B8F' },
   { key: 'pc', label: 'PC 下载量', short: 'PC', color: '#B07348' },
   { key: 'small', label: '小游戏下载量', short: '小游戏', color: '#7C6BA6' },
+  // 小游戏的两个品类可以单独看：独立小游戏 / Maker 小游戏（两者相加 = 小游戏下载量）
+  { key: 'indie', label: '独立小游戏', short: '独立', color: '#5F82AE' },
+  { key: 'maker', label: 'Maker 小游戏', short: 'Maker', color: '#C08C4F' },
 ];
 const DEFAULT_SERIES = ['total', 'app', 'small'];
 
@@ -622,7 +625,7 @@ export function DownloadTrend({ trend, isPartial = false, no = '03' }) {
         </div>
 
         <div className="pr-chart-foot">
-          <span>小游戏 = 独立小游戏 + Maker 小游戏（按游戏品类切分）</span>
+          <span>小游戏下载量 = 独立小游戏 + Maker 小游戏（两者可单独勾选对比）</span>
           <span>APP / PC 按平台切分；两者是不同维度、会重叠，只做趋势对照，不可相加</span>
           <span style={{ marginLeft: 'auto' }}>
             {isPartial ? '本期尚未走完，趋势只画已完成的期' : '缺值期不补 0'}
