@@ -1013,6 +1013,13 @@
   flex-wrap: wrap;
 }
 
+.pr-metric-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pr-muted);
+  letter-spacing: 0;
+}
+
 .pr-metric-num {
   font-size: 20px;
   font-weight: 650;

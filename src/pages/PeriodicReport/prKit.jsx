@@ -151,6 +151,8 @@ const BLOCKED_TEXT = {
   prev_missing: '上期无数据 · 不出环比',
   // 数据源尚未上线，值是恒 0 的占位，不是「真的 0 曝光」
   source_not_live: '源未上线 · 暂为 0',
+  segment_not_collected: '该段尚未采集',
+  segment_partial_coverage: '该段覆盖不完整 · 不出环比',
 };
 
 export function DeltaChip({

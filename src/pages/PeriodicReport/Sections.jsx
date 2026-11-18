@@ -1088,9 +1088,13 @@ export function LineBand({ line, isPartial = false }) {
                 )}
               </div>
               <div className="pr-metric-row">
-                <span className="pr-metric-num" title={`${fmtFull(kpi.value)} ${kpi.unit}`}>
-                  {fmtCompact(kpi.value)}
-                </span>
+                {kpi.valueLabel ? (
+                  <span className="pr-metric-text">{kpi.valueLabel}</span>
+                ) : (
+                  <span className="pr-metric-num" title={`${fmtFull(kpi.value)} ${kpi.unit}`}>
+                    {fmtCompact(kpi.value)}
+                  </span>
+                )}
                 <span className="pr-metric-unit">{kpi.unit}</span>
                 {isPartial ? (
                   <span className="pr-metric-live" title="本期还没走完，累计值与整期不可比，所以不出环比">

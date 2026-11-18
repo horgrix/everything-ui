@@ -198,6 +198,44 @@ export function withCoreKpis(report) {
  * 就把「取值于 11-15 22」拼到 note 后面——它不等于 peak_hour（那是人数峰值那一小时，653 款），
  * 所以这里只读接口给的时间，前端不拿别的字段凑。没这个字段就原样返回。
  */
+/**
+ * 分段采集起点的判断（接口给 kpi.coverageStart 时生效，例如 PC 段 2026-10-19 才有数据）：
+ *   · 整期早于起点 → 这一格不是「0 曝光」，而是「未采集」，值位改写、环比不出
+ *   · 整期跨过起点   → 部分覆盖，值照给，但注明「仅覆盖 N 天」，环比同样不出（占比会系统性偏低）
+ * 没这个字段时原样返回，页面行为不变。
+ */
+function withSegmentCoverage(kpi, meta) {
+  const start = kpi.coverageStart;
+  if (!start || !meta?.periodStart || !meta?.periodEnd) return kpi;
+  const periodStart = String(meta.periodStart).slice(0, 10);
+  const periodEnd = String(meta.periodEnd).slice(0, 10);
+  const day = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) + 1;
+
+  if (periodEnd < start) {
+    return {
+      ...kpi,
+      valueLabel: '未采集',
+      deltaPct: null,
+      deltaAbs: null,
+      deltaComparable: false,
+      deltaBlocked: 'segment_not_collected',
+      note: `${kpi.label || '该段'}自 ${start} 起才有采集，本期整段在此之前，不是 0 曝光`,
+    };
+  }
+  if (periodStart < start) {
+    const days = day(start, periodEnd);
+    return {
+      ...kpi,
+      deltaPct: null,
+      deltaAbs: null,
+      deltaComparable: false,
+      deltaBlocked: 'segment_partial_coverage',
+      note: `${kpi.label || '该段'}自 ${start} 起才有采集，本期只覆盖 ${days} 天，占比会系统性偏低，不与整期比`,
+    };
+  }
+  return kpi;
+}
+
 function noteWithHour(kpi) {
   const at = kpi?.concurrent_game_cnt_at || kpi?.online_game_cnt_hour;
   if (!at || (kpi.note || '').includes(at)) return kpi?.note;
@@ -230,7 +268,7 @@ export function withLineLabels(report) {
       ...line,
       kpis: [
         ...(line.kpis || []).map((kpi) => {
-          const guarded = guard(kpi);
+          const guarded = withSegmentCoverage(guard(kpi), report?.meta);
           const placement = line.key === 'ad' ? adPlacement.get(kpi.key) : null;
           // PC 搜索页的源还没上线，值是恒 0 的占位：别让它显示成「上期无数据」或「0 曝光」
           const sourceNotLive = kpi.key === 'ad_pc_search' && (kpi.value === 0 || kpi.value == null);
