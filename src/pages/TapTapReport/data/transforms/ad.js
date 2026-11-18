@@ -1,4 +1,4 @@
-import { WEEKDAY_LABELS, mondayOfThisWeek, splitDailyByWeek, thisMonday } from './shared';
+import { WEEKDAY_LABELS, splitDailyByWeek, thisMonday } from './shared';
 
 /**
  * TapTap 广告数据转换（广告大盘 / 渠道明细 / 榜单）
@@ -348,64 +348,6 @@ export function transformAdRankDerivedWeek(rows) {
   };
 }
 
-/**
- * 每日投放广告的游戏数：按周几拆成本周 / 上周两条 7 长度序列，并算出逐日增幅(%)。
- * 缺数据的日子为 null（不补 0 伪装），上周为 0 或缺失时增幅为 null。
- */
-export function transformAdGameCountWeekly(rows) {
-  const games = { last: new Array(7).fill(null), this: new Array(7).fill(null) };
-  const pushes = { last: new Array(7).fill(null), this: new Array(7).fill(null) };
-  const monday = mondayOfThisWeek().getTime();
-
-  (rows || []).forEach((r) => {
-    const dayStr = String(r.day || '').slice(0, 10);
-    const d = new Date(`${dayStr}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return;
-    const idx = (d.getDay() + 6) % 7;
-    const gameCnt = r.games == null ? null : Number(r.games);
-    if (gameCnt == null || Number.isNaN(gameCnt)) return;
-    const pushCnt = r.pushes == null ? null : Number(r.pushes);
-    const bucket = d.getTime() >= monday ? 'this' : 'last';
-    games[bucket][idx] = gameCnt;
-    pushes[bucket][idx] = pushCnt;
-  });
-
-  /** 逐日增幅(%)：两个数都存在且上周不为 0 才算，保留 1 位小数 */
-  const deltaOf = (last, cur) =>
-    last.map((lastVal, i) => {
-      const curVal = cur[i];
-      if (lastVal == null || curVal == null || lastVal === 0) return null;
-      return Math.round(((curVal - lastVal) / lastVal) * 1000) / 10;
-    });
-
-  /** 每个游戏平均广告数 = 当日广告数 ÷ 当日有投放的游戏数，保留 1 位小数 */
-  const perGameOf = (pushArr, gameArr) =>
-    pushArr.map((p, i) => {
-      const g = gameArr[i];
-      if (p == null || g == null || g === 0) return null;
-      return Math.round((p / g) * 10) / 10;
-    });
-
-  const lastPerGame = perGameOf(pushes.last, games.last);
-  const thisPerGame = perGameOf(pushes.this, games.this);
-
-  return {
-    labels: WEEKDAY_LABELS,
-    // 1) 每日有投放的游戏数
-    lastWeek: games.last,
-    thisWeek: games.this,
-    delta: deltaOf(games.last, games.this),
-    // 2) 每日广告投放数
-    lastPushes: pushes.last,
-    thisPushes: pushes.this,
-    pushDelta: deltaOf(pushes.last, pushes.this),
-    // 3) 每个游戏平均广告数
-    lastPerGame,
-    thisPerGame,
-    perGameDelta: deltaOf(lastPerGame, thisPerGame),
-  };
-}
-
 /** 广告曝光汇总行 → { appHome, appSearch, pcHome, pcSearch }（PC 搜索页未上线，恒 0） */
 function exposureOf(row) {
   if (!row) return null;
@@ -414,6 +356,8 @@ function exposureOf(row) {
     appSearch: Number(row.app_search || 0),
     pcHome: Number(row.pc_home || 0),
     pcSearch: 0,
+    // 当日有广告曝光的 APP 款数（商业广告 + 资源互换任一 > 0）
+    appCnt: Number(row.app_cnt || 0),
   };
 }
 

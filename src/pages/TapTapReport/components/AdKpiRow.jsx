@@ -11,6 +11,14 @@ import { formatNumber } from '../../../utils/formatters';
  */
 
 const KPI_DEFS = [
+  {
+    key: 'appCnt',
+    label: '今日有广告曝光的APP款数',
+    unit: '款',
+    icon: 'bi-collection',
+    accent: '#5C6B7A',
+    tint: '#EDF1F5',
+  },
   { key: 'appHome', label: '今日APP首页曝光', icon: 'bi-phone', accent: '#3E6E9E', tint: '#EAF1F6' },
   { key: 'appSearch', label: '今日APP搜索页曝光', icon: 'bi-search', accent: '#7D8F7B', tint: '#EEF3EE' },
   { key: 'pcHome', label: '今日PC首页曝光', icon: 'bi-pc-display', accent: '#8A6A33', tint: '#FBF2E7' },
@@ -57,7 +65,7 @@ export default function AdKpiRow({ today, history, loading = false }) {
           const yBase = def.pending ? 0 : history?.yesterday?.[def.key] ?? null;
           const wBase = def.pending ? 0 : history?.lastWeek?.[def.key] ?? null;
           return (
-            <div className="col-6 col-md-3" key={def.key}>
+            <div className="col-6 col-md-4 col-xl" key={def.key}>
               <div
                 className="card border-0 shadow-sm h-100"
                 style={{ background: def.tint, border: `1px solid ${def.accent}1f` }}
@@ -96,6 +104,9 @@ export default function AdKpiRow({ today, history, loading = false }) {
                     >
                       {loading ? '—' : fmt(value)}
                     </span>
+                    {def.unit && !def.pending && (
+                      <span style={{ fontSize: 11.5, color: '#7A8B99' }}>{def.unit}</span>
+                    )}
                     {def.pending && (
                       <span
                         className="badge rounded-pill fw-normal"

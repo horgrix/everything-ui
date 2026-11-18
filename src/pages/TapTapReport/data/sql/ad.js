@@ -331,33 +331,6 @@ export function buildAdRankDerivedWeekSql(limit = 20) {
   `;
 }
 
-/** 今天（YYYY-MM-DD） */
-function todayWhere() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
-/**
- * 构建「每日投放广告的游戏数 + 每日广告总投放次数」SQL（上周一 ~ 今天，按日去重）
- * 投放口径：商业AD(ad_views) + 资源互换AD(pcebid_views) > 0
- */
-export function buildAdGameCountDailySql() {
-  const lastMonday = thisWeekWhere(1);
-  const today = todayWhere();
-  return `
-    SELECT
-      substr(crawled_at, 1, 10) AS day,
-      COUNT(DISTINCT app_id) AS games,
-      SUM(COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) AS pushes
-    FROM dws_taptap_ad_aggr_v6_daily
-    WHERE crawled_at >= '${lastMonday}'
-      AND crawled_at <= '${today}'
-      AND (COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0)) > 0
-    GROUP BY substr(crawled_at, 1, 10)
-    ORDER BY day
-  `;
-}
-
 /**
  * 「今日」广告曝光汇总（SQLite 的 dws_taptap_ad_aggr_v6_daily 当日行，当日累计）
  * 渠道口径：APP首页 = app_ad_views + app_pcebid_views；APP搜索页 = kw_*；PC首页 = pc_*
@@ -370,7 +343,10 @@ export function buildAdTodaySummarySql(ref = new Date()) {
     SELECT
       SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
       SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS app_search,
-      SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
+      SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home,
+      COUNT(DISTINCT CASE
+        WHEN COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0) > 0 THEN app_id
+      END) AS app_cnt
     FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at = '${today}'
   `;
@@ -389,7 +365,10 @@ export function buildAdDaySummarySql(ref = new Date()) {
       crawled_at,
       ${sum('COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)')} AS app_home,
       ${sum('COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)')} AS app_search,
-      ${sum('COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)')} AS pc_home
+      ${sum('COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)')} AS pc_home,
+      COUNT(DISTINCT CASE
+        WHEN COALESCE(ad_views, 0) + COALESCE(pcebid_views, 0) > 0 THEN app_id
+      END) AS app_cnt
     FROM dws_taptap_ad_aggr_v6_daily
     WHERE crawled_at IN ('${dayOffset(1)}', '${dayOffset(7)}')
     GROUP BY crawled_at
