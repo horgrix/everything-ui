@@ -168,19 +168,20 @@ export function DeltaChip({
   /** 接口给的缺值原因（如概览周表当期还没生成）；有值时不出现 */
   reason,
 }) {
+  // 先看 blocked：接口给了「为什么没有数」时，这句话比笼统的「本期无数据」有用
+  // （例如分段未采集：value 已经是 null，但原因必须写「该段尚未采集」而不是「本期无数据」）
+  if (blocked) {
+    return (
+      <span className="pr-chip is-empty" title={BLOCKED_TEXT[blocked] || '环比不可比'}>
+        {BLOCKED_TEXT[blocked] || '环比不可比'}
+      </span>
+    );
+  }
   if (!hasValue) {
     // 有 unavailableReason 说明「还没生成」而不是「没有这项数据」，别混成同一句
     return (
       <span className="pr-chip is-empty" title={reason || '本期该指标没有值'}>
         {reason ? '待生成' : '本期无数据'}
-      </span>
-    );
-  }
-  // 接口判定环比不可比（覆盖不全 / 副指标）时连上期值都不给，前端也不自己算
-  if (blocked) {
-    return (
-      <span className="pr-chip is-empty" title={BLOCKED_TEXT[blocked] || '环比不可比'}>
-        {BLOCKED_TEXT[blocked] || '环比不可比'}
       </span>
     );
   }
