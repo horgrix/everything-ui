@@ -142,7 +142,9 @@ const GAME_TOP_COLUMNS = [
     header: '下载 / 预约量',
     align: 'center',
     width: '7%',
-    help: '今日行动量：有发布时间（已上线）显示今日下载量，没有发布时间（未上线）显示今日预约量（taptap_game_info_hourly 判断）',
+    // 有 accessor 才能点表头排序（按行动量数值）
+    accessor: (r) => r.cpaBase ?? null,
+    help: '今日行动量：有发布时间（已上线）显示今日下载量，没有发布时间（未上线）显示今日预约量（taptap_game_info_hourly 判断）；点表头可按数值排序',
     render: (r) => {
       if (r.appId === '-') return <span className="text-muted">-</span>;
       const label = r.cpaBasis === 'reserve' ? '今日预约量' : r.cpaBasis === 'mixed' ? '今日下载量+预约量' : '今日下载量';
