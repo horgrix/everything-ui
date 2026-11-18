@@ -178,47 +178,6 @@ ${adGameDimCte()}
   `;
 }/** 构建聚合下载 SQL（近24小时，按 crawled_at 汇总下载量，忽略0值） */
 
-/** 构建 TapTap 广告大盘日趋势 SQL（上周一至今，按日汇总各口径广告数）
- *  表：dws_taptap_ad_aggr_v6_daily（按 app_id + 日的广告投放汇总，无曝光列）
- *  口径：广告数 = ad_views + pcebid_views；APP / PC / KW 同口径（*_ad_views + *_pcebid_views）
- */
-export function buildAdAggrDailyTrendSql() {
-  const dateStr = thisWeekWhere(1);
-  const adExpr = (ad, pcebid) => `SUM(COALESCE(${ad}, 0)) + SUM(COALESCE(${pcebid}, 0))`;
-  return `
-    SELECT
-      substr(crawled_at, 1, 10) AS day,
-      ${adExpr('ad_views', 'pcebid_views')} AS ad_views,
-      ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
-      ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
-      ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
-    FROM dws_taptap_ad_aggr_v6_daily
-    WHERE crawled_at >= '${dateStr}'
-    GROUP BY substr(crawled_at, 1, 10)
-    ORDER BY day
-  `;
-}
-
-/** 构建 TapTap 广告大盘周汇总 SQL（上周一 ~ 本周末，按 本周/上周 分组）
- *  用于「广告占比」堆叠柱：口径同趋势图，广告数 = *_ad_views + *_pcebid_views
- */
-export function buildAdShareByWeekSql() {
-  const lastMonday = thisWeekWhere(1);
-  const thisMonday = thisWeekWhere(0);
-  const nextMonday = thisWeekWhere(-1);
-  const adExpr = (ad, pcebid) => `SUM(COALESCE(${ad}, 0)) + SUM(COALESCE(${pcebid}, 0))`;
-  return `
-    SELECT
-      CASE WHEN substr(crawled_at, 1, 10) >= '${thisMonday}' THEN 'this' ELSE 'last' END AS week_key,
-      ${adExpr('app_ad_views', 'app_pcebid_views')} AS app_ad_views,
-      ${adExpr('pc_ad_views', 'pc_pcebid_views')} AS pc_ad_views,
-      ${adExpr('kw_ad_views', 'kw_pcebid_views')} AS kw_ad_views
-    FROM dws_taptap_ad_aggr_v6_daily
-    WHERE crawled_at >= '${lastMonday}' AND crawled_at < '${nextMonday}'
-    GROUP BY week_key
-  `;
-}
-
 /** 构建 TapTap 广告本周游戏 TopN SQL（本周一 ~ 下周一，按 app 聚合，按总投放→总曝光倒序）
  *  口径：商业AD=ad_views、资源互换AD=pcebid_views、总投放=ad_views+pcebid_views
  */
