@@ -1072,7 +1072,11 @@ export function LineBand({ line, isPartial = false }) {
         }
       />
       <div className="pr-line-body">
-        <div className={`pr-line-metrics${metrics.length % 2 === 1 || metrics.length > 4 ? ' is-list' : ''}`}>
+        <div
+          className={`pr-line-metrics${metrics.length % 2 === 1 || metrics.length > 4 ? ' is-list' : ''}`}
+          // 列数按指标个数定（最多 4 列）：3 个三列、4 个四列、8 个四列两行，末行不会留空格子
+          style={{ '--metric-cols': Math.min(Math.max(metrics.length, 1), 4) }}
+        >
           {metrics.map((kpi) => (
             <div className="pr-metric" key={kpi.key}>
               <div className="pr-metric-label">

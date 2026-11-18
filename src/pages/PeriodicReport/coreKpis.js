@@ -19,6 +19,21 @@
 export const HIDDEN_LINE_KPIS = new Set(['concurrent_game_cnt', 'online_avg', 'online_game_cnt']);
 
 /**
+ * 广告线的四个渠道曝光（后端按 v6 明细列聚合，接口给了才渲染）：
+ *   APP 首页 = app_ad_views + app_pcebid_views
+ *   APP 搜索 = kw_ad_views + kw_pcebid_views
+ *   PC 首页  = pc_ad_views + pc_pcebid_views
+ *   PC 搜索  = pc_kw_ad_views + pc_kw_pcebid_views（源未上线，恒 0）
+ * 同时 APP 曝光 / PC 曝光 改按同一套列重算（APP = 首页 + 搜索，PC = 首页）。
+ */
+export const AD_PLACEMENT_METRICS = [
+  ['ad_app_home', 'APP 首页曝光', 'APP 首页投放位次（app_ad_views + app_pcebid_views）'],
+  ['ad_app_search', 'APP 搜索页曝光', 'APP 搜索页投放位次（kw_ad_views + kw_pcebid_views）'],
+  ['ad_pc_home', 'PC 首页曝光', 'PC 首页投放位次（pc_ad_views + pc_pcebid_views）'],
+  ['ad_pc_search', 'PC 搜索页曝光', 'PC 搜索页投放位次（pc_kw_ad_views + pc_kw_pcebid_views，源未上线，恒 0）'],
+];
+
+/**
  * 在线线把「周均在线 / 有在线的游戏款数」换成三个分型峰值（商业 / 独立 / Maker）。
  * 数据来自 `breakdown.items[]`（同一小时快照，三型相加 = 在线峰值），不新增接口字段。
  */
@@ -184,6 +199,8 @@ function noteWithHour(kpi) {
 export function withLineLabels(report) {
   if (!report?.lines) return report;
   const byLine = new Map(CORE_KPI_SPEC.filter((spec) => spec.label).map((spec) => [spec.key, spec.label]));
+  // 广告四个渠道曝光的显示名与口径说明统一由这里给（接口只给中性 key），字段没到就不覆盖
+  const adPlacement = new Map(AD_PLACEMENT_METRICS.map(([key, label, note]) => [key, { label, note }]));
   // 本期还没走完时，累计值对整期天然偏低（W47 的 −86.3% 就是 1 天比 7 天）：
   // 在数据层把这批 kpi 的环比统一抹掉，01 卡片、封面大数字、04 明细一起生效，
   // 不用每个组件各自判 meta.isPartial（后端 5f66dd4 起也可能直接给 null/blocked，这里幂等）。
@@ -202,10 +219,12 @@ export function withLineLabels(report) {
       kpis: [
         ...(line.kpis || []).map((kpi) => {
           const guarded = guard(kpi);
+          const placement = line.key === 'ad' ? adPlacement.get(kpi.key) : null;
           return {
             ...guarded,
             ...(hiddenKeys.has(kpi.key) ? { hidden: true } : {}),
             ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
+            ...(placement ? { label: placement.label, note: placement.note } : {}),
             ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
           };
         }),

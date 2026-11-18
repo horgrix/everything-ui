@@ -769,15 +769,24 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* 指标一律横排一行、等宽铺满：3 个就三等分，4 个就四等分，不必为数量写死列数 */
+/*
+ * 指标格：按可用宽度自动分列（约 190px 一格），3 个就三等分、4 个就四等分；
+ * 广告线增加到 8 个指标时会自然折成两行四列。
+ * 分隔线用 1px 间隙 + 底色画，行数、列数变化都不用改 nth-child 规则。
+ */
 .pr-line-row .pr-line-metrics,
 .pr-line-row .pr-line-metrics.is-list {
-  grid-template-columns: none;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(var(--metric-cols, 4), minmax(0, 1fr));
+  gap: 1px;
+  background: var(--pr-hair);
   align-content: stretch;
   border-right: 0;
   border-bottom: 1px solid var(--pr-hair);
+}
+
+.pr-line-row .pr-metric {
+  background: #fff;
+  border: 0;
 }
 
 /* 覆盖 is-list 的「标签与数值左右摊开」版式：横排格子窄，摊开会把标签挤成竖排 */
@@ -792,23 +801,7 @@
 }
 
 .pr-line-row .pr-metric {
-  border-bottom: 0;
-  border-right: 1px solid var(--pr-hair);
-  border-left: 0;
   padding: 13px 15px;
-}
-
-/* 覆盖全局的 2n / nth-last-child 规则，改成按最后一项收边 */
-.pr-line-row .pr-metric:nth-child(2n) {
-  border-right: 1px solid var(--pr-hair);
-}
-
-.pr-line-row .pr-metric:last-child {
-  border-right: 0;
-}
-
-.pr-line-row .pr-metric:nth-last-child(-n + 2) {
-  border-bottom: 0;
 }
 
 /* 本期未走完时明细里替代环比胶囊的说明 */
@@ -915,27 +908,18 @@
   margin-left: auto;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 760px) {
   .pr-line-row .pr-line-metrics,
   .pr-line-row .pr-line-metrics.is-list {
-    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .pr-line-row .pr-metric {
-    border-bottom: 1px solid var(--pr-hair);
-  }
-
-  .pr-line-row .pr-metric:nth-child(2n) {
-    border-right: 0;
-  }
-
-  .pr-line-row .pr-metric:nth-child(2n + 1) {
-    border-right: 1px solid var(--pr-hair);
-  }
-
-  .pr-line-row .pr-metric:last-child {
-    border-right: 0;
+/* 四列在同栏里会挤到 170px 以下（例如 1100~1400px 的视口）时退成两列 */
+@media (max-width: 1400px) {
+  .pr-line-row .pr-line-metrics,
+  .pr-line-row .pr-line-metrics.is-list {
+    grid-template-columns: repeat(min(var(--metric-cols, 4), 3), minmax(0, 1fr));
   }
 }
 
