@@ -35,9 +35,6 @@ import DataTable from './components/DataTable';
 import AdKpiRow from './components/AdKpiRow';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
 import GameChannelTrendTip from './components/GameChannelTrendTip';
-import PcAdWeeklyDetail from './components/PcAdWeeklyDetail';
-import TapAppLandingAdWeeklyDetail from './components/TapAppLandingAdWeeklyDetail';
-import TapAppKeywordAdWeeklyDetail from './components/TapAppKeywordAdWeeklyDetail';
 import { APP_AD_TAG_COLORS, truncateName, PercentBar, GameIcon, taptapAppUrl, PC_GAME_TYPE_META } from './shared';
 
 /** 平台配色（与占比图一致）：APP 橙 / PC 紫 / KW 品红 */
@@ -390,9 +387,6 @@ export default function TapTapAdStats() {
             {/* 本周明细入口标签：悬停看各渠道广告明细 */}
             <div className="d-flex align-items-center flex-wrap" style={{ gap: '1rem' }}>
               <CurrentHourAdTips />
-              <PcAdWeeklyDetail />
-              <TapAppLandingAdWeeklyDetail />
-              <TapAppKeywordAdWeeklyDetail />
             </div>
           </div>
           <div className="d-flex align-items-center flex-wrap gap-2 mt-1">

@@ -18,191 +18,39 @@ export function transformCurrentHourAdSnapshot(rows) {
 }
 
 /**
- * TapPC 广告本周明细：把 (app_id, 日期) 行聚合成「橱窗广告 / 每日新发现广告」两张表的数据。
- * - count：本周该渠道的广告投放次数（橱窗=top_ad_views，发现位=discovery_ad_views）
- * - trend：周一 → 周日 7 个点，没有数据的日子为 null（sparkline 不画点）
- * 两张表各自按投放次数倒序，只保留广告投放次数 > 0 的游戏，取前 limit 个（默认 Top 5）。
+ * 本周各渠道广告数趋势：按 app_id 生成周一→周日 7 个点（APP首页 / PC首页 / APP搜索关键词）。
+ * 返回 { labels, byApp: { [appId]: { app: [], pc: [], kw: [] } } }，没有数据的日子为 null。
  */
-export function transformPcAdWeeklyDetail(rows, limit = 5) {
+export function transformAdGameChannelTrend(rows) {
   const monday = thisMonday();
-  const days = Array.from({ length: 7 }, (_, i) => {
+  const dayKeys = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    return { key: `${d.getFullYear()}-${mm}-${dd}`, label: `周${'一二三四五六日'[i]} ${mm}-${dd}` };
+    return `${d.getFullYear()}-${mm}-${dd}`;
   });
-  const labels = days.map((d) => d.label);
 
-  const byApp = new Map();
+  const byApp = {};
   (rows || []).forEach((r) => {
+    const idx = dayKeys.indexOf(String(r.day || '').slice(0, 10));
+    if (idx < 0) return;
     const appId = r.app_id;
-    if (appId == null) return;
-    if (!byApp.has(appId)) {
-      byApp.set(appId, { appId, appName: r.app_name || '', icon: r.icon || '', tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean), top: {}, discovery: {} });
+    if (!byApp[appId]) {
+      byApp[appId] = { app: Array(7).fill(null), pc: Array(7).fill(null), kw: Array(7).fill(null) };
     }
-    const item = byApp.get(appId);
-    if (!item.appName && r.app_name) item.appName = r.app_name;
-    if (!item.icon && r.icon) item.icon = r.icon;
-    const dayKey = String(r.day || '').slice(0, 10);
-    item.top[dayKey] = (item.top[dayKey] || 0) + Number(r.top_ad_views || 0);
-    item.discovery[dayKey] = (item.discovery[dayKey] || 0) + Number(r.discovery_ad_views || 0);
+    byApp[appId].app[idx] = Number(r.app_home || 0);
+    byApp[appId].pc[idx] = Number(r.pc_home || 0);
+    byApp[appId].kw[idx] = Number(r.kw_search || 0);
   });
 
-  const build = (field) =>
-    [...byApp.values()]
-      .map((item) => ({
-        appId: item.appId,
-        appName: item.appName,
-        icon: item.icon,
-        tags: item.tags,
-        count: Object.values(item[field]).reduce((a, b) => a + b, 0),
-        trend: days.map((d) => (item[field][d.key] == null ? null : item[field][d.key])),
-      }))
-      .filter((item) => item.count > 0)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit);
-
-  return { labels, top: build('top'), discovery: build('discovery') };
+  return { labels: WEEKDAY_LABELS, byApp };
 }
 
-/**
- * TapApp 首页广告本周明细：按游戏聚合 Android 广告 / iOS 广告 / 资源互换(pcebid) 三段投放次数，
- * 并给出周一 → 周日 7 点趋势（三段之和，没数据的日子为 null）。
- * 只保留总投放次数 > 0 的游戏，按总次数倒序取前 limit 个（默认 Top 10）。
- */
-export function transformTapAppLandingAdWeeklyDetail(rows, limit = 10) {
-  const monday = thisMonday();
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return { key: `${d.getFullYear()}-${mm}-${dd}`, label: `周${'一二三四五六日'[i]} ${mm}-${dd}` };
-  });
-
-  const byApp = new Map();
-  (rows || []).forEach((r) => {
-    const appId = r.app_id;
-    if (appId == null) return;
-    if (!byApp.has(appId)) {
-      byApp.set(appId, {
-        appId,
-        appName: r.app_name || '',
-        icon: r.icon || '',
-        tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
-        android: 0,
-        ios: 0,
-        pcebid: 0,
-        byDay: {},
-      });
-    }
-    const item = byApp.get(appId);
-    if (!item.appName && r.app_name) item.appName = r.app_name;
-    if (!item.icon && r.icon) item.icon = r.icon;
-    const android = Number(r.android_ad_views || 0);
-    const ios = Number(r.ios_ad_views || 0);
-    const pcebid = Number(r.pcebid_views || 0);
-    item.android += android;
-    item.ios += ios;
-    item.pcebid += pcebid;
-    const dayKey = String(r.day || '').slice(0, 10);
-    item.byDay[dayKey] = (item.byDay[dayKey] || 0) + android + ios + pcebid;
-  });
-
-  const list = [...byApp.values()]
-    .map((item) => ({
-      appId: item.appId,
-      appName: item.appName,
-      icon: item.icon,
-      tags: item.tags,
-      android: item.android,
-      ios: item.ios,
-      pcebid: item.pcebid,
-      count: item.android + item.ios + item.pcebid,
-      trend: days.map((d) => (item.byDay[d.key] == null ? null : item.byDay[d.key])),
-    }))
-    .filter((item) => item.count > 0)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, limit);
-
-  return { labels: days.map((d) => d.label), rows: list };
-}
-
-/**
- * TapApp 搜索关键词广告本周明细：三个渠道（搜索发现 / 热搜 / 热点）各出一张表的数据。
- * 每个渠道按游戏聚合 Android/iOS 广告投放次数 + 周一→周日 7 点趋势；
- * 只保留该渠道投放次数 > 0 的游戏，按次数倒序取前 limit 个（默认 Top 15）。
- */
-export function transformTapAppKeywordAdWeeklyDetail(rows, limit = 15) {
-  const monday = thisMonday();
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return { key: `${d.getFullYear()}-${mm}-${dd}`, label: `周${'一二三四五六日'[i]} ${mm}-${dd}` };
-  });
-
-  /** 渠道 → [Android 字段, iOS 字段] */
-  const CHANNELS = {
-    discover: ['discover_android', 'discover_ios'],
-    hotSearch: ['hot_search_android', 'hot_search_ios'],
-    hotSpot: ['hot_spot_android', 'hot_spot_ios'],
-  };
-
-  const byApp = new Map();
-  (rows || []).forEach((r) => {
-    const appId = r.app_id;
-    if (appId == null) return;
-    if (!byApp.has(appId)) {
-      byApp.set(appId, {
-        appId,
-        appName: r.app_name || '',
-        icon: r.icon || '',
-        tags: [r.tag_1, r.tag_2, r.tag_3].filter(Boolean),
-        byChannel: {},
-      });
-    }
-    const item = byApp.get(appId);
-    if (!item.appName && r.app_name) item.appName = r.app_name;
-    if (!item.icon && r.icon) item.icon = r.icon;
-    if (item.tags.length === 0) item.tags = [r.tag_1, r.tag_2, r.tag_3].filter(Boolean);
-    const dayKey = String(r.day || '').slice(0, 10);
-    Object.entries(CHANNELS).forEach(([channel, [androidField, iosField]]) => {
-      const android = Number(r[androidField] || 0);
-      const ios = Number(r[iosField] || 0);
-      if (android + ios === 0) return;
-      if (!item.byChannel[channel]) item.byChannel[channel] = { android: 0, ios: 0, byDay: {} };
-      const bucket = item.byChannel[channel];
-      bucket.android += android;
-      bucket.ios += ios;
-      bucket.byDay[dayKey] = (bucket.byDay[dayKey] || 0) + android + ios;
-    });
-  });
-
-  const build = (channel) =>
-    [...byApp.values()]
-      .map((item) => {
-        const bucket = item.byChannel[channel] || { android: 0, ios: 0, byDay: {} };
-        return {
-          appId: item.appId,
-          appName: item.appName,
-          icon: item.icon,
-          tags: item.tags,
-          android: bucket.android,
-          ios: bucket.ios,
-          count: bucket.android + bucket.ios,
-          trend: days.map((d) => (bucket.byDay[d.key] == null ? null : bucket.byDay[d.key])),
-        };
-      })
-      .filter((item) => item.count > 0)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit);
-
-  return {
-    labels: days.map((d) => d.label),
-    discover: build('discover'),
-    hotSearch: build('hotSearch'),
-    hotSpot: build('hotSpot'),
-  };
+/** TapTap 广告大盘：按 app 的每日总投放趋势，按周几对齐成本周 / 上周两条 7 长度序列 */
+export function transformAdGameDailyTrend(rows) {
+  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: {}, lastWeek: {} };
+  const { thisWeek, lastWeek } = splitDailyByWeek(rows, (r) => r.app_id);
+  return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
 }
 
 /**
@@ -231,42 +79,6 @@ export function transformAdGameWeeklyTop(rows) {
       totalPush: adViews + pcebidViews,
     };
   });
-}
-
-/** TapTap 广告大盘：按 app 的每日总投放趋势，按周几对齐成本周 / 上周两条 7 长度序列 */
-export function transformAdGameDailyTrend(rows) {
-  if (!rows || !rows.length) return { labels: WEEKDAY_LABELS, thisWeek: {}, lastWeek: {} };
-  const { thisWeek, lastWeek } = splitDailyByWeek(rows, (r) => r.app_id);
-  return { labels: WEEKDAY_LABELS, thisWeek, lastWeek };
-}
-
-/**
- * 本周各渠道广告数趋势：按 app_id 生成周一→周日 7 个点（APP首页 / PC首页 / APP搜索关键词）。
- * 返回 { labels, byApp: { [appId]: { app: [], pc: [], kw: [] } } }，没有数据的日子为 null。
- */
-export function transformAdGameChannelTrend(rows) {
-  const monday = thisMonday();
-  const dayKeys = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${d.getFullYear()}-${mm}-${dd}`;
-  });
-
-  const byApp = {};
-  (rows || []).forEach((r) => {
-    const idx = dayKeys.indexOf(String(r.day || '').slice(0, 10));
-    if (idx < 0) return;
-    const appId = r.app_id;
-    if (!byApp[appId]) {
-      byApp[appId] = { app: Array(7).fill(null), pc: Array(7).fill(null), kw: Array(7).fill(null) };
-    }
-    byApp[appId].app[idx] = Number(r.app_home || 0);
-    byApp[appId].pc[idx] = Number(r.pc_home || 0);
-    byApp[appId].kw[idx] = Number(r.kw_search || 0);
-  });
-
-  return { labels: WEEKDAY_LABELS, byApp };
 }
 
 /** 全站周汇总 → 与游戏明细行同形状（供 DataTable totalRow 使用；无趋势，趋势在组件里合并） */
