@@ -26,6 +26,18 @@ export const HIDDEN_LINE_KPIS = new Set(['concurrent_game_cnt', 'online_avg', 'o
  *   PC 搜索  = pc_kw_ad_views + pc_kw_pcebid_views（源未上线，恒 0）
  * 同时 APP 曝光 / PC 曝光 改按同一套列重算（APP = 首页 + 搜索，PC = 首页）。
  */
+/** 广告线的指标顺序（决定 4×2 的排布）：第一行总览，第二行四个渠道 */
+const AD_KPI_ORDER = [
+  'ad_total',
+  'ad_app',
+  'ad_pcebid',
+  'app_cnt',
+  'ad_app_home',
+  'ad_app_search',
+  'ad_pc_home',
+  'ad_pc_search',
+];
+
 export const AD_PLACEMENT_METRICS = [
   ['ad_app_home', 'APP 首页曝光', 'APP 首页投放位次（app_ad_views + app_pcebid_views）'],
   ['ad_app_search', 'APP 搜索页曝光', 'APP 搜索页投放位次（kw_ad_views + kw_pcebid_views）'],
@@ -220,17 +232,29 @@ export function withLineLabels(report) {
         ...(line.kpis || []).map((kpi) => {
           const guarded = guard(kpi);
           const placement = line.key === 'ad' ? adPlacement.get(kpi.key) : null;
+          // PC 搜索页的源还没上线，值是恒 0 的占位：别让它显示成「上期无数据」或「0 曝光」
+          const sourceNotLive = kpi.key === 'ad_pc_search' && (kpi.value === 0 || kpi.value == null);
           return {
             ...guarded,
             ...(hiddenKeys.has(kpi.key) ? { hidden: true } : {}),
             ...(byLine.has(kpi.key) ? { label: byLine.get(kpi.key) } : {}),
-            ...(placement ? { label: placement.label, note: placement.note } : {}),
+            // 接口自己的中文 label / 口径说明优先（更贴近取数列），前端只在缺失时补
+            ...(placement && !kpi.label ? { label: placement.label } : {}),
+            ...(placement && !kpi.note ? { note: placement.note } : {}),
+            ...(sourceNotLive ? { deltaBlocked: 'source_not_live' } : {}),
             ...(noteWithHour(kpi) ? { note: noteWithHour(kpi) } : {}),
           };
         }),
         // 在线线补充三个分型峰值（明细里替代周均在线 / 有在线款数）
         ...(line.key === 'online' ? onlineDistPeakKpis(line) : []),
-      ],
+      ]
+        // 广告线按 AD_KPI_ORDER 排：四段渠道要落在第二行，不能把「有推广游戏款数」挤到末位
+        .sort((a, b) => {
+          if (line.key !== 'ad') return 0;
+          const ia = AD_KPI_ORDER.indexOf(a.key);
+          const ib = AD_KPI_ORDER.indexOf(b.key);
+          return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        }),
     })),
   };
 }

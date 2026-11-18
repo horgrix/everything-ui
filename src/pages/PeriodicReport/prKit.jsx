@@ -149,6 +149,8 @@ const BLOCKED_TEXT = {
   // 本期还在进行中（如 W47 只采到 1 天）：累计值对整期天然偏低，环比没有意义
   current_in_progress: '本期未走完 · 不出环比',
   prev_missing: '上期无数据 · 不出环比',
+  // 数据源尚未上线，值是恒 0 的占位，不是「真的 0 曝光」
+  source_not_live: '源未上线 · 暂为 0',
 };
 
 export function DeltaChip({
