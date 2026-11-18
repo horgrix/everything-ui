@@ -218,8 +218,9 @@ function withSegmentCoverage(kpi, meta) {
       deltaPct: null,
       deltaAbs: null,
       deltaComparable: false,
-      // 接口若已给原因就用它的措辞（后端 657aa94 会自己置 blocked），否则用前端兜底文案
-      deltaBlocked: kpi.deltaBlocked || 'segment_not_collected',
+      // 值位已经写「未采集」时，原因必须说「尚未采集」——
+      // 接口对这种情况给的是 segment_partial_coverage（覆盖不完整），和值位的措辞对不上
+      deltaBlocked: 'segment_not_collected',
       note: `${kpi.label || '该段'}自 ${start} 起才有采集，本期整段在此之前，不是 0 曝光`,
     };
   }
