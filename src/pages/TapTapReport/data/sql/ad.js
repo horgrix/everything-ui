@@ -419,3 +419,42 @@ export function buildAdGameCountDailySql() {
     ORDER BY day
   `;
 }
+
+/**
+ * 「今日」广告曝光汇总（SQLite 的 dws_taptap_ad_aggr_v6_daily 当日行，当日累计）
+ * 渠道口径：APP首页 = app_ad_views + app_pcebid_views；APP搜索页 = kw_*；PC首页 = pc_*
+ * PC 搜索页暂无数据源（未上线），由前端固定为 0。
+ */
+export function buildAdTodaySummarySql(ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const today = fmt(ref);
+  return `
+    SELECT
+      SUM(COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)) AS app_home,
+      SUM(COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)) AS app_search,
+      SUM(COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)) AS pc_home
+    FROM dws_taptap_ad_aggr_v6_daily
+    WHERE crawled_at = '${today}'
+  `;
+}
+
+/**
+ * 「昨日 / 上周同日」广告曝光汇总（MySQL v09 的 dws_taptap_ad_aggr_v6_daily，历史数据）
+ * @param {Date} [ref] 参照时间（默认今天）
+ */
+export function buildAdDaySummarySql(ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const dayOffset = (n) => fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - n));
+  const sum = (expr) => `SUM(${expr})`;
+  return `
+    SELECT
+      crawled_at,
+      ${sum('COALESCE(app_ad_views, 0) + COALESCE(app_pcebid_views, 0)')} AS app_home,
+      ${sum('COALESCE(kw_ad_views, 0) + COALESCE(kw_pcebid_views, 0)')} AS app_search,
+      ${sum('COALESCE(pc_ad_views, 0) + COALESCE(pc_pcebid_views, 0)')} AS pc_home
+    FROM dws_taptap_ad_aggr_v6_daily
+    WHERE crawled_at IN ('${dayOffset(1)}', '${dayOffset(7)}')
+    GROUP BY crawled_at
+    ORDER BY crawled_at DESC
+  `;
+}

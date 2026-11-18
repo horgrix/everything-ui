@@ -530,3 +530,33 @@ export function transformAdGameCountWeekly(rows) {
     perGameDelta: deltaOf(lastPerGame, thisPerGame),
   };
 }
+
+/** 广告曝光汇总行 → { appHome, appSearch, pcHome, pcSearch }（PC 搜索页未上线，恒 0） */
+function exposureOf(row) {
+  if (!row) return null;
+  return {
+    appHome: Number(row.app_home || 0),
+    appSearch: Number(row.app_search || 0),
+    pcHome: Number(row.pc_home || 0),
+    pcSearch: 0,
+  };
+}
+
+/** 今日曝光（SQLite 当日累计）；当天还没有行时返回 null */
+export function transformAdExposureToday(rows) {
+  return exposureOf((rows || [])[0]);
+}
+
+/** 昨日 / 上周同日曝光（MySQL 日表）：{ yesterday, lastWeek } */
+export function transformAdExposureHistory(rows, ref) {
+  const base = ref instanceof Date ? ref : new Date();
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const dayOffset = (n) => fmt(new Date(base.getFullYear(), base.getMonth(), base.getDate() - n));
+  const wanted = { [dayOffset(1)]: 'yesterday', [dayOffset(7)]: 'lastWeek' };
+  const result = { yesterday: null, lastWeek: null };
+  (rows || []).forEach((r) => {
+    const key = wanted[String(r.crawled_at).slice(0, 10)];
+    if (key) result[key] = exposureOf(r);
+  });
+  return result;
+}

@@ -20,6 +20,8 @@ import {
   buildAdRankWeekSql,
   buildAdRankDerivedWeekSql,
   buildAdRankTopSql,
+  buildAdTodaySummarySql,
+  buildAdDaySummarySql,
   lastWeekRankKey,
   thisWeekWhere,
 } from './sql';
@@ -34,9 +36,12 @@ import {
   transformAdRankWeek,
   transformAdRankDerivedWeek,
   transformAdRankTop,
+  transformAdExposureToday,
+  transformAdExposureHistory,
 } from './transforms';
-import { useSqlQuery } from './queries';
+import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
+import AdKpiRow from './components/AdKpiRow';
 import RankTopCard from './components/RankTopCard';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
 import WeeklyAdGameCountTips from './components/WeeklyAdGameCountTips';
@@ -321,6 +326,22 @@ function AdMetricHint() {
 }
 
 export default function TapTapAdStats() {
+  // KPI：今日曝光（SQLite 当日累计）+ 昨日 / 上周同日（MySQL v09 日表）
+  const todayExposureQuery = useSqlQuery(
+    'taptap-ad-today-exposure',
+    buildAdTodaySummarySql,
+    [],
+    transformAdExposureToday,
+    { enabled: true, staleTime: 60 * 1000 },
+  );
+  const historyExposureQuery = useSqlQueryV09(
+    'taptap-ad-history-exposure',
+    buildAdDaySummarySql,
+    [],
+    transformAdExposureHistory,
+    { enabled: true, staleTime: 5 * 60 * 1000 },
+  );
+
   const adAggrDailyTrendQuery = useSqlQuery(
     'taptap-ad-aggr-daily-trend',
     buildAdAggrDailyTrendSql,
@@ -474,6 +495,12 @@ export default function TapTapAdStats() {
     <>
       {/* 指标说明：资源位 / 采集频率 / 命中含义 */}
       <AdMetricHint />
+
+      <AdKpiRow
+        today={todayExposureQuery.data}
+        history={historyExposureQuery.data}
+        loading={todayExposureQuery.isLoading || historyExposureQuery.isLoading}
+      />
 
       {/* 第一行：日趋势（75%）+ 广告占比（25%） */}
       <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
