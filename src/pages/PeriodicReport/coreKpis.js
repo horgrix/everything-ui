@@ -218,7 +218,8 @@ function withSegmentCoverage(kpi, meta) {
       deltaPct: null,
       deltaAbs: null,
       deltaComparable: false,
-      deltaBlocked: 'segment_not_collected',
+      // 接口若已给原因就用它的措辞（后端 657aa94 会自己置 blocked），否则用前端兜底文案
+      deltaBlocked: kpi.deltaBlocked || 'segment_not_collected',
       note: `${kpi.label || '该段'}自 ${start} 起才有采集，本期整段在此之前，不是 0 曝光`,
     };
   }
@@ -229,7 +230,7 @@ function withSegmentCoverage(kpi, meta) {
       deltaPct: null,
       deltaAbs: null,
       deltaComparable: false,
-      deltaBlocked: 'segment_partial_coverage',
+      deltaBlocked: kpi.deltaBlocked || 'segment_partial_coverage',
       note: `${kpi.label || '该段'}自 ${start} 起才有采集，本期只覆盖 ${days} 天，占比会系统性偏低，不与整期比`,
     };
   }
