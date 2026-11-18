@@ -84,6 +84,31 @@ export function transformTodayRealtime(rows, ref) {
   };
 }
 
+/**
+ * 昨日 / 上周同日汇总 → { yesterday: {...}, lastWeek: {...} }
+ * 每项：app / pc / mini / miniTotal（小游戏 = 独立 + Maker）/ tmk / total（全平台 = app + pc）
+ */
+export function transformDaySummary(rows, ref) {
+  const base = ref instanceof Date ? ref : new Date();
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const dayOffset = (n) => fmt(new Date(base.getFullYear(), base.getMonth(), base.getDate() - n));
+  const wanted = { [dayOffset(1)]: 'yesterday', [dayOffset(7)]: 'lastWeek' };
+
+  const empty = { app: null, pc: null, mini: null, tmk: null, miniTotal: null, total: null };
+  const result = { yesterday: { date: dayOffset(1), ...empty }, lastWeek: { date: dayOffset(7), ...empty } };
+
+  (rows || []).forEach((r) => {
+    const key = wanted[String(r.crawled_at).slice(0, 10)];
+    if (!key) return;
+    const app = Number(r.app_download_count || 0);
+    const pc = Number(r.pc_download_count || 0);
+    const mini = Number(r.mini_download_count || 0);
+    const tmk = Number(r.tmk_download_count || 0);
+    result[key] = { date: String(r.crawled_at).slice(0, 10), app, pc, mini, tmk, miniTotal: mini + tmk, total: app + pc };
+  });
+  return result;
+}
+
 /** 追踪的游戏分布（平台/AI/TapMaker 三个拆分视图，受窗口查询条件约束） */
 export function transformDistributionByWindow(rows) {
   if (!rows || !rows.length) return { platform: null, ai: null, tapmaker: null };

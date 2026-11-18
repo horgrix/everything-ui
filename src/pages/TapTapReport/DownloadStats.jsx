@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import HourlyTrendSection from './download/HourlyTrendSection';
 import DistributionRow from './download/DistributionRow';
+import DownloadKpiRow from './download/KpiRow';
 import { nextUpdateTime, formatNextUpdate, nextDailyUpdateLabel } from './updateTime';
 import { formatNowWindow } from './dates';
 import {
   buildAggregateSql,
   buildWeeklyTrendSql,
   buildTodayRealtimeSummarySql,
+  buildDaySummarySql,
   buildMonthlyBreakdownSql,
   buildDistributionByWindowSql,
   buildNewestDateSql,
@@ -16,6 +18,7 @@ import {
   transformAggregate,
   transformWeeklyTrend,
   transformTodayRealtime,
+  transformDaySummary,
   transformMonthlyBreakdown,
   transformDistributionByWindow,
   transformNewestDate,
@@ -56,6 +59,11 @@ export default function DownloadStats() {
   const todayRealtimeQuery = useSqlQuery('taptap-today-realtime', buildTodayRealtimeSummarySql, [], transformTodayRealtime, {
     enabled: true,
     staleTime: 60 * 1000,
+  });
+  // KPI 的昨日 / 上周同日：走 MySQL（v09 接口）的 dws_taptap_download_v2_daily
+  const daySummaryQuery = useSqlQueryV09('taptap-day-summary', buildDaySummarySql, [], transformDaySummary, {
+    enabled: true,
+    staleTime: 5 * 60 * 1000,
   });
   // 月趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_monthly
   const monthlyBreakdownQuery = useSqlQueryV09('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
@@ -115,6 +123,13 @@ export default function DownloadStats() {
 
   return (
     <>
+      <DownloadKpiRow
+        realtime={todayRealtimeQuery.data}
+        history={daySummaryQuery.data}
+        loading={todayRealtimeQuery.isLoading || daySummaryQuery.isLoading}
+        updateLabel={nextUpdateLabelMin18}
+      />
+
       <HourlyTrendSection
         data={hotListQuery.data}
         loading={hotListQuery.isLoading}

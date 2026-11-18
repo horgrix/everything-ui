@@ -171,6 +171,30 @@ export function buildTodayRealtimeSummarySql(ref = new Date()) {
 }
 
 /**
+ * 构建「昨日 / 上周同一天」的下载汇总 SQL（MySQL v09 的 dws_taptap_download_v2_daily）
+ * 供 KPI 行（今日 + 昨日 + 上周）用；一次取两天，按 crawled_at 分组。
+ * @param {Date} [ref] 参照时间（默认今天），用于算「昨日」「上周同日」
+ */
+export function buildDaySummarySql(ref = new Date()) {
+  const fmt = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const dayOffset = (n) => fmt(new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - n));
+  const sumCol = (col) => `SUM(${col})`;
+  const sumType = (type) => `SUM(CASE WHEN distribution_type = ${type} THEN download_count ELSE 0 END)`;
+  return `
+    SELECT
+      crawled_at,
+      ${sumCol('app_download_count')} AS app_download_count,
+      ${sumCol('pc_download_count')} AS pc_download_count,
+      ${sumType(1)} AS mini_download_count,
+      ${sumType(2)} AS tmk_download_count
+    FROM dws_taptap_download_v2_daily
+    WHERE crawled_at IN ('${dayOffset(1)}', '${dayOffset(7)}')
+    GROUP BY crawled_at
+    ORDER BY crawled_at DESC
+  `;
+}
+
+/**
  * 构建「某游戏某日按小时的下载趋势」SQL（明细表下载数后的趋势图标用）
  * @param {string|number} appId 游戏 ID
  * @param {string} day 日期，形如 2026-11-07（取统计窗口的日期部分）
