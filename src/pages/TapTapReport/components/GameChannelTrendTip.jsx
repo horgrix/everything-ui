@@ -13,15 +13,15 @@ const SERIES = [
 ];
 
 /**
- * 【广告大盘】本周游戏明细「详细趋势」列：info 图标 + 悬停折线图。
- * 折线为本周每日的三渠道广告数：
+ * 【广告大盘】今日广告曝光明细「详细趋势」列：info 图标 + 悬停折线图。
+ * 折线为今日逐小时的三渠道广告命中数：
  *   APP首页广告 = app_ad_views + app_pcebid_views
  *   PC首页广告 = pc_ad_views + pc_pcebid_views
  *   APP搜索关键词广告 = kw_ad_views + kw_pcebid_views
  *
  * @param {string} appName 游戏名（弹框标题用）
- * @param {{app:number[],pc:number[],kw:number[]}} trend 周一 → 周日 7 个点
- * @param {string[]} labels x 轴标签（周一…周日）
+ * @param {{app:number[],pc:number[],kw:number[]}} trend 00 时 → 当前小时
+ * @param {string[]} labels x 轴标签（'00'…'HH'）
  */
 export default function GameChannelTrendTip({ appName, trend, labels }) {
   const [pos, setPos] = useState(null);
@@ -52,7 +52,7 @@ export default function GameChannelTrendTip({ appName, trend, labels }) {
       onMouseLeave={() => setPos(null)}
       style={{ position: 'relative' }}
     >
-      <i className="bi bi-graph-up" style={{ cursor: 'help', fontSize: 14, color: '#4361ee' }} title="详细趋势（本周三渠道折线）"></i>
+      <i className="bi bi-graph-up" style={{ cursor: 'help', fontSize: 14, color: '#4361ee' }} title="详细趋势（今日三渠道逐小时折线）"></i>
 
       {pos && (
         <div
@@ -73,13 +73,13 @@ export default function GameChannelTrendTip({ appName, trend, labels }) {
           }}
         >
           <div className="d-flex align-items-center justify-content-between mb-1">
-            <span className="fw-semibold" style={{ fontSize: 12 }}>{appName || '详细趋势'} · 本周</span>
+            <span className="fw-semibold" style={{ fontSize: 12 }}>{appName || '详细趋势'} · 今日</span>
             <span className="text-muted" style={{ fontSize: 11 }}>
               合计 {formatNumber(total('app') + total('pc') + total('kw'))}
             </span>
           </div>
           <div className="text-muted mb-1" style={{ fontSize: 11 }}>
-            APP首页、PC首页、APP搜索关键词三渠道每日广告数（*_ad_views + *_pcebid_views）
+            APP首页、PC首页、APP搜索关键词三渠道逐小时广告命中数（原始小时抓取表）
           </div>
           <MixedChart
             series={series}

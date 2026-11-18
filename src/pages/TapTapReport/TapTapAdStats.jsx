@@ -5,29 +5,19 @@
  */
 import { useMemo } from 'react';
 import SparkStackBar from '../../components/common/SparkStackBar';
-import Sparkline from '../../components/common/Sparkline';
+import { formatNumber } from '../../utils/formatters';
 import {
-  buildAdGameWeeklyTopSql,
-  buildAdAggrGameDailyTrendSql,
-  buildAdGameChannelTrendSql,
-  buildAdOverviewWeekSql,
-  buildAdOverviewDailyTrendSql,
-  buildAdRankWeekSql,
-  buildAdRankDerivedWeekSql,
   buildAdTodaySummarySql,
+  buildAdTodayDetailSql,
+  buildAdTodayHourlyTrendSql,
+  buildAppTodayActionSql,
   buildAdDaySummarySql,
-  lastWeekRankKey,
-  thisWeekWhere,
 } from './sql';
 import {
   transformAdGameWeeklyTop,
-  transformAdGameChannelTrend,
-  transformAdGameDailyTrend,
-  transformAdOverviewWeek,
-  transformAdOverviewDailyTrend,
-  transformAdRankWeek,
-  transformAdRankDerivedWeek,
   transformAdExposureToday,
+  transformAdTodayHourlyTrend,
+  transformAppTodayAction,
   transformAdExposureHistory,
 } from './transforms';
 import { useSqlQuery, useSqlQueryV09 } from './queries';
@@ -74,6 +64,12 @@ const SPARK_COLUMNS = [
 const ONESEARCH_REPORT_PATH = '/one-search/report';
 
 /** 本周游戏明细 Top50 列配置 */
+/** 今日日期（YYYY-MM-DD），用于副标题展示 */
+function formatDayLabel() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const GAME_TOP_COLUMNS = [
   {
     header: '游戏类型',
@@ -109,7 +105,7 @@ const GAME_TOP_COLUMNS = [
   },
   {
     header: '游戏名称',
-    width: '11%',
+    width: '16%',
     accessor: (r) => r.appName,
     render: (r) => (
       <span className="d-inline-flex align-items-center gap-2" title={r.appName || undefined} style={{ whiteSpace: 'nowrap' }}>
@@ -120,7 +116,7 @@ const GAME_TOP_COLUMNS = [
   },
   {
     header: '标签',
-    width: '14%',
+    width: '18%',
     accessor: (r) => r.tags.join(' '),
     render: (r) => (
       <div className="d-flex flex-wrap gap-1">
@@ -130,19 +126,6 @@ const GAME_TOP_COLUMNS = [
         ))}
       </div>
     ),
-  },
-  {
-    header: '上周排名',
-    align: 'center',
-    width: '5%',
-    accessor: (r) => r.lastWeekRank ?? null,
-    help: '上周（上一自然周）投放排名：优先取 dws_taptap_ad_rank_v4_daily 的 weekly 快照；该周快照未入库时，按上周总投放倒序推算。app_id 命中显示名次，否则「未上榜」',
-    render: (r) => {
-      if (r.appId === '-') return <span className="text-muted">-</span>; // 汇总行
-      if (r.lastWeekRank == null) return <span className="text-muted">未上榜</span>;
-      const cls = r.lastWeekRank === 1 ? 'bg-warning text-dark' : r.lastWeekRank === 2 ? 'bg-secondary' : r.lastWeekRank === 3 ? 'bg-danger' : 'bg-light text-secondary border';
-      return <span className={`badge ${cls}`}>{r.lastWeekRank}</span>;
-    },
   },
   ...SPARK_COLUMNS.map((col) => ({
     header: col.header,
@@ -154,26 +137,40 @@ const GAME_TOP_COLUMNS = [
     ),
   })),
   {
-    header: '本周趋势',
+    header: 'CPA',
     align: 'center',
-    width: '10%',
-    help: 'y=每日总投放（商业AD + 资源互换AD），x=周几；本周实线加粗，上周虚线对比',
-    render: (r) => (
-      <Sparkline data={r.trend} prevData={r.prevTrend} labels={r.trendLabels} currentLabel="本周" prevLabel="上周" width={100} height={32} />
-    ),
+    width: '7%',
+    help: 'CPA = 今日总投放 ÷ 今日行动量；行动量优先取今日下载量，下载为 0 时改用今日预约数（dws_taptap_download_v2_hourly / dws_taptap_reserve_v2_hourly）',
+    render: (r) => {
+      if (r.appId === '-') return <span className="text-muted">-</span>;
+      if (r.cpa == null) {
+        return (
+          <span className="text-muted" title="今日无下载也无预约，无法计算 CPA">—</span>
+        );
+      }
+      return (
+        <span
+          title={`总投放 ${formatNumber(r.totalPush)} ÷ ${r.cpaBasis === 'reserve' ? '预约' : '下载'} ${formatNumber(r.cpaBase)} = ${r.cpa.toFixed(2)}`}
+          style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}
+        >
+          {r.cpa > 0 && r.cpa < 0.01 ? '<0.01' : r.cpa.toFixed(2)}
+          {r.cpaBasis === 'reserve' && <span className="text-muted ms-1" style={{ fontSize: 10 }}>预约</span>}
+        </span>
+      );
+    },
   },
   {
     header: '详细趋势',
     align: 'center',
-    width: '5%',
-    help: '本周三渠道每日广告数折线：APP首页(app_ad_views+app_pcebid_views) / PC首页(pc_ad_views+pc_pcebid_views) / APP搜索关键词(kw_ad_views+kw_pcebid_views)',
-    render: (r) => (r.channelTrend ? <GameChannelTrendTip appName={r.appName} trend={r.channelTrend} labels={WEEKDAYS} /> : <span className="text-muted">-</span>),
+    width: '6%',
+    help: '今日逐小时三渠道广告命中数折线：APP首页 / PC首页 / APP搜索关键词（原始小时抓取表，api/data/sql）',
+    render: (r) => (r.hourlyTrend ? <GameChannelTrendTip appName={r.appName} trend={r.hourlyTrend} labels={r.hourlyLabels} /> : <span className="text-muted">-</span>),
   },
   {
     header: '广告贡献度',
     align: 'center',
-    width: '8%',
-    help: '广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行 total_push，来自 dws_taptap_ad_overview_v5_daily）',
+    width: '9%',
+    help: '广告贡献度 = 本游戏今日总投放 / 全站今日总投放（按今日明细行合计）',
     render: (r) => <PercentBar value={r.share} color="#8FA3B0" />,
   },
   {
@@ -200,9 +197,6 @@ const GAME_TOP_COLUMNS = [
       ),
   },
 ];
-
-/** 周几（与 x 轴数值 0~6 对应） */
-const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 /**
  * 大盘指标说明（资源位 / 采集频率 / 命中含义）
@@ -278,95 +272,81 @@ export default function TapTapAdStats() {
     { enabled: true, staleTime: 5 * 60 * 1000 },
   );
 
-  const gameTopQuery = useSqlQuery(
-    'taptap-ad-game-weekly-top',
-    buildAdGameWeeklyTopSql,
+  // 今日广告曝光明细（SQLite 日表当日行，不设 TopN）
+  const todayDetailQuery = useSqlQuery(
+    'taptap-ad-today-detail',
+    buildAdTodayDetailSql,
     [],
     transformAdGameWeeklyTop,
-    { enabled: true },
+    { enabled: true, staleTime: 60 * 1000 },
   );
-
-  const gameTrendQuery = useSqlQuery(
-    'taptap-ad-game-daily-trend',
-    buildAdAggrGameDailyTrendSql,
+  // 详细趋势：今日逐小时三渠道广告命中数（SQLite 原始小时表）
+  const todayHourlyTrendQuery = useSqlQuery(
+    'taptap-ad-today-hourly-trend',
+    buildAdTodayHourlyTrendSql,
     [],
-    transformAdGameDailyTrend,
-    { enabled: true },
+    transformAdTodayHourlyTrend,
+    { enabled: true, staleTime: 60 * 1000 },
   );
-
-  // 详细趋势：本周每日三渠道广告数（APP首页 / PC首页 / APP搜索关键词）
-  const gameChannelTrendQuery = useSqlQuery(
-    'taptap-ad-game-channel-trend',
-    buildAdGameChannelTrendSql,
+  // CPA 分母：今日下载量 / 预约数（SQLite 小时表当日聚合）
+  const todayActionQuery = useSqlQuery(
+    'taptap-ad-today-action',
+    buildAppTodayActionSql,
     [],
-    transformAdGameChannelTrend,
-    { enabled: true },
-  );
-
-  const overviewWeekQuery = useSqlQuery(
-    'taptap-ad-overview-week',
-    buildAdOverviewWeekSql,
-    [],
-    transformAdOverviewWeek,
-    { enabled: true },
-  );
-  const overviewTrendQuery = useSqlQuery(
-    'taptap-ad-overview-daily-trend',
-    buildAdOverviewDailyTrendSql,
-    [],
-    transformAdOverviewDailyTrend,
-    { enabled: true },
-  );
-
-  const rankWeekQuery = useSqlQuery(
-    'taptap-ad-rank-week',
-    buildAdRankWeekSql,
-    [],
-    transformAdRankWeek,
-    { enabled: true },
-  );
-  // 官方上周快照为空时，用明细表现算上周排名兜底
-  const rankDerivedQuery = useSqlQuery(
-    'taptap-ad-rank-week-derived',
-    buildAdRankDerivedWeekSql,
-    [],
-    transformAdRankDerivedWeek,
-    { enabled: rankWeekQuery.isSuccess && !rankWeekQuery.data?.count },
+    transformAppTodayAction,
+    { enabled: true, staleTime: 60 * 1000 },
   );
 
   const gameRows = useMemo(() => {
-    const list = gameTopQuery.data || [];
-    const trend = gameTrendQuery.data;
-    const labels = trend?.labels || [];
-    const overviewPush = overviewWeekQuery.data?.totalPush || 0;
-    const rank = rankWeekQuery.data?.count ? rankWeekQuery.data : rankDerivedQuery.data;
-    const channelByApp = gameChannelTrendQuery.data?.byApp || {};
-    return list.map((r) => ({
-      ...r,
-      trend: trend?.thisWeek?.[r.appId] || [],
-      prevTrend: trend?.lastWeek?.[r.appId] || [],
-      trendLabels: labels,
-      channelTrend: channelByApp[r.appId] || null,
-      // 广告贡献度 = 本游戏总投放 / 全站本周总投放（汇总行）
-      share: overviewPush > 0 ? (r.totalPush / overviewPush) * 100 : null,
-      lastWeekRank: rank?.byAppId?.[r.appId] ?? null,
-    }));
-  }, [gameTopQuery.data, gameTrendQuery.data, gameChannelTrendQuery.data, overviewWeekQuery.data, rankWeekQuery.data, rankDerivedQuery.data]);
+    const list = todayDetailQuery.data || [];
+    const hourly = todayHourlyTrendQuery.data;
+    const hourlyByApp = hourly?.byApp || {};
+    const hourlyLabels = hourly?.labels || [];
+    const actionByApp = todayActionQuery.data || {};
+    // 广告贡献度分母 = 今日全站总投放（按今日明细行合计）
+    const totalPushAll = list.reduce((sum, r) => sum + (Number(r.totalPush) || 0), 0);
+    return list.map((r) => {
+      const action = actionByApp[r.appId] || { downloads: 0, reserves: 0 };
+      const useReserve = !(action.downloads > 0);
+      const base = useReserve ? action.reserves : action.downloads;
+      return {
+        ...r,
+        hourlyTrend: hourlyByApp[r.appId] || null,
+        hourlyLabels,
+        cpaBase: base,
+        cpaBasis: useReserve ? 'reserve' : 'download',
+        // CPA = 总投放 ÷ 今日行动量（下载优先，无下载时用预约）
+        cpa: base > 0 ? r.totalPush / base : null,
+        share: totalPushAll > 0 ? (r.totalPush / totalPushAll) * 100 : null,
+      };
+    });
+  }, [todayDetailQuery.data, todayHourlyTrendQuery.data, todayActionQuery.data]);
 
-  /** 汇总行：全站本周合计（overview 表），趋势同样取全站每日总投放 */
+  /** 汇总行：今日全站合计（直接累加明细行） */
   const overviewTotalRow = useMemo(() => {
-    const week = overviewWeekQuery.data;
-    if (!week) return null;
-    const trend = overviewTrendQuery.data;
+    if (!gameRows.length) return null;
+    const sum = (key) => gameRows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
     return {
-      ...week,
-      trend: trend?.thisWeek || [],
-      prevTrend: trend?.lastWeek || [],
-      trendLabels: trend?.labels || [],
+      appId: '-',
+      appName: '合计',
+      icon: '',
+      distributionType: null,
+      tags: [],
+      appAdViews: sum('appAdViews'),
+      pcAdViews: sum('pcAdViews'),
+      kwAdViews: sum('kwAdViews'),
+      adViews: sum('adViews'),
+      appPcebidViews: sum('appPcebidViews'),
+      pcPcebidViews: sum('pcPcebidViews'),
+      kwPcebidViews: sum('kwPcebidViews'),
+      pcebidViews: sum('pcebidViews'),
+      totalPush: sum('totalPush'),
+      cpaBase: sum('cpaBase'),
+      cpaBasis: 'download',
+      cpa: sum('cpaBase') > 0 ? sum('totalPush') / sum('cpaBase') : null,
       share: 100,
-      lastWeekRank: null,
     };
-  }, [overviewWeekQuery.data, overviewTrendQuery.data]);
+  }, [gameRows]);
 
   return (
     <>
@@ -379,39 +359,32 @@ export default function TapTapAdStats() {
         loading={todayExposureQuery.isLoading || historyExposureQuery.isLoading}
       />
 
-      {/* 第二行：本周游戏明细 Top50 */}
+      {/* 今日广告曝光明细（今日全部有曝光的 APP，不设 TopN） */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white border-0">
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div className="fw-semibold">【广告大盘】本周游戏明细 — Top50</div>
-            {/* 本周明细入口标签：悬停看各渠道广告明细 */}
+            <div className="fw-semibold">【广告大盘】今日广告曝光明细</div>
+            {/* 明细入口标签：悬停看本时段各渠道广告 */}
             <div className="d-flex align-items-center flex-wrap" style={{ gap: '1rem' }}>
               <CurrentHourAdTips />
             </div>
           </div>
           <div className="d-flex align-items-center flex-wrap gap-2 mt-1">
             <span className="text-muted small">
-              按「总投放」倒序取前 50；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
+              按「总投放」倒序，列出今日有曝光的全部 APP；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
             </span>
-            <span className="text-muted small">数据范围：本周（{thisWeekWhere(0)} 起）</span>
-            <span className="text-muted small">
-              上周排名周：{lastWeekRankKey()}
-              {rankWeekQuery.data?.count
-                ? '（官方 weekly 快照）'
-                : rankDerivedQuery.data?.count
-                  ? '（官方快照未入库，按明细表上周总投放推算）'
-                  : ''}
-            </span>
+            <span className="text-muted small">数据范围：今日（{formatDayLabel()}）· 共 {gameRows.length} 款</span>
+            <span className="text-muted small">CPA = 总投放 ÷ 今日下载量（无下载时改用今日预约数）</span>
           </div>
         </div>
-        {gameTopQuery.isLoading && <div className="card-body text-muted small">加载中…</div>}
-        {gameTopQuery.error && (
+        {todayDetailQuery.isLoading && <div className="card-body text-muted small">加载中…</div>}
+        {todayDetailQuery.error && (
           <div className="card-body text-danger small">
             <i className="bi bi-exclamation-triangle me-1"></i>
-            {gameTopQuery.error.message}
+            {todayDetailQuery.error.message}
           </div>
         )}
-        {!gameTopQuery.isLoading && !gameTopQuery.error && (
+        {!todayDetailQuery.isLoading && !todayDetailQuery.error && (
           <DataTable rows={gameRows} columns={GAME_TOP_COLUMNS} pageSize={10} totalRow={overviewTotalRow} />
         )}
       </div>
