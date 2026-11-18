@@ -20,7 +20,7 @@ import {
 import './periodic.css';
 
 // 每条榜的条数按左侧明细的高度定：让两栏底部对齐，不靠拉高左卡硬撑
-const RANK_LIMIT = { download: 12, ad: 11, online: 15 };
+const RANK_LIMIT = { download: 12, ad: 13, online: 15 };
 
 const TABS = [
   { key: 'weekly', label: '周报' },
