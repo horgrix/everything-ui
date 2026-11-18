@@ -14,7 +14,6 @@ import {
   buildAdOverviewDailyTrendSql,
   buildAdRankWeekSql,
   buildAdRankDerivedWeekSql,
-  buildAdRankTopSql,
   buildAdTodaySummarySql,
   buildAdDaySummarySql,
   lastWeekRankKey,
@@ -28,14 +27,12 @@ import {
   transformAdOverviewDailyTrend,
   transformAdRankWeek,
   transformAdRankDerivedWeek,
-  transformAdRankTop,
   transformAdExposureToday,
   transformAdExposureHistory,
 } from './transforms';
 import { useSqlQuery, useSqlQueryV09 } from './queries';
 import DataTable from './components/DataTable';
 import AdKpiRow from './components/AdKpiRow';
-import RankTopCard from './components/RankTopCard';
 import CurrentHourAdTips from './components/CurrentHourAdTips';
 import WeeklyAdGameCountTips from './components/WeeklyAdGameCountTips';
 import GameChannelTrendTip from './components/GameChannelTrendTip';
@@ -341,21 +338,6 @@ export default function TapTapAdStats() {
     { enabled: rankWeekQuery.isSuccess && !rankWeekQuery.data?.count },
   );
 
-  const todayTopQuery = useSqlQuery(
-    'taptap-ad-rank-top-daily',
-    () => buildAdRankTopSql('daily', 10),
-    [],
-    transformAdRankTop,
-    { enabled: true },
-  );
-  const lastWeekTopQuery = useSqlQuery(
-    'taptap-ad-rank-top-last-week',
-    () => buildAdRankTopSql('weekly', 10, lastWeekRankKey()),
-    [],
-    transformAdRankTop,
-    { enabled: true },
-  );
-
   const gameRows = useMemo(() => {
     const list = gameTopQuery.data || [];
     const trend = gameTrendQuery.data;
@@ -442,45 +424,6 @@ export default function TapTapAdStats() {
         )}
       </div>
 
-      {/* 第三行：今日投放 Top10 / 上周投放 Top10（并排，各占 50%） */}
-      <div className="d-flex flex-wrap gap-3 mb-4 align-items-stretch">
-        <div style={{ flex: '50 1 0', minWidth: 0 }}>
-          <RankTopCard
-            title="【广告大盘】今日投放 Top10"
-            subtitle="rank_type=daily；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
-            rangeLabel="数据日期"
-            snapshot={todayTopQuery.data?.snapshot}
-            rows={todayTopQuery.data?.rows || []}
-            loading={todayTopQuery.isLoading}
-            error={todayTopQuery.error?.message}
-            emptyText="今日排名快照暂无数据"
-            height={500}
-          />
-        </div>
-
-        <div style={{ flex: '50 1 0', minWidth: 0 }}>
-          {(() => {
-            const official = lastWeekTopQuery.data;
-            const derived = rankDerivedQuery.data;
-            const fromOfficial = (official?.rows || []).length > 0;
-            const rows = fromOfficial ? official.rows.slice(0, 10) : (derived?.rows || []).slice(0, 10);
-            return (
-              <RankTopCard
-                title="【广告大盘】上周投放 Top10"
-                subtitle="rank_type=weekly；y=游戏名称（名次. 名称），x=总投放（APP + PC + KV 堆叠，柱端为合计）"
-                rangeLabel="数据周"
-                snapshot={fromOfficial ? official.snapshot : lastWeekRankKey()}
-                sourceNote={fromOfficial ? '' : '官方快照未入库，按明细表上周总投放推算'}
-                rows={rows}
-                loading={lastWeekTopQuery.isLoading || (!fromOfficial && rankDerivedQuery.isLoading)}
-                error={lastWeekTopQuery.error?.message}
-                emptyText={`上周（${lastWeekRankKey()}）排名快照暂无数据`}
-                height={500}
-              />
-            );
-          })()}
-        </div>
-      </div>
     </>
   );
 }

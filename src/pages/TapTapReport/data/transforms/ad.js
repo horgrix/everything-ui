@@ -349,32 +349,6 @@ export function transformAdRankDerivedWeek(rows) {
 }
 
 /**
- * 投放 TopN 排名 → { snapshot, rows: [{ appId, appName, rank, appAdViews, pcAdViews, kvAdViews, totalAdViews }] }
- * 总投放拆成 APP / PC / KV 三段（rank 表 total_app_ad_views / total_pc_ad_views / total_kv_ad_views），
- * 总投放取三段之和；若某行缺这三列（历史数据），退回用 total_ad_veiws 作为标签值。
- */
-export function transformAdRankTop(rows) {
-  return {
-    snapshot: rows?.[0]?.crawled_at || '',
-    rows: (rows || []).map((r) => {
-      const appAdViews = Number(r.total_app_ad_views) || 0;
-      const pcAdViews = Number(r.total_pc_ad_views) || 0;
-      const kvAdViews = Number(r.total_kv_ad_views) || 0;
-      const splitSum = appAdViews + pcAdViews + kvAdViews;
-      return {
-        appId: r.app_id,
-        appName: r.app_name || String(r.app_id),
-        rank: Number(r.ad_rank) || 0,
-        appAdViews,
-        pcAdViews,
-        kvAdViews,
-        totalAdViews: splitSum > 0 ? splitSum : Number(r.total_ad_veiws) || 0,
-      };
-    }),
-  };
-}
-
-/**
  * 每日投放广告的游戏数：按周几拆成本周 / 上周两条 7 长度序列，并算出逐日增幅(%)。
  * 缺数据的日子为 null（不补 0 伪装），上周为 0 或缺失时增幅为 null。
  */

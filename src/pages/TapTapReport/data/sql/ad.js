@@ -331,27 +331,6 @@ export function buildAdRankDerivedWeekSql(limit = 20) {
   `;
 }
 
-/**
- * 构建 TapTap 广告投放 TopN 排名 SQL
- * @param {string} rankType daily / weekly / monthly
- * @param {number} limit 取前 N 名
- * @param {string|null} label 指定快照标签（如 '2026-41'、'2026-09'）；不传则取该类型最新快照
- */
-export function buildAdRankTopSql(rankType = 'daily', limit = 10, label = null) {
-  const snapshot = label
-    ? `crawled_at = '${label}'`
-    : `crawled_at = (SELECT MAX(crawled_at) FROM dws_taptap_ad_rank_v4_daily WHERE rank_type = '${rankType}')`;
-  return `
-    SELECT
-      app_id, app_name, total_ad_veiws, ad_rank, crawled_at,
-      total_app_ad_views, total_pc_ad_views, total_kv_ad_views
-    FROM dws_taptap_ad_rank_v4_daily
-    WHERE rank_type = '${rankType}' AND ${snapshot}
-    ORDER BY ad_rank
-    LIMIT ${limit}
-  `;
-}
-
 /** 今天（YYYY-MM-DD） */
 function todayWhere() {
   const now = new Date();
