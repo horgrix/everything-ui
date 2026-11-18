@@ -2,24 +2,20 @@ import { useState, useEffect, useMemo } from 'react';
 import HourlyTrendSection from './download/HourlyTrendSection';
 import DistributionRow from './download/DistributionRow';
 import DownloadKpiRow from './download/KpiRow';
-import { nextUpdateTime, formatNextUpdate, nextDailyUpdateLabel } from './updateTime';
+import { nextUpdateTime, formatNextUpdate } from './updateTime';
 import { formatNowWindow } from './dates';
 import {
   buildAggregateSql,
-  buildWeeklyTrendSql,
   buildTodayRealtimeSummarySql,
   buildDaySummarySql,
-  buildMonthlyBreakdownSql,
   buildDistributionByWindowSql,
   buildNewestDateSql,
   HOURLY_TABLE,
 } from './sql';
 import {
   transformAggregate,
-  transformWeeklyTrend,
   transformTodayRealtime,
   transformDaySummary,
-  transformMonthlyBreakdown,
   transformDistributionByWindow,
   transformNewestDate,
 } from './transforms';
@@ -34,7 +30,6 @@ import {
   buildSliceStrokeColors,
   DISTRIBUTION_TYPE_LABELS,
 } from './download/constants';
-import MonthlyWeeklyRow from './download/MonthlyWeeklyRow';
 
 export default function DownloadStats() {
   const [selectedTable, setSelectedTable] = useState(HOURLY_TABLE);
@@ -47,14 +42,10 @@ export default function DownloadStats() {
   const nowRef = new Date();
   // 追踪游戏下载趋势 / 日趋势 / 分布 / TopN 明细：cron「18 */2 * * *」（每 2 小时第 18 分钟）
   const nextUpdateLabelMin18 = `下次更新时间 ${formatNextUpdate(nextUpdateTime(18, nowRef))}`;
-  // 月趋势：cron「5 9 * * *」（每天 09:05）
-  const nextUpdateLabelDaily905 = nextDailyUpdateLabel(5, 9, nowRef);
   // 分布饼图 + TopN 明细也跟随 18 分钟这一批
   const windowUpdateLabel = nextUpdateLabelMin18;
 
   const hotListQuery = useSqlQuery('taptap-hot-list-trend', buildAggregateSql, [], transformAggregate, { enabled: true });
-  // 周趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_daily（历史数据）
-  const weeklyTrendQuery = useSqlQueryV09('taptap-weekly-trend', buildWeeklyTrendSql, [], transformWeeklyTrend, { enabled: true });
   // 今日实时：SQLite 的 dws_taptap_download_summary_hourly 聚合当天，覆盖「今天」那一点
   const todayRealtimeQuery = useSqlQuery('taptap-today-realtime', buildTodayRealtimeSummarySql, [], transformTodayRealtime, {
     enabled: true,
@@ -65,8 +56,6 @@ export default function DownloadStats() {
     enabled: true,
     staleTime: 5 * 60 * 1000,
   });
-  // 月趋势走 MySQL（v09 接口）的 dws_taptap_download_v2_monthly
-  const monthlyBreakdownQuery = useSqlQueryV09('taptap-monthly-breakdown', buildMonthlyBreakdownSql, [], transformMonthlyBreakdown, { enabled: true });
   const distributionByWindowQuery = useSqlQuery('taptap-distribution-by-window', () => buildDistributionByWindowSql(selectedWindow), [selectedWindow], transformDistributionByWindow, { enabled: true });
   const newestDateQuery = useSqlQuery('taptap-newest-date', buildNewestDateSql, [], transformNewestDate);
 
@@ -135,27 +124,6 @@ export default function DownloadStats() {
         loading={hotListQuery.isLoading}
         error={hotListQuery.error?.message}
         updateLabel={nextUpdateLabelMin18}
-      />
-
-      {/* 月趋势 / 日趋势：平台一组、小游戏一组 */}
-      <MonthlyWeeklyRow
-        monthlyKey="platform"
-        weeklyKey="platform"
-        monthly={monthlyBreakdownQuery}
-        weekly={weeklyTrendQuery}
-        realtime={todayRealtimeQuery.data}
-        monthlyUpdateLabel={nextUpdateLabelDaily905}
-        weeklyUpdateLabel={nextUpdateLabelMin18}
-      />
-      <MonthlyWeeklyRow
-        monthlyKey="gameType"
-        weeklyKey="miniGame"
-        monthly={monthlyBreakdownQuery}
-        weekly={weeklyTrendQuery}
-        realtime={todayRealtimeQuery.data}
-        monthlyUpdateLabel={nextUpdateLabelDaily905}
-        weeklyUpdateLabel={nextUpdateLabelMin18}
-        notice="11 月 3 日 - 11 月 7 日数据口径调整，所显示数据没有参考意义"
       />
 
       {/* 下载Top25明细查询条件 */}

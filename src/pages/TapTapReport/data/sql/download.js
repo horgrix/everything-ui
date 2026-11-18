@@ -1,8 +1,8 @@
-import { recentDaysWhere, recentHoursWhere, weekRange } from '../../dates';
+import { recentDaysWhere, recentHoursWhere } from '../../dates';
 import { HOURLY_TABLE, HOURLY_META_COLS } from './shared';
 
 /**
- * 下载统计相关 SQL（小时表 v2 / 周趋势 v2_daily / 月趋势 v2_monthly）
+ * 下载统计相关 SQL（v2 小时表明细 / 日表昨日与上周同日汇总 / 分布 / Top 明细）
  */
 
 /** 近 24 小时增量（堆叠面积：商业 / 独立小游戏 / Maker小游戏），数据源 dws_taptap_download_summary_hourly */
@@ -22,47 +22,6 @@ export function buildAggregateSql() {
     WHERE crawled_at >= '${dateStr}'
     GROUP BY crawled_at
     HAVING ${sum(0)} + ${sum(1)} + ${sum(2)} > 0
-    ORDER BY crawled_at
-  `;
-}
-
-/**
- * 构建周趋势 SQL（上周一 ~ 本周日，按天聚合平台 / 小游戏下载数）
- * 数据源为 MySQL 的 dws_taptap_download_v2_daily（走 v09 接口）：
- *   平台 = app/pc_download_count；小游戏按 distribution_type 1/2 汇总 download_count
- */
-export function buildWeeklyTrendSql(ref = new Date()) {
-  const { lastMonday, thisSunday } = weekRange(ref);
-  return `
-    SELECT
-      crawled_at,
-      SUM(app_download_count) AS app_download_count,
-      SUM(pc_download_count) AS pc_download_count,
-      SUM(CASE WHEN distribution_type = 1 THEN download_count ELSE 0 END) AS mini_download_count,
-      SUM(CASE WHEN distribution_type = 2 THEN download_count ELSE 0 END) AS tmk_download_count
-    FROM dws_taptap_download_v2_daily
-    WHERE crawled_at >= '${lastMonday}' AND crawled_at <= '${thisSunday}'
-    GROUP BY crawled_at
-    ORDER BY crawled_at
-  `;
-}
-
-/** 构建月趋势明细 SQL（最近12个月，MySQL v09 的 dws_taptap_download_v2_monthly） */
-export function buildMonthlyBreakdownSql() {
-  // MySQL（v09）的 dws_taptap_download_v2_monthly 已按月预聚合，直接取列即可
-  const months = Math.max(1, 12);
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-  const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
-  return `
-    SELECT
-      crawled_at,
-      app_download_count,
-      pc_download_count,
-      dist_type_1_download_count AS mini_download_count,
-      dist_type_2_download_count AS tmk_download_count
-    FROM dws_taptap_download_v2_monthly
-    WHERE crawled_at >= '${startStr}'
     ORDER BY crawled_at
   `;
 }
