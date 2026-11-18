@@ -139,28 +139,28 @@ const GAME_TOP_COLUMNS = [
     ),
   })),
   {
-    header: 'CPA',
+    header: '下载 / 预约量',
     align: 'center',
     width: '7%',
-    help: 'CPA = 今日总投放 ÷ 今日行动量：有发布时间（已上线）取今日下载量，没有发布时间（未上线）取今日预约数（taptap_game_info_hourly 判断）',
+    help: '今日行动量：有发布时间（已上线）显示今日下载量，没有发布时间（未上线）显示今日预约量（taptap_game_info_hourly 判断）',
     render: (r) => {
       if (r.appId === '-') return <span className="text-muted">-</span>;
-      if (r.cpa == null) {
+      const label = r.cpaBasis === 'reserve' ? '今日预约量' : r.cpaBasis === 'mixed' ? '今日下载量+预约量' : '今日下载量';
+      const value = formatNumber(r.cpaBase);
+      if (!r.cpaBase) {
         return (
-          <span className="text-muted" title="今日无下载也无预约，无法计算 CPA">—</span>
+          <span className="text-muted" title={`${label} 0`}>—</span>
         );
       }
       return (
         <span
-          title={
-            `总投放 ${formatNumber(r.totalPush)} ÷ ` +
-            `${r.cpaBasis === 'reserve' ? '今日预约' : r.cpaBasis === 'mixed' ? '今日下载+预约' : '今日下载'} ` +
-            `${formatNumber(r.cpaBase)} = ${r.cpa >= 0.01 ? r.cpa.toFixed(2) : r.cpa.toFixed(4)}`
-          }
-          style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}
+          title={`${label} ${value}`}
+          style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}
         >
-          {r.cpa > 0 && r.cpa < 0.01 ? '<0.01' : r.cpa.toFixed(2)}
-          {r.cpaBasis === 'reserve' && <span className="text-muted ms-1" style={{ fontSize: 10 }}>预约</span>}
+          {value}
+          {r.cpaBasis === 'reserve' && (
+            <span className="text-muted ms-1" style={{ fontSize: 10 }}>预约</span>
+          )}
         </span>
       );
     },
@@ -390,7 +390,7 @@ export default function TapTapAdStats() {
               按「总投放」倒序，列出今日有曝光的全部 APP；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
             </span>
             <span className="text-muted small">数据范围：今日（{formatDayLabel()}）· 共 {gameRows.length} 款</span>
-            <span className="text-muted small">CPA = 总投放 ÷ 今日行动量（已上线取下载量，未上线取预约数）</span>
+            <span className="text-muted small">「下载 / 预约量」列：已上线显示今日下载量，未上线显示今日预约量</span>
           </div>
         </div>
         {todayDetailQuery.isLoading && <div className="card-body text-muted small">加载中…</div>}
