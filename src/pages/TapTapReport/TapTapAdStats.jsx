@@ -11,6 +11,7 @@ import {
   buildAdTodayDetailSql,
   buildAdTodayHourlyTrendSql,
   buildAppTodayActionSql,
+  buildAppReleasedSql,
   buildAdDaySummarySql,
 } from './sql';
 import {
@@ -18,6 +19,7 @@ import {
   transformAdExposureToday,
   transformAdTodayHourlyTrend,
   transformAppTodayAction,
+  transformAppReleased,
   transformAdExposureHistory,
 } from './transforms';
 import { useSqlQuery, useSqlQueryV09 } from './queries';
@@ -140,7 +142,7 @@ const GAME_TOP_COLUMNS = [
     header: 'CPA',
     align: 'center',
     width: '7%',
-    help: 'CPA = 今日总投放 ÷ 今日行动量；行动量优先取今日下载量，下载为 0 时改用今日预约数（dws_taptap_download_v2_hourly / dws_taptap_reserve_v2_hourly）',
+    help: 'CPA = 今日总投放 ÷ 今日行动量：有发布时间（已上线）取今日下载量，没有发布时间（未上线）取今日预约数（taptap_game_info_hourly 判断）',
     render: (r) => {
       if (r.appId === '-') return <span className="text-muted">-</span>;
       if (r.cpa == null) {
@@ -150,7 +152,11 @@ const GAME_TOP_COLUMNS = [
       }
       return (
         <span
-          title={`总投放 ${formatNumber(r.totalPush)} ÷ ${r.cpaBasis === 'reserve' ? '预约' : '下载'} ${formatNumber(r.cpaBase)} = ${r.cpa.toFixed(2)}`}
+          title={
+            `总投放 ${formatNumber(r.totalPush)} ÷ ` +
+            `${r.cpaBasis === 'reserve' ? '今日预约' : r.cpaBasis === 'mixed' ? '今日下载+预约' : '今日下载'} ` +
+            `${formatNumber(r.cpaBase)} = ${r.cpa >= 0.01 ? r.cpa.toFixed(2) : r.cpa.toFixed(4)}`
+          }
           style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}
         >
           {r.cpa > 0 && r.cpa < 0.01 ? '<0.01' : r.cpa.toFixed(2)}
@@ -296,6 +302,14 @@ export default function TapTapAdStats() {
     transformAppTodayAction,
     { enabled: true, staleTime: 60 * 1000 },
   );
+  // 发布时间快照：决定 CPA 分母用下载还是预约
+  const releasedQuery = useSqlQuery(
+    'taptap-ad-app-released',
+    buildAppReleasedSql,
+    [],
+    transformAppReleased,
+    { enabled: true, staleTime: 5 * 60 * 1000 },
+  );
 
   const gameRows = useMemo(() => {
     const list = todayDetailQuery.data || [];
@@ -303,11 +317,13 @@ export default function TapTapAdStats() {
     const hourlyByApp = hourly?.byApp || {};
     const hourlyLabels = hourly?.labels || [];
     const actionByApp = todayActionQuery.data || {};
+    const releasedApps = releasedQuery.data || new Set();
     // 广告贡献度分母 = 今日全站总投放（按今日明细行合计）
     const totalPushAll = list.reduce((sum, r) => sum + (Number(r.totalPush) || 0), 0);
     return list.map((r) => {
       const action = actionByApp[r.appId] || { downloads: 0, reserves: 0 };
-      const useReserve = !(action.downloads > 0);
+      // 有发布时间（已上线）→ 今日下载量；没有发布时间（未上线）→ 今日预约数
+      const useReserve = !releasedApps.has(r.appId);
       const base = useReserve ? action.reserves : action.downloads;
       return {
         ...r,
@@ -320,7 +336,7 @@ export default function TapTapAdStats() {
         share: totalPushAll > 0 ? (r.totalPush / totalPushAll) * 100 : null,
       };
     });
-  }, [todayDetailQuery.data, todayHourlyTrendQuery.data, todayActionQuery.data]);
+  }, [todayDetailQuery.data, todayHourlyTrendQuery.data, todayActionQuery.data, releasedQuery.data]);
 
   /** 汇总行：今日全站合计（直接累加明细行） */
   const overviewTotalRow = useMemo(() => {
@@ -342,7 +358,7 @@ export default function TapTapAdStats() {
       pcebidViews: sum('pcebidViews'),
       totalPush: sum('totalPush'),
       cpaBase: sum('cpaBase'),
-      cpaBasis: 'download',
+      cpaBasis: 'mixed',
       cpa: sum('cpaBase') > 0 ? sum('totalPush') / sum('cpaBase') : null,
       share: 100,
     };
@@ -374,7 +390,7 @@ export default function TapTapAdStats() {
               按「总投放」倒序，列出今日有曝光的全部 APP；总投放 = 商业AD(ad_views) + 资源互换AD(pcebid_views)
             </span>
             <span className="text-muted small">数据范围：今日（{formatDayLabel()}）· 共 {gameRows.length} 款</span>
-            <span className="text-muted small">CPA = 总投放 ÷ 今日下载量（无下载时改用今日预约数）</span>
+            <span className="text-muted small">CPA = 总投放 ÷ 今日行动量（已上线取下载量，未上线取预约数）</span>
           </div>
         </div>
         {todayDetailQuery.isLoading && <div className="card-body text-muted small">加载中…</div>}

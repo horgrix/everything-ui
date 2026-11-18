@@ -199,3 +199,16 @@ export function buildAppTodayActionSql(ref = new Date()) {
     GROUP BY app_id
   `;
 }
+
+/**
+ * 各游戏的「发布时间」快照（SQLite taptap_game_info_hourly 最新一份），供 CPA 选分母：
+ * 有发布时间（released_time > 0）= 已上线 → 用今日下载量；否则未上线 → 用今日预约数。
+ */
+export function buildAppReleasedSql() {
+  return `
+    SELECT app_id, MAX(COALESCE(released_time, 0)) AS released_time
+    FROM taptap_game_info_hourly
+    WHERE crawled_at = (SELECT MAX(crawled_at) FROM taptap_game_info_hourly)
+    GROUP BY app_id
+  `;
+}

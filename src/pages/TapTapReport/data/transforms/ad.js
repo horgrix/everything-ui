@@ -110,3 +110,14 @@ export function transformAppTodayAction(rows) {
   });
   return byApp;
 }
+
+/** 发布时间快照 → Set(已上线 appId)：released_time > 0 视为有发布时间 */
+export function transformAppReleased(rows) {
+  const released = new Set();
+  (rows || []).forEach((r) => {
+    const appId = r.app_id;
+    const ts = Number(r.released_time) || 0;
+    if (appId != null && ts > 0) released.add(appId);
+  });
+  return released;
+}
