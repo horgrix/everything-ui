@@ -1256,15 +1256,25 @@ function PlayerIcon({ src, name }) {
 export function PlayerCards({ players, flags, isPartial = false }) {
   if (!players?.length) return null;
   // 本期未走完时，重点游戏的环比同样是「几天 vs 整期」（W47 会出现 −77.7% / −75.8%），
-  // 和 01/04 一个规则：不出数字，只说明原因
-  const delta = (pct, hasValue) =>
-    isPartial ? (
-      <span className="pr-metric-live" title="本期还没走完，累计值与整期不可比，所以不出环比">
-        本期未走完 · 不出环比
-      </span>
-    ) : (
-      <DeltaChip pct={pct} hasValue={hasValue} size="sm" />
-    );
+  // 和 01/04 一个规则：不出数字，只说明原因。
+  // 判据优先读接口的 player.deltaBlocked（1a7d5bd），meta.isPartial 只作老接口兜底。
+  const BLOCKED_LABEL = {
+    current_in_progress: '本期未走完 · 不出环比',
+  };
+  const delta = (player, pct, hasValue) => {
+    const blocked = player.deltaBlocked || (isPartial ? 'current_in_progress' : null);
+    if (blocked) {
+      return (
+        <span
+          className="pr-metric-live"
+          title={blocked === 'current_in_progress' ? '本期还没走完，累计值与整期不可比，所以不出环比' : '环比不可比'}
+        >
+          {BLOCKED_LABEL[blocked] || '环比不可比'}
+        </span>
+      );
+    }
+    return <DeltaChip pct={pct} hasValue={hasValue} size="sm" />;
+  };
   return (
     <div className="pr-players">
       {players.map((player) => {
@@ -1287,7 +1297,7 @@ export function PlayerCards({ players, flags, isPartial = false }) {
                     <small>次</small>
                   </div>
                   <div className="pr-player-cell-delta">
-                    {delta(player.downloadDeltaPct, player.download != null)}
+                    {delta(player, player.downloadDeltaPct, player.download != null)}
                   </div>
                 </div>
                 <div className="pr-player-spark">
@@ -1302,7 +1312,7 @@ export function PlayerCards({ players, flags, isPartial = false }) {
                     <small>人</small>
                   </div>
                   <div className="pr-player-cell-delta">
-                    {delta(player.avgOnlineDeltaPct, player.avgOnline != null)}
+                    {delta(player, player.avgOnlineDeltaPct, player.avgOnline != null)}
                   </div>
                 </div>
                 <div className="pr-player-spark">
