@@ -1253,8 +1253,18 @@ function PlayerIcon({ src, name }) {
   );
 }
 
-export function PlayerCards({ players, flags }) {
+export function PlayerCards({ players, flags, isPartial = false }) {
   if (!players?.length) return null;
+  // 本期未走完时，重点游戏的环比同样是「几天 vs 整期」（W47 会出现 −77.7% / −75.8%），
+  // 和 01/04 一个规则：不出数字，只说明原因
+  const delta = (pct, hasValue) =>
+    isPartial ? (
+      <span className="pr-metric-live" title="本期还没走完，累计值与整期不可比，所以不出环比">
+        本期未走完 · 不出环比
+      </span>
+    ) : (
+      <DeltaChip pct={pct} hasValue={hasValue} size="sm" />
+    );
   return (
     <div className="pr-players">
       {players.map((player) => {
@@ -1277,7 +1287,7 @@ export function PlayerCards({ players, flags }) {
                     <small>次</small>
                   </div>
                   <div className="pr-player-cell-delta">
-                    <DeltaChip pct={player.downloadDeltaPct} hasValue={player.download != null} size="sm" />
+                    {delta(player.downloadDeltaPct, player.download != null)}
                   </div>
                 </div>
                 <div className="pr-player-spark">
@@ -1292,7 +1302,7 @@ export function PlayerCards({ players, flags }) {
                     <small>人</small>
                   </div>
                   <div className="pr-player-cell-delta">
-                    <DeltaChip pct={player.avgOnlineDeltaPct} hasValue={player.avgOnline != null} size="sm" />
+                    {delta(player.avgOnlineDeltaPct, player.avgOnline != null)}
                   </div>
                 </div>
                 <div className="pr-player-spark">

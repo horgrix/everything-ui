@@ -406,7 +406,7 @@ export default function PeriodicReport() {
                 sub="XD 单品本周表现"
                 right="来源：概览周表，与业务线周期表分开核算"
               />
-              <PlayerCards players={report.players} flags={report.flags} />
+              <PlayerCards players={report.players} flags={report.flags} isPartial={meta.isPartial === true} />
             </section>
           )}
 
