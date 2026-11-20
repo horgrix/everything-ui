@@ -124,6 +124,8 @@ export default function DownloadStats() {
         loading={hotListQuery.isLoading}
         error={hotListQuery.error?.message}
         updateLabel={nextUpdateLabelMin18}
+        activeHour={selectedWindow}
+        onSelectHour={setSelectedWindow}
       />
 
       {/* 下载Top25明细查询条件 */}
