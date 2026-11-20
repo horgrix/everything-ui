@@ -158,6 +158,22 @@ export default function DownloadStats() {
               aria-readonly="true"
               title="统计窗口跟随数据最新时间自动同步"
             />
+            {/* 突出提示：柱子可点击切换窗口 */}
+            <span
+              className="ms-3 d-inline-flex align-items-center fw-semibold flex-shrink-0"
+              style={{
+                fontSize: 12,
+                color: '#7A5C22',
+                background: '#FFF9EC',
+                border: '1px solid #F1E3C3',
+                borderRadius: 8,
+                padding: '4px 10px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <i className="bi bi-hand-index-thumb me-1" />
+              可以点击柱状图选择最近 24 小时的统计窗口数据
+            </span>
           </div>
         </div>
       </div>
